@@ -24,12 +24,28 @@ const REVIEW_CYCLES = [
   { value: 'annual',      label: 'Annual' },
   { value: 'as_needed',   label: 'As needed' },
 ]
+const INDICATOR_TYPES = [
+  { value: 'named_role',         label: 'Named Role' },
+  { value: 'policy',             label: 'Policy' },
+  { value: 'programme',          label: 'Programme' },
+  { value: 'external_service',   label: 'External Service' },
+  { value: 'curriculum_element', label: 'Curriculum Element' },
+]
+const EV_GROUPS = [
+  { value: 'grp_send', label: 'SEND' },
+  { value: 'grp_pp',   label: 'PP' },
+  { value: 'grp_eal',  label: 'EAL' },
+  { value: 'grp_fsm',  label: 'FSM' },
+  { value: 'grp_lac',  label: 'LAC' },
+  { value: 'grp_wwc',  label: 'White Working Class' },
+  { value: 'grp_other', label: 'Other' },
+]
 
 // entries holds status + group flags; evidence detail lives in evidence_entries (nested)
 const ENTRY_SELECT = [
   'id', 'provision_point_id', 'status',
   'grp_send', 'grp_pp', 'grp_eal', 'grp_fsm', 'grp_lac', 'grp_wwc', 'grp_other',
-  'evidence_entries(id, provision_name, brief_description, indicator_type, named_role_policy_document, owner, send_tiers, delivered_by_role, funding_source, cost, evidence_notes, review_cycle, notes)',
+  'evidence_entries(id, provision_name, brief_description, indicator_type, named_role_policy_document, delivered_by, send_tiers, pupils_reached, grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other, date_started, date_last_reviewed, next_review_due, funding_source, cost, review_cycle, evidence_notes, impact_on_outcomes, supporting_document_link, notes)',
 ].join(', ')
 
 export default function App() {
@@ -486,7 +502,10 @@ export default function App() {
 
                 <div className="df df--half">
                   <label>Indicator Type</label>
-                  <input type="text" placeholder="e.g. Named role, Policy, Programme" value={draft.indicator_type ?? ''} onChange={e => handleDraftChange('indicator_type', e.target.value)} />
+                  <select value={draft.indicator_type ?? ''} onChange={e => handleDraftChange('indicator_type', e.target.value)}>
+                    <option value="">—</option>
+                    {INDICATOR_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
                 </div>
 
                 <div className="df df--full">
@@ -500,8 +519,8 @@ export default function App() {
                 </div>
 
                 <div className="df df--half">
-                  <label>Owner</label>
-                  <input type="text" value={draft.owner ?? ''} onChange={e => handleDraftChange('owner', e.target.value)} />
+                  <label>Delivered By</label>
+                  <input type="text" value={draft.delivered_by ?? ''} onChange={e => handleDraftChange('delivered_by', e.target.value)} />
                 </div>
 
                 <div className="df df--half">
@@ -530,8 +549,28 @@ export default function App() {
                 </div>
 
                 <div className="df df--half">
-                  <label>Delivered By Role</label>
-                  <input type="text" value={draft.delivered_by_role ?? ''} onChange={e => handleDraftChange('delivered_by_role', e.target.value)} />
+                  <label>Student Groups</label>
+                  <div className="tier-checkbox-group">
+                    {EV_GROUPS.map(g => (
+                      <label key={g.value} className="tier-checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={draft[g.value] ?? false}
+                          onChange={e => handleDraftChange(g.value, e.target.checked)}
+                        />
+                        {g.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="df df--quarter">
+                  <label>Pupils / People Reached</label>
+                  <input
+                    type="number" min="0" step="1"
+                    value={draft.pupils_reached ?? ''}
+                    onChange={e => handleDraftChange('pupils_reached', e.target.value === '' ? null : Number(e.target.value))}
+                  />
                 </div>
 
                 <div className="df df--quarter">
@@ -552,6 +591,21 @@ export default function App() {
                 </div>
 
                 <div className="df df--half">
+                  <label>Date Provision Started</label>
+                  <input type="date" value={draft.date_started ?? ''} onChange={e => handleDraftChange('date_started', e.target.value || null)} />
+                </div>
+
+                <div className="df df--half">
+                  <label>Date Last Reviewed</label>
+                  <input type="date" value={draft.date_last_reviewed ?? ''} onChange={e => handleDraftChange('date_last_reviewed', e.target.value || null)} />
+                </div>
+
+                <div className="df df--half">
+                  <label>Next Review Due</label>
+                  <input type="date" value={draft.next_review_due ?? ''} onChange={e => handleDraftChange('next_review_due', e.target.value || null)} />
+                </div>
+
+                <div className="df df--half">
                   <label>Review Cycle</label>
                   <select value={draft.review_cycle ?? ''} onChange={e => handleDraftChange('review_cycle', e.target.value)}>
                     <option value="">—</option>
@@ -562,6 +616,16 @@ export default function App() {
                 <div className="df df--full">
                   <label>Evidence of Impact</label>
                   <textarea rows={3} value={draft.evidence_notes ?? ''} onChange={e => handleDraftChange('evidence_notes', e.target.value)} />
+                </div>
+
+                <div className="df df--full">
+                  <label>Impact on Outcomes</label>
+                  <textarea rows={3} value={draft.impact_on_outcomes ?? ''} onChange={e => handleDraftChange('impact_on_outcomes', e.target.value)} />
+                </div>
+
+                <div className="df df--full">
+                  <label>Supporting Document Link</label>
+                  <input type="url" placeholder="https://…" value={draft.supporting_document_link ?? ''} onChange={e => handleDraftChange('supporting_document_link', e.target.value)} />
                 </div>
 
                 <div className="df df--full">
