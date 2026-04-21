@@ -49,33 +49,72 @@ const ENTRY_SELECT = [
 ].join(', ')
 
 export default function App() {
-  const [schools, setSchools] = useState([])
+  // Auth state
+  const [session, setSession] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [schoolName, setSchoolName] = useState('')
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
+  const [loginError, setLoginError] = useState(null)
+  const [loginLoading, setLoginLoading] = useState(false)
+
   const [domains, setDomains] = useState([])
   const [selectedSchool, setSelectedSchool] = useState('')
   const [selectedDomain, setSelectedDomain] = useState('')
   const [subDomains, setSubDomains] = useState([])
-  const [entries, setEntries] = useState({})         // { [pp_id]: { id, status, grp_* } }
-  const [evidenceEntries, setEvidenceEntries] = useState({}) // { [pp_id]: [evidenceEntry] }
+  const [entries, setEntries] = useState({})
+  const [evidenceEntries, setEvidenceEntries] = useState({})
   const [loading, setLoading] = useState(false)
-  const [ppDomainMap, setPpDomainMap] = useState({})   // { [pp_id]: domain_id }
-  const [domainTotals, setDomainTotals] = useState({}) // { [domain_id]: total_pp_count }
-  const [allStatuses, setAllStatuses] = useState({})      // { [pp_id]: status } — all domains, current school
-  const [allEvidenceCounts, setAllEvidenceCounts] = useState({}) // { [pp_id]: count } — evidence_entries per pp
+  const [ppDomainMap, setPpDomainMap] = useState({})
+  const [domainTotals, setDomainTotals] = useState({})
+  const [allStatuses, setAllStatuses] = useState({})
+  const [allEvidenceCounts, setAllEvidenceCounts] = useState({})
 
   // Modal state
-  const [modalPoint, setModalPoint] = useState(null) // { id, label }
+  const [modalPoint, setModalPoint] = useState(null)
   const [draft, setDraft] = useState({})
-  const [draftId, setDraftId] = useState(null)       // null = new, uuid = existing evidence_entry
+  const [draftId, setDraftId] = useState(null)
   const [modalSaving, setModalSaving] = useState(false)
   const [modalSaveMsg, setModalSaveMsg] = useState(null)
   const [modalSaveError, setModalSaveError] = useState(false)
   const modalRef = useRef(null)
 
+  // Initialise auth: restore session and subscribe to changes
   useEffect(() => {
-    supabase.from('schools').select('id, name').order('name').then(({ data, error }) => {
-      if (error) console.error('Error loading schools:', error)
-      else setSchools(data ?? [])
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      setAuthLoading(false)
     })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // When session changes: load profile (→ school) and domain structure
+  useEffect(() => {
+    if (!session) {
+      setSelectedSchool('')
+      setSchoolName('')
+      setDomains([])
+      setPpDomainMap({})
+      setDomainTotals({})
+      setAllStatuses({})
+      setAllEvidenceCounts({})
+      return
+    }
+
+    supabase
+      .from('profiles')
+      .select('school_id, schools(name)')
+      .eq('id', session.user.id)
+      .single()
+      .then(({ data, error }) => {
+        if (error || !data?.school_id) { console.error('Error loading profile:', error); return }
+        setSelectedSchool(data.school_id)
+        setSchoolName(data.schools?.name ?? '')
+      })
+
     supabase
       .from('domains')
       .select('id, name, display_order, sub_domains(provision_points(id))')
@@ -98,7 +137,7 @@ export default function App() {
         setPpDomainMap(newPpDomainMap)
         setDomainTotals(newDomainTotals)
       })
-  }, [])
+  }, [session])
 
   // Lightweight load: statuses + evidence counts for all domains, current school
   useEffect(() => {
@@ -187,6 +226,20 @@ export default function App() {
   function handleDraftChange(field, value) {
     setModalSaveMsg(null)
     setDraft(prev => ({ ...prev, [field]: value }))
+  }
+
+  async function handleLogin(e) {
+    e.preventDefault()
+    setLoginLoading(true)
+    setLoginError(null)
+    const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPassword })
+    setLoginLoading(false)
+    if (error) setLoginError(error.message)
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    setSelectedDomain('')
   }
 
   async function handleStatusChange(ppId, status) {
@@ -293,23 +346,60 @@ export default function App() {
   const answeredCount = allPoints.filter(p => entries[p.id]?.status).length
   const progress = allPoints.length ? Math.round((answeredCount / allPoints.length) * 100) : 0
 
+  if (authLoading) {
+    return <div className="auth-loading">Loading…</div>
+  }
+
+  if (!session) {
+    return (
+      <div className="login-page">
+        <div className="login-card">
+          <h1 className="login-title">Inclusion Dashboard</h1>
+          <p className="login-sub">Sign in to continue</p>
+          <form className="login-form" onSubmit={handleLogin}>
+            <div className="login-field">
+              <label htmlFor="login-email">Email</label>
+              <input
+                id="login-email"
+                type="email"
+                autoComplete="email"
+                required
+                value={loginEmail}
+                onChange={e => setLoginEmail(e.target.value)}
+              />
+            </div>
+            <div className="login-field">
+              <label htmlFor="login-password">Password</label>
+              <input
+                id="login-password"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={loginPassword}
+                onChange={e => setLoginPassword(e.target.value)}
+              />
+            </div>
+            {loginError && <p className="login-error">{loginError}</p>}
+            <button type="submit" className="login-btn" disabled={loginLoading}>
+              {loginLoading ? 'Signing in…' : 'Sign in'}
+            </button>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="app">
       <header className="header">
-        <h1 className="header-title">Inclusion Dashboard</h1>
-        <p className="header-sub">Data Entry</p>
+        <div className="header-left">
+          <h1 className="header-title">Inclusion Dashboard</h1>
+          {schoolName && <p className="header-sub">{schoolName}</p>}
+        </div>
+        <button type="button" className="logout-btn" onClick={handleLogout}>Sign out</button>
       </header>
 
       <main className="main">
-        <div className="selectors">
-          <div className="selector-row">
-            <label htmlFor="school-select" className="field-label">School</label>
-            <select id="school-select" value={selectedSchool} onChange={e => { setSelectedSchool(e.target.value); setSelectedDomain('') }} className="select">
-              <option value="">— Select a school —</option>
-              {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </div>
-        </div>
 
         <nav className="domain-nav" aria-label="Domains">
           <button
