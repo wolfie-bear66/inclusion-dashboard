@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabaseClient'
 import './App.css'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, PieChart, Pie, RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts'
 
 const STATUSES = ['in_place', 'in_progress', 'not_in_place']
 const STATUS_LABELS = { in_place: 'In Place', in_progress: 'In Progress', not_in_place: 'Not In Place' }
@@ -45,8 +46,695 @@ const EV_GROUPS = [
 const ENTRY_SELECT = [
   'id', 'provision_point_id', 'status',
   'grp_send', 'grp_pp', 'grp_eal', 'grp_fsm', 'grp_lac', 'grp_wwc', 'grp_other',
-  'evidence_entries(id, provision_name, brief_description, indicator_type, named_role_policy_document, delivered_by, send_tiers, pupils_reached, grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other, date_started, date_last_reviewed, next_review_due, funding_source, cost, review_cycle, evidence_notes, impact_on_outcomes, supporting_document_link, notes)',
+  'evidence_entries(id, provision_name, brief_description, indicator_type, named_role_policy_document, delivered_by, send_tiers, pupils_reached, grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other, date_started, date_last_reviewed, next_review_due, funding_source, cost, review_cycle, evidence_notes, intended_outcomes, impact_on_outcomes, supporting_document_link, notes)',
 ].join(', ')
+
+// ── Analytics sub-components ─────────────────────────────────────
+const ACard = ({ children, className = '' }) => (
+  <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #f1f5f9', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', padding: 24 }} className={className}>{children}</div>
+)
+const ASectionTitle = ({ children, sub }) => (
+  <div style={{ marginBottom: 20 }}>
+    <h2 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1e293b', letterSpacing: '-0.2px' }}>{children}</h2>
+    {sub && <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2, lineHeight: 1.5 }}>{sub}</p>}
+  </div>
+)
+const AGroupPill = ({ label }) => (
+  <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: 999, background: '#f1f5f9', color: '#64748b', fontWeight: 500, display: 'inline-block' }}>{label}</span>
+)
+
+const DOMAIN_COLOUR_MAP = [
+  { key: 'SEND',       colour: '#6366f1' },
+  { key: 'Equity',     colour: '#f59e0b' },
+  { key: 'Attendance', colour: '#ec4899' },
+  { key: 'Enrichment', colour: '#14b8a6' },
+  { key: 'Belonging',  colour: '#f97316' },
+  { key: 'Wellbeing',  colour: '#84cc16' },
+]
+const A_FALLBACK_COLOURS = ['#6366f1', '#f59e0b', '#ec4899', '#14b8a6', '#f97316', '#84cc16']
+function aDomainColour(name = '', idx = 0) {
+  const m = DOMAIN_COLOUR_MAP.find(d => name.includes(d.key))
+  return m ? m.colour : A_FALLBACK_COLOURS[idx % A_FALLBACK_COLOURS.length]
+}
+
+const A_GROUPS = [
+  { key: 'grp_pp',   label: 'Pupil Premium' },
+  { key: 'grp_send', label: 'SEND' },
+  { key: 'grp_fsm',  label: 'FSM' },
+  { key: 'grp_eal',  label: 'EAL' },
+  { key: 'grp_lac',  label: 'LAC' },
+  { key: 'grp_wwc',  label: 'White Working Class' },
+]
+
+const FUNDING_LABELS_MAP = {
+  pupil_premium:             'Pupil Premium',
+  send_budget:               'SEND Budget',
+  inclusive_mainstream_fund: 'IMF',
+  sport_premium:             'Sport Premium',
+  school_general_budget:     'General Budget',
+}
+
+const ANALYTICS_TABS = [
+  { id: 'readiness', label: 'Domain Readiness' },
+  { id: 'equity',    label: 'Enrichment Equity' },
+  { id: 'funding',   label: 'Funding & Cost' },
+  { id: 'outcomes',  label: 'Outcomes & Impact' },
+]
+
+function AnalyticsView({ school, supabase: sb }) {
+  const [analyticsEntries, setAnalyticsEntries] = useState([])
+  const [domains, setDomains] = useState([])
+  const [aLoading, setALoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('readiness')
+  const [schoolCtx, setSchoolCtx] = useState(() => {
+    try {
+      const stored = localStorage.getItem('analytics_ctx_' + school)
+      if (stored) return JSON.parse(stored)
+    } catch {}
+    return { totalPupils: 0, ppCount: 0, sendCount: 0, fsmCount: 0, ealCount: 0, lacCount: 0, wwcCount: 0 }
+  })
+  const [editingCtx, setEditingCtx] = useState(false)
+  const [ctxDraft, setCtxDraft] = useState({})
+
+  useEffect(() => {
+    setALoading(true)
+    Promise.all([
+      sb.from('entries')
+        .select(`
+          id, provision_point_id, status,
+          grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other,
+          provision_points(*, sub_domains(*, domains(id, name))),
+          evidence_entries(id, provision_name, funding_source, cost, next_review_due,
+            evidence_notes, intended_outcomes, impact_on_outcomes,
+            grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other)
+        `)
+        .eq('school_id', school),
+      sb.from('domains').select('id, name, display_order').order('display_order'),
+    ]).then(([entriesRes, domainsRes]) => {
+      if (entriesRes.error) console.error('Analytics entries error:', entriesRes.error)
+      if (domainsRes.error) console.error('Analytics domains error:', domainsRes.error)
+      setAnalyticsEntries(entriesRes.data ?? [])
+      setDomains(domainsRes.data ?? [])
+      setALoading(false)
+    })
+  }, [school])
+
+  const today = new Date()
+
+  // Domain readiness
+  const readinessData = domains.map((d, idx) => {
+    const de = analyticsEntries.filter(e => e.provision_points?.sub_domains?.domains?.id === d.id)
+    return {
+      name: d.name.length > 14 ? d.name.split(/[&\s]/)[0] : d.name,
+      fullName: d.name,
+      colour: aDomainColour(d.name, idx),
+      inPlace:    de.filter(e => e.status === 'in_place').length,
+      inProgress: de.filter(e => e.status === 'in_progress').length,
+      notInPlace: de.filter(e => e.status === 'not_in_place').length,
+      total: de.length,
+    }
+  })
+
+  // Flatten all evidence entries with domain context
+  const allEvidence = analyticsEntries.flatMap(e =>
+    (e.evidence_entries ?? []).map(ev => ({
+      ...ev,
+      entryLabel:    e.provision_points?.label ?? '',
+      domainId:      e.provision_points?.sub_domains?.domains?.id,
+      domainName:    e.provision_points?.sub_domains?.domains?.name ?? '',
+      subDomainName: e.provision_points?.sub_domains?.name ?? '',
+    }))
+  )
+
+  // Upcoming reviews
+  const upcomingReviews = allEvidence
+    .filter(ev => ev.next_review_due)
+    .map(ev => {
+      const daysLeft = Math.ceil((new Date(ev.next_review_due) - today) / 86400000)
+      return { ...ev, daysLeft, urgency: daysLeft <= 7 ? 'urgent' : daysLeft <= 21 ? 'soon' : 'upcoming' }
+    })
+    .filter(ev => ev.daysLeft <= 60)
+    .sort((a, b) => a.daysLeft - b.daysLeft)
+
+  // Funding
+  const fundingBySource = {}
+  const fundingByDomain = {}
+  for (const ev of allEvidence) {
+    const cost = Number(ev.cost)
+    if (!cost) continue
+    if (ev.funding_source) {
+      const label = FUNDING_LABELS_MAP[ev.funding_source] ?? ev.funding_source
+      fundingBySource[label] = (fundingBySource[label] ?? 0) + cost
+    }
+    if (ev.domainName) {
+      fundingByDomain[ev.domainName] = (fundingByDomain[ev.domainName] ?? 0) + cost
+    }
+  }
+  const fundingSourceData = Object.entries(fundingBySource).map(([name, value]) => ({ name, value }))
+  const fundingDomainData = Object.entries(fundingByDomain).map(([name, value], idx) => ({
+    name: name.length > 14 ? name.split(/[&\s]/)[0] : name,
+    fullName: name, value,
+    colour: aDomainColour(name, idx),
+  }))
+  const totalCost = fundingSourceData.reduce((s, d) => s + d.value, 0)
+
+  // Outcomes
+  const outcomesData = domains
+    .map((d, idx) => ({
+      domain: d.name,
+      colour: aDomainColour(d.name, idx),
+      items: allEvidence
+        .filter(ev => ev.domainId === d.id && (ev.intended_outcomes || ev.impact_on_outcomes || ev.evidence_notes))
+        .map(ev => ({
+          point:        ev.entryLabel,
+          provisionName: ev.provision_name,
+          groups: A_GROUPS.filter(g => ev[g.key]).map(g => g.label),
+          intended: ev.intended_outcomes,
+          impact:   ev.impact_on_outcomes,
+          evidence: ev.evidence_notes,
+        })),
+    }))
+    .filter(d => d.items.length > 0)
+
+  // Enrichment equity — group coverage is derived from evidence_entries grp_* fields,
+  // not entries grp_* fields. Count provision points that have ≥1 evidence entry
+  // targeting each group, expressed as % of total provision points in the sub-domain.
+  const enrichBySubDomain = {}
+  for (const e of analyticsEntries.filter(e => {
+    const domainName = e.provision_points?.sub_domains?.domains?.name || e.domain_name || ''
+    return domainName.toLowerCase().includes('enrichment')
+  })) {
+    const sub = e.provision_points?.sub_domains?.name || e.sub_domain_name || 'Unknown'
+    ;(enrichBySubDomain[sub] = enrichBySubDomain[sub] ?? []).push(e)
+  }
+  const equityData = Object.entries(enrichBySubDomain).map(([subDomain, es]) => ({
+    subDomain, total: es.length,
+    groups: A_GROUPS.map(g => {
+      const count = es.filter(e => (e.evidence_entries ?? []).some(ev => !!ev[g.key])).length
+      return {
+        label: g.label,
+        count,
+        pct: es.length ? Math.round((count / es.length) * 100) : 0,
+      }
+    }),
+  }))
+
+  // ── Inner tab views ───────────────────────────────────────────────
+  function DomainReadiness() {
+    const grandTotal   = readinessData.reduce((s, d) => s + d.total, 0)
+    const grandInPlace = readinessData.reduce((s, d) => s + d.inPlace, 0)
+    const overallPct   = grandTotal ? Math.round((grandInPlace / grandTotal) * 100) : 0
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <ACard>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, marginBottom: 16 }}>
+            <span style={{ fontSize: '3.5rem', fontWeight: 800, color: '#10b981', lineHeight: 1 }}>{overallPct}%</span>
+            <div style={{ paddingBottom: 6 }}>
+              <p style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1e293b' }}>Overall readiness</p>
+              <p style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>{grandInPlace} of {grandTotal} indicators In Place</p>
+            </div>
+          </div>
+          <div style={{ height: 10, borderRadius: 6, background: '#f1f5f9', overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${overallPct}%`, borderRadius: 6, background: '#10b981', transition: 'width 0.5s' }} />
+          </div>
+        </ACard>
+
+        {readinessData.length > 0 && (
+          <ACard>
+            <ASectionTitle sub="Status breakdown across provision points per domain">By Domain</ASectionTitle>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {readinessData.map((d, i) => {
+                const pctIn  = d.total ? Math.round((d.inPlace    / d.total) * 100) : 0
+                const pctProg = d.total ? Math.round((d.inProgress / d.total) * 100) : 0
+                return (
+                  <div key={i}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b' }}>{d.fullName}</span>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                        {d.inPlace} in place · {d.inProgress} in progress · {d.notInPlace} not started
+                      </span>
+                    </div>
+                    <div style={{ height: 8, borderRadius: 4, background: '#f1f5f9', overflow: 'hidden', position: 'relative' }}>
+                      <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${pctIn + pctProg}%`, background: d.colour, opacity: 0.2, borderRadius: 4 }} />
+                      <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${pctIn}%`, background: d.colour, borderRadius: 4, transition: 'width 0.4s' }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </ACard>
+        )}
+
+        {upcomingReviews.length > 0 && (
+          <ACard>
+            <ASectionTitle sub="Evidence entries with a review due within the next 60 days">Compliance Forecast</ASectionTitle>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {upcomingReviews.map((ev, i) => {
+                const bg  = ev.urgency === 'urgent' ? '#fef2f2' : ev.urgency === 'soon' ? '#fffbeb' : '#f8fafc'
+                const col = ev.urgency === 'urgent' ? '#dc2626' : ev.urgency === 'soon' ? '#d97706' : '#475569'
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 12px', borderRadius: 8, background: bg }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: '0.8rem', fontWeight: 600, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {ev.provision_name || ev.entryLabel}
+                      </p>
+                      <p style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 1 }}>{ev.domainName}</p>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                        {new Date(ev.next_review_due).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                      </p>
+                      <p style={{ fontSize: '0.72rem', fontWeight: 700, color: col, marginTop: 1 }}>
+                        {ev.daysLeft <= 0 ? 'Overdue' : `${ev.daysLeft}d left`}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </ACard>
+        )}
+      </div>
+    )
+  }
+
+  function EnrichmentEquity() {
+    const EQ_GROUPS = [
+      { key: 'grp_pp',   label: 'Pupil Premium',      ctxKey: 'ppCount' },
+      { key: 'grp_send', label: 'SEND',                ctxKey: 'sendCount' },
+      { key: 'grp_fsm',  label: 'FSM',                 ctxKey: 'fsmCount' },
+      { key: 'grp_wwc',  label: 'White Working Class', ctxKey: 'wwcCount' },
+      { key: 'grp_eal',  label: 'EAL',                 ctxKey: 'ealCount' },
+    ]
+    const [selectedGroup, setSelectedGroup] = useState(EQ_GROUPS[0].label)
+
+    if (equityData.length === 0) return (
+      <ACard>
+        <ASectionTitle sub="Enrichment provision coverage broken down by student group">Enrichment Equity</ASectionTitle>
+        <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No enrichment entries found.</p>
+      </ACard>
+    )
+
+    const radarData = equityData.map(sd => ({
+      subject: sd.subDomain,
+      [selectedGroup]: sd.groups.find(g => g.label === selectedGroup)?.pct ?? 0,
+      'All Pupils': 100,
+    }))
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {EQ_GROUPS.map(g => (
+            <button key={g.label} type="button" onClick={() => setSelectedGroup(g.label)}
+              style={{
+                padding: '6px 14px', borderRadius: 20, border: '1.5px solid', cursor: 'pointer', fontSize: '0.8rem',
+                borderColor: selectedGroup === g.label ? '#14b8a6' : '#e2e8f0',
+                background:  selectedGroup === g.label ? '#f0fdfa' : '#fff',
+                color:       selectedGroup === g.label ? '#0d9488' : '#475569',
+                fontWeight:  selectedGroup === g.label ? 600 : 400,
+              }}>
+              {g.label} ({schoolCtx[g.ctxKey] || '—'})
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <ACard>
+            <ASectionTitle sub={`${selectedGroup} vs all pupils across enrichment sub-domains`}>Coverage Radar</ASectionTitle>
+            <ResponsiveContainer width="100%" height={260}>
+              <RadarChart data={radarData}>
+                <PolarGrid />
+                <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10 }} />
+                <Radar name="All Pupils" dataKey="All Pupils" stroke="#e2e8f0" fill="#e2e8f0" fillOpacity={0.3} />
+                <Radar name={selectedGroup} dataKey={selectedGroup} stroke="#14b8a6" fill="#14b8a6" fillOpacity={0.5} />
+                <Tooltip formatter={v => `${v}%`} />
+              </RadarChart>
+            </ResponsiveContainer>
+          </ACard>
+
+          <ACard>
+            <ASectionTitle sub="% of provision points targeting the selected group per sub-domain">By Sub-domain</ASectionTitle>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {equityData.map((sd, i) => {
+                const grp = sd.groups.find(g => g.label === selectedGroup)
+                const pct = grp?.pct ?? 0
+                const gap = 100 - pct
+                return (
+                  <div key={i}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span style={{ fontSize: '0.78rem', color: '#475569' }}>{sd.subDomain}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {gap > 15 && (
+                          <span style={{ fontSize: '0.68rem', background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>
+                            ⚠ {gap}pt gap
+                          </span>
+                        )}
+                        <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1e293b' }}>{pct}%</span>
+                      </div>
+                    </div>
+                    <div style={{ height: 7, borderRadius: 4, background: '#f1f5f9', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${pct}%`, borderRadius: 4, background: '#14b8a6', transition: 'width 0.4s' }} />
+                    </div>
+                    <p style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 3 }}>{grp?.count ?? 0} of {sd.total} provision points</p>
+                  </div>
+                )
+              })}
+            </div>
+          </ACard>
+        </div>
+      </div>
+    )
+  }
+
+  function FundingCost() {
+    const [showFundingInputs, setShowFundingInputs] = useState(false)
+    const [fundingReceived, setFundingReceived] = useState({})
+
+    const equitySpend = fundingDomainData.find(d => d.fullName?.includes('Equity'))?.value ?? 0
+    const sendSpend   = fundingDomainData.find(d => d.fullName?.includes('SEND'))?.value ?? 0
+    const perPupil    = schoolCtx.totalPupils ? Math.round(totalCost / schoolCtx.totalPupils) : null
+    const perPP       = schoolCtx.ppCount     ? Math.round(equitySpend / schoolCtx.ppCount)   : null
+    const perSEND     = schoolCtx.sendCount   ? Math.round(sendSpend   / schoolCtx.sendCount) : null
+
+    if (totalCost === 0) return (
+      <ACard>
+        <ASectionTitle sub="Annual cost of provision grouped by funding source and domain">Funding & Cost</ASectionTitle>
+        <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No cost data recorded yet.</p>
+      </ACard>
+    )
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+          {[
+            { label: 'Total spend',    value: `£${totalCost.toLocaleString()}` },
+            { label: 'Per pupil',      value: perPupil  ? `£${perPupil.toLocaleString()}`  : '—' },
+            { label: 'Per PP pupil',   value: perPP     ? `£${perPP.toLocaleString()}`     : '—' },
+            { label: 'Per SEND pupil', value: perSEND   ? `£${perSEND.toLocaleString()}`   : '—' },
+          ].map((s, i) => (
+            <ACard key={i}>
+              <p style={{ fontSize: '1.5rem', fontWeight: 700, color: '#1e293b' }}>{s.value}</p>
+              <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 4 }}>{s.label}</p>
+            </ACard>
+          ))}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <ACard>
+            <ASectionTitle sub="Annual spend by domain">By Domain</ASectionTitle>
+            {fundingDomainData.length === 0
+              ? <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No domain cost data.</p>
+              : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={fundingDomainData} layout="vertical" barCategoryGap="30%" margin={{ left: 0 }}>
+                    <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={v => `£${v.toLocaleString()}`} />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={72} />
+                    <Tooltip formatter={v => `£${Number(v).toLocaleString()}`} />
+                    <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                      {fundingDomainData.map((d, idx) => <Cell key={idx} fill={d.colour} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )
+            }
+          </ACard>
+
+          <ACard>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <p style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1e293b' }}>Funding Streams</p>
+                <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Spend proportion by source</p>
+              </div>
+              <button type="button" onClick={() => setShowFundingInputs(v => !v)}
+                style={{ fontSize: '0.75rem', color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                {showFundingInputs ? 'Hide' : 'Add funding received'}
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {fundingSourceData.map((fs, i) => {
+                const pct      = totalCost ? Math.round((fs.value / totalCost) * 100) : 0
+                const received = Number(fundingReceived[fs.name] ?? 0)
+                const diff     = received - fs.value
+                return (
+                  <div key={i}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span style={{ fontSize: '0.78rem', color: '#475569' }}>{fs.name}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {received > 0 && (
+                          <span style={{ fontSize: '0.7rem', fontWeight: 600, color: diff >= 0 ? '#16a34a' : '#dc2626' }}>
+                            {diff >= 0 ? `+£${diff.toLocaleString()}` : `-£${Math.abs(diff).toLocaleString()}`}
+                          </span>
+                        )}
+                        <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1e293b' }}>£{fs.value.toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <div style={{ height: 7, borderRadius: 4, background: '#f1f5f9', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${pct}%`, borderRadius: 4, background: '#6366f1', transition: 'width 0.4s' }} />
+                    </div>
+                    {showFundingInputs && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                        <label style={{ fontSize: '0.7rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>Received £</label>
+                        <input type="number" min="0"
+                          style={{ flex: 1, padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: '0.8rem' }}
+                          value={fundingReceived[fs.name] ?? ''}
+                          onChange={e => setFundingReceived(prev => ({ ...prev, [fs.name]: e.target.value }))}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </ACard>
+        </div>
+      </div>
+    )
+  }
+
+  function OutcomesImpact() {
+    const [filterMode, setFilterMode]   = useState('domain')
+    const [activeFilter, setActiveFilter] = useState(null)
+
+    const allItems = allEvidence
+      .filter(ev => ev.intended_outcomes || ev.impact_on_outcomes || ev.evidence_notes)
+      .map(ev => {
+        const dIdx = domains.findIndex(d => d.id === ev.domainId)
+        return {
+          name:      ev.provision_name || ev.entryLabel,
+          point:     ev.entryLabel,
+          domain:    ev.domainName,
+          subDomain: ev.subDomainName,
+          colour:    dIdx >= 0 ? aDomainColour(ev.domainName, dIdx) : '#94a3b8',
+          groups:    A_GROUPS.filter(g => ev[g.key]).map(g => g.label),
+          intended:  ev.intended_outcomes,
+          impact:    ev.impact_on_outcomes,
+        }
+      })
+
+    const filterOptions = filterMode === 'domain'
+      ? [...new Set(allItems.map(i => i.domain).filter(Boolean))]
+      : filterMode === 'group'
+      ? [...new Set(allItems.flatMap(i => i.groups))]
+      : [...new Set(allItems.map(i => i.subDomain).filter(Boolean))]
+
+    const filtered = activeFilter
+      ? filterMode === 'domain'    ? allItems.filter(i => i.domain === activeFilter)
+      : filterMode === 'group'     ? allItems.filter(i => i.groups.includes(activeFilter))
+                                   : allItems.filter(i => i.subDomain === activeFilter)
+      : allItems
+
+    if (allItems.length === 0) return (
+      <ACard>
+        <ASectionTitle sub="Intended outcomes and evidence of impact">Outcomes & Impact</ASectionTitle>
+        <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No outcomes or impact data recorded yet.</p>
+      </ACard>
+    )
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', borderRadius: 8, padding: 3, alignSelf: 'flex-start' }}>
+          {[['domain','By Domain'],['group','By Group'],['subdomain','By Sub-domain']].map(([mode, label]) => (
+            <button key={mode} type="button"
+              onClick={() => { setFilterMode(mode); setActiveFilter(null) }}
+              style={{
+                padding: '5px 12px', border: 'none', borderRadius: 6, fontSize: '0.78rem', cursor: 'pointer',
+                fontWeight:  filterMode === mode ? 600 : 400,
+                color:       filterMode === mode ? '#1e293b' : '#64748b',
+                background:  filterMode === mode ? '#fff' : 'transparent',
+                boxShadow:   filterMode === mode ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+              }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <button type="button" onClick={() => setActiveFilter(null)}
+            style={{
+              padding: '4px 12px', borderRadius: 20, border: '1.5px solid', cursor: 'pointer', fontSize: '0.78rem',
+              borderColor: !activeFilter ? '#3b82f6' : '#e2e8f0',
+              background:  !activeFilter ? '#eff6ff' : '#fff',
+              color:       !activeFilter ? '#1d4ed8' : '#64748b',
+              fontWeight:  !activeFilter ? 600 : 400,
+            }}>
+            All
+          </button>
+          {filterOptions.map(opt => (
+            <button key={opt} type="button" onClick={() => setActiveFilter(opt === activeFilter ? null : opt)}
+              style={{
+                padding: '4px 12px', borderRadius: 20, border: '1.5px solid', cursor: 'pointer', fontSize: '0.78rem',
+                borderColor: activeFilter === opt ? '#3b82f6' : '#e2e8f0',
+                background:  activeFilter === opt ? '#eff6ff' : '#fff',
+                color:       activeFilter === opt ? '#1d4ed8' : '#64748b',
+                fontWeight:  activeFilter === opt ? 600 : 400,
+              }}>
+              {opt}
+            </button>
+          ))}
+        </div>
+
+        <p style={{ fontSize: '0.78rem', color: '#94a3b8' }}>{filtered.length} outcome{filtered.length !== 1 ? 's' : ''}</p>
+
+        {filtered.length === 0
+          ? <ACard><p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No outcomes match this filter.</p></ACard>
+          : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {filtered.map((item, i) => (
+                <ACard key={i}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: item.intended || item.impact ? 12 : 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, flex: 1, minWidth: 0 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: '50%', background: item.colour, flexShrink: 0, marginTop: 4 }} />
+                      <div style={{ minWidth: 0 }}>
+                        <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>{item.name}</p>
+                        <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 2 }}>
+                          {item.domain}{item.subDomain ? ` · ${item.subDomain}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                    {item.groups.length > 0 && (
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: '45%', marginLeft: 12 }}>
+                        {item.groups.map((g, gi) => <AGroupPill key={gi} label={g} />)}
+                      </div>
+                    )}
+                  </div>
+                  {item.intended && (
+                    <div style={{ marginBottom: item.impact ? 10 : 0 }}>
+                      <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Intended outcome</p>
+                      <p style={{ fontSize: '0.82rem', color: '#334155', lineHeight: 1.55 }}>{item.intended}</p>
+                    </div>
+                  )}
+                  {item.impact && (
+                    <div>
+                      <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Evidence of impact</p>
+                      <p style={{ fontSize: '0.82rem', color: '#334155', lineHeight: 1.55 }}>{item.impact}</p>
+                    </div>
+                  )}
+                </ACard>
+              ))}
+            </div>
+          )
+        }
+      </div>
+    )
+  }
+
+  if (aLoading) return <p className="state-msg">Loading analytics…</p>
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* School context panel */}
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '16px 20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <p style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>School Context</p>
+            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+              {[
+                { label: 'Total pupils', value: schoolCtx.totalPupils },
+                { label: 'PP',           value: schoolCtx.ppCount },
+                { label: 'SEND',         value: schoolCtx.sendCount },
+                { label: 'FSM',          value: schoolCtx.fsmCount },
+                { label: 'EAL',          value: schoolCtx.ealCount },
+                { label: 'LAC',          value: schoolCtx.lacCount },
+                { label: 'WW Class',     value: schoolCtx.wwcCount },
+              ].map((f, i) => (
+                <div key={i} style={{ textAlign: 'center' }}>
+                  <p style={{ fontSize: '1rem', fontWeight: 700, color: '#1e293b' }}>{f.value || '—'}</p>
+                  <p style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{f.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (editingCtx) {
+                const updated = { ...ctxDraft }
+                setSchoolCtx(updated)
+                localStorage.setItem('analytics_ctx_' + school, JSON.stringify(updated))
+              } else {
+                setCtxDraft({ ...schoolCtx })
+              }
+              setEditingCtx(v => !v)
+            }}
+            style={{ fontSize: '0.78rem', color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', flexShrink: 0 }}
+          >
+            {editingCtx ? 'Done' : 'Edit'}
+          </button>
+        </div>
+        {editingCtx && (
+          <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px 16px' }}>
+            {[
+              { key: 'totalPupils', label: 'Total pupils' },
+              { key: 'ppCount',    label: 'Pupil Premium' },
+              { key: 'sendCount',  label: 'SEND' },
+              { key: 'fsmCount',   label: 'FSM' },
+              { key: 'ealCount',   label: 'EAL' },
+              { key: 'lacCount',   label: 'LAC' },
+              { key: 'wwcCount',   label: 'WW Class' },
+            ].map(f => (
+              <div key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b' }}>{f.label}</label>
+                <input
+                  type="number" min="0"
+                  style={{ padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: '0.85rem' }}
+                  value={ctxDraft[f.key] ?? 0}
+                  onChange={e => setCtxDraft(prev => ({ ...prev, [f.key]: Number(e.target.value) }))}
+                  onBlur={() => setSchoolCtx({ ...ctxDraft })}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Inner tab bar */}
+      <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', borderRadius: 10, padding: 4 }}>
+        {ANALYTICS_TABS.map(t => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setActiveTab(t.id)}
+            style={{
+              flex: 1, padding: '7px 12px', border: 'none', borderRadius: 7,
+              fontSize: '0.8rem',
+              fontWeight: activeTab === t.id ? 600 : 400,
+              color:      activeTab === t.id ? '#1e293b' : '#64748b',
+              background: activeTab === t.id ? '#fff' : 'transparent',
+              boxShadow:  activeTab === t.id ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+              cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap',
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'readiness' && <DomainReadiness />}
+      {activeTab === 'equity'    && <EnrichmentEquity />}
+      {activeTab === 'funding'   && <FundingCost />}
+      {activeTab === 'outcomes'  && <OutcomesImpact />}
+    </div>
+  )
+}
 
 export default function App() {
   // Auth state
@@ -160,7 +848,7 @@ export default function App() {
   }, [selectedSchool])
 
   useEffect(() => {
-    if (!selectedSchool || !selectedDomain) {
+    if (!selectedSchool || !selectedDomain || selectedDomain === 'analytics') {
       setSubDomains([])
       setEntries({})
       setEvidenceEntries({})
@@ -410,6 +1098,13 @@ export default function App() {
             <span className="domain-tab-name">Overview</span>
             <span className="domain-tab-count">{Object.keys(ppDomainMap).length > 0 ? `${Object.values(allStatuses).filter(Boolean).length}/${Object.keys(ppDomainMap).length}` : '—'}</span>
           </button>
+          <button
+            type="button"
+            className={`domain-tab domain-tab--overview${selectedDomain === 'analytics' ? ' domain-tab--active' : ''}`}
+            onClick={() => setSelectedDomain('analytics')}
+          >
+            <span className="domain-tab-name">Analytics</span>
+          </button>
           {domains.map(d => {
             const total = domainTotals[d.id] ?? 0
             const answered = Object.entries(ppDomainMap).filter(
@@ -497,7 +1192,11 @@ export default function App() {
           )
         })()}
 
-        {selectedSchool && selectedDomain && (
+        {selectedSchool && selectedDomain === 'analytics' && (
+          <AnalyticsView school={selectedSchool} supabase={supabase} />
+        )}
+
+        {selectedSchool && selectedDomain && selectedDomain !== 'analytics' && (
           loading ? (
             <p className="state-msg">Loading…</p>
           ) : subDomains.length === 0 ? (
@@ -704,13 +1403,19 @@ export default function App() {
                 </div>
 
                 <div className="df df--full">
-                  <label>Evidence of Impact</label>
-                  <textarea rows={3} value={draft.evidence_notes ?? ''} onChange={e => handleDraftChange('evidence_notes', e.target.value)} />
+                  <label>Intended Outcomes</label>
+                  <span className="field-hint">What barriers are you aiming to remove for this group?</span>
+                  <textarea rows={3} placeholder="Describe the intended outcome for the pupils this entry targets..." value={draft.intended_outcomes ?? ''} onChange={e => handleDraftChange('intended_outcomes', e.target.value)} />
                 </div>
 
                 <div className="df df--full">
                   <label>Impact on Outcomes</label>
                   <textarea rows={3} value={draft.impact_on_outcomes ?? ''} onChange={e => handleDraftChange('impact_on_outcomes', e.target.value)} />
+                </div>
+
+                <div className="df df--full">
+                  <label>Evidence of Impact</label>
+                  <textarea rows={3} value={draft.evidence_notes ?? ''} onChange={e => handleDraftChange('evidence_notes', e.target.value)} />
                 </div>
 
                 <div className="df df--full">
