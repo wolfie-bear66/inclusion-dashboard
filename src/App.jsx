@@ -129,7 +129,7 @@ function AnalyticsView({ school, supabase: sb, schoolName = '' }) {
           grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other,
           provision_points(*, sub_domains(*, domains(id, name))),
           evidence_entries(id, provision_name, funding_source, cost, next_review_due,
-            evidence_notes, intended_outcomes, impact_on_outcomes,
+            evidence_notes, intended_outcomes, impact_on_outcomes, supporting_document_link,
             grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other)
         `)
         .eq('school_id', school),
@@ -528,6 +528,7 @@ function AnalyticsView({ school, supabase: sb, schoolName = '' }) {
           groups:    A_GROUPS.filter(g => ev[g.key]).map(g => g.label),
           intended:  ev.intended_outcomes,
           impact:    ev.impact_on_outcomes,
+          docLink:   ev.supporting_document_link || null,
         }
       })
 
@@ -638,9 +639,47 @@ function AnalyticsView({ school, supabase: sb, schoolName = '' }) {
                     </div>
                   )}
                   {item.impact && (
-                    <div>
+                    <div style={{ marginBottom: item.docLink ? 10 : 0 }}>
                       <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Evidence of impact</p>
                       <p style={{ fontSize: '0.82rem', color: '#334155', lineHeight: 1.55 }}>{item.impact}</p>
+                    </div>
+                  )}
+                  {item.docLink && (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
+                      <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Supporting Document</p>
+                      <a
+                        href={item.docLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          fontSize: '0.8rem',
+                          color: '#2563eb',
+                          textDecoration: 'none',
+                          fontWeight: 500,
+                          padding: '5px 10px',
+                          borderRadius: 6,
+                          border: '1px solid #bfdbfe',
+                          background: '#eff6ff',
+                          maxWidth: '100%',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                        title={item.docLink}
+                      >
+                        <span style={{ flexShrink: 0 }}>↗</span>
+                        {(() => {
+                          try {
+                            const u = new URL(item.docLink)
+                            return u.hostname.replace(/^www\./, '') + (u.pathname !== '/' ? u.pathname.split('/').pop() || u.pathname : '')
+                          } catch {
+                            return item.docLink
+                          }
+                        })()}
+                      </a>
                     </div>
                   )}
                 </ACard>
