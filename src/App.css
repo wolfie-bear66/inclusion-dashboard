@@ -84,6 +84,12 @@ body {
 /* ── Domain nav bar ── */
 .domain-nav {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.domain-nav-row {
+  display: flex;
   gap: 6px;
   flex-wrap: wrap;
 }
@@ -98,19 +104,67 @@ body {
   border: 1.5px solid #e2e8f0;
   background: #fff;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
   text-align: left;
   min-width: 0;
 }
 
-.domain-tab:hover {
-  border-color: #93c5fd;
-  background: #f0f7ff;
+/* Overview — top row, full width, slate tone */
+.domain-tab--overview {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  border-style: solid;
+  width: 100%;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
 }
 
-.domain-tab--active {
-  border-color: #1e3a5f;
-  background: #1e3a5f;
+.domain-tab--overview:hover {
+  border-color: #94a3b8;
+  background: #f1f5f9;
+}
+
+.domain-tab--overview-active {
+  border-color: #1e3a5f !important;
+  background: #1e3a5f !important;
+}
+
+.domain-tab--overview-active .domain-tab-name,
+.domain-tab--overview-active .domain-tab-count {
+  color: #fff !important;
+}
+
+/* Domain pills — coloured left border, colour fill when active */
+.domain-tab--coloured {
+  border-left-width: 4px;
+  border-style: solid;
+}
+
+.domain-tab--coloured:hover {
+  filter: brightness(0.96);
+}
+
+/* Analytics — bottom row, teal accent */
+.domain-tab--analytics {
+  border-color: #ccfbf1;
+  background: #f0fdfa;
+  border-style: solid;
+}
+
+.domain-tab--analytics:hover {
+  border-color: #5eead4;
+  background: #ccfbf1;
+}
+
+.domain-tab--analytics-active {
+  border-color: #0d9488 !important;
+  background: #0d9488 !important;
+}
+
+.domain-tab--analytics-active .domain-tab-name {
+  color: #fff !important;
 }
 
 .domain-tab-name {
@@ -120,19 +174,11 @@ body {
   line-height: 1.3;
 }
 
-.domain-tab--active .domain-tab-name {
-  color: #fff;
-}
-
 .domain-tab-count {
   font-size: 0.72rem;
   font-weight: 500;
   color: #94a3b8;
   font-variant-numeric: tabular-nums;
-}
-
-.domain-tab--active .domain-tab-count {
-  color: #93c5fd;
 }
 
 /* ── Progress ── */
@@ -366,11 +412,6 @@ body {
 .dash-evidence-icon {
   font-size: 0.6rem;
   color: #3b82f6;
-}
-
-/* ── Domain nav — overview tab ── */
-.domain-tab--overview {
-  border-style: dashed;
 }
 
 /* ── Evidence title list ── */

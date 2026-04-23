@@ -1172,38 +1172,65 @@ export default function App() {
       <main className="main">
 
         <nav className="domain-nav" aria-label="Domains">
-          <button
-            type="button"
-            className={`domain-tab domain-tab--overview${!selectedDomain ? ' domain-tab--active' : ''}`}
-            onClick={() => setSelectedDomain('')}
-          >
-            <span className="domain-tab-name">Overview</span>
-            <span className="domain-tab-count">{Object.keys(ppDomainMap).length > 0 ? `${Object.values(allStatuses).filter(Boolean).length}/${Object.keys(ppDomainMap).length}` : '—'}</span>
-          </button>
-          <button
-            type="button"
-            className={`domain-tab domain-tab--overview${selectedDomain === 'analytics' ? ' domain-tab--active' : ''}`}
-            onClick={() => setSelectedDomain('analytics')}
-          >
-            <span className="domain-tab-name">Analytics</span>
-          </button>
-          {domains.map(d => {
-            const total = domainTotals[d.id] ?? 0
-            const answered = Object.entries(ppDomainMap).filter(
-              ([ppId, domId]) => domId === d.id && allStatuses[ppId]
-            ).length
-            return (
-              <button
-                key={d.id}
-                type="button"
-                className={`domain-tab${selectedDomain === d.id ? ' domain-tab--active' : ''}`}
-                onClick={() => setSelectedDomain(d.id)}
-              >
-                <span className="domain-tab-name">{d.name}</span>
-                <span className="domain-tab-count">{answered}/{total}</span>
-              </button>
-            )
-          })}
+          {/* Row 1: Overview */}
+          <div className="domain-nav-row domain-nav-row--top">
+            <button
+              type="button"
+              className={`domain-tab domain-tab--overview${!selectedDomain ? ' domain-tab--overview-active' : ''}`}
+              onClick={() => setSelectedDomain('')}
+            >
+              <span className="domain-tab-name">⊞ Overview</span>
+              <span className="domain-tab-count">
+                {Object.keys(ppDomainMap).length > 0
+                  ? `${Object.values(allStatuses).filter(Boolean).length} of ${Object.keys(ppDomainMap).length} indicators recorded`
+                  : '—'}
+              </span>
+            </button>
+          </div>
+
+          {/* Row 2: Domain pills */}
+          <div className="domain-nav-row domain-nav-row--domains">
+            {domains.map((d, idx) => {
+              const total = domainTotals[d.id] ?? 0
+              const answered = Object.entries(ppDomainMap).filter(
+                ([ppId, domId]) => domId === d.id && allStatuses[ppId]
+              ).length
+              const colour = DOMAIN_COLOUR_MAP.find(c => d.name.includes(c.key))?.colour
+                ?? DOMAIN_COLOUR_MAP[idx % DOMAIN_COLOUR_MAP.length]?.colour
+                ?? '#6366f1'
+              const isActive = selectedDomain === d.id
+              return (
+                <button
+                  key={d.id}
+                  type="button"
+                  className="domain-tab domain-tab--coloured"
+                  style={{
+                    borderColor: isActive ? colour : 'transparent',
+                    borderLeftColor: colour,
+                    background: isActive ? colour : '#fff',
+                    boxShadow: isActive ? `0 2px 8px ${colour}40` : undefined,
+                  }}
+                  onClick={() => setSelectedDomain(d.id)}
+                >
+                  <span className="domain-tab-name" style={{ color: isActive ? '#fff' : '#334155' }}>{d.name}</span>
+                  <span className="domain-tab-count" style={{ color: isActive ? `${colour}33` : '#94a3b8', color: isActive ? 'rgba(255,255,255,0.7)' : '#94a3b8' }}>
+                    {answered}/{total}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Row 3: Analytics */}
+          <div className="domain-nav-row domain-nav-row--bottom">
+            <button
+              type="button"
+              className={`domain-tab domain-tab--analytics${selectedDomain === 'analytics' ? ' domain-tab--analytics-active' : ''}`}
+              onClick={() => setSelectedDomain('analytics')}
+            >
+              <span className="domain-tab-name">◈ Analytics</span>
+            </button>
+          </div>
         </nav>
 
         {selectedSchool && !selectedDomain && (() => {
