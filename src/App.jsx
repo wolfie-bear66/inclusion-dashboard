@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabaseClient'
 import './App.css'
+import { generateReport } from './generateReport'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, PieChart, Pie, RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts'
 
 const STATUSES = ['in_place', 'in_progress', 'not_in_place']
@@ -101,7 +102,7 @@ const ANALYTICS_TABS = [
   { id: 'outcomes',  label: 'Outcomes & Impact' },
 ]
 
-function AnalyticsView({ school, supabase: sb }) {
+function AnalyticsView({ school, supabase: sb, schoolName = '' }) {
   const [analyticsEntries, setAnalyticsEntries] = useState([])
   const [domains, setDomains] = useState([])
   const [aLoading, setALoading] = useState(true)
@@ -115,6 +116,9 @@ function AnalyticsView({ school, supabase: sb }) {
   })
   const [editingCtx, setEditingCtx] = useState(false)
   const [ctxDraft, setCtxDraft] = useState({})
+  const [filterMode, setFilterMode]     = useState('domain')
+  const [activeFilter, setActiveFilter] = useState(null)
+  const [groupFilters, setGroupFilters] = useState([])
 
   useEffect(() => {
     setALoading(true)
@@ -511,9 +515,6 @@ function AnalyticsView({ school, supabase: sb }) {
   }
 
   function OutcomesImpact() {
-    const [filterMode, setFilterMode]   = useState('domain')
-    const [activeFilter, setActiveFilter] = useState(null)
-
     const allItems = allEvidence
       .filter(ev => ev.intended_outcomes || ev.impact_on_outcomes || ev.evidence_notes)
       .map(ev => {
@@ -536,11 +537,13 @@ function AnalyticsView({ school, supabase: sb }) {
       ? [...new Set(allItems.flatMap(i => i.groups))]
       : [...new Set(allItems.map(i => i.subDomain).filter(Boolean))]
 
-    const filtered = activeFilter
-      ? filterMode === 'domain'    ? allItems.filter(i => i.domain === activeFilter)
-      : filterMode === 'group'     ? allItems.filter(i => i.groups.includes(activeFilter))
-                                   : allItems.filter(i => i.subDomain === activeFilter)
-      : allItems
+    const filtered = filterMode === 'group' && groupFilters.length > 0
+      ? allItems.filter(i => i.groups.some(g => groupFilters.includes(g)))
+      : activeFilter
+        ? filterMode === 'domain'
+          ? allItems.filter(i => i.domain === activeFilter)
+          : allItems.filter(i => i.subDomain === activeFilter)
+        : allItems
 
     if (allItems.length === 0) return (
       <ACard>
@@ -554,7 +557,7 @@ function AnalyticsView({ school, supabase: sb }) {
         <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', borderRadius: 8, padding: 3, alignSelf: 'flex-start' }}>
           {[['domain','By Domain'],['group','By Group'],['subdomain','By Sub-domain']].map(([mode, label]) => (
             <button key={mode} type="button"
-              onClick={() => { setFilterMode(mode); setActiveFilter(null) }}
+              onClick={() => { setFilterMode(mode); setActiveFilter(null); setGroupFilters([]) }}
               style={{
                 padding: '5px 12px', border: 'none', borderRadius: 6, fontSize: '0.78rem', cursor: 'pointer',
                 fontWeight:  filterMode === mode ? 600 : 400,
@@ -568,28 +571,40 @@ function AnalyticsView({ school, supabase: sb }) {
         </div>
 
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          <button type="button" onClick={() => setActiveFilter(null)}
+          <button type="button" onClick={() => { setActiveFilter(null); setGroupFilters([]) }}
             style={{
               padding: '4px 12px', borderRadius: 20, border: '1.5px solid', cursor: 'pointer', fontSize: '0.78rem',
-              borderColor: !activeFilter ? '#3b82f6' : '#e2e8f0',
-              background:  !activeFilter ? '#eff6ff' : '#fff',
-              color:       !activeFilter ? '#1d4ed8' : '#64748b',
-              fontWeight:  !activeFilter ? 600 : 400,
+              borderColor: !activeFilter && groupFilters.length === 0 ? '#3b82f6' : '#e2e8f0',
+              background:  !activeFilter && groupFilters.length === 0 ? '#eff6ff' : '#fff',
+              color:       !activeFilter && groupFilters.length === 0 ? '#1d4ed8' : '#64748b',
+              fontWeight:  !activeFilter && groupFilters.length === 0 ? 600 : 400,
             }}>
             All
           </button>
-          {filterOptions.map(opt => (
-            <button key={opt} type="button" onClick={() => setActiveFilter(opt === activeFilter ? null : opt)}
-              style={{
-                padding: '4px 12px', borderRadius: 20, border: '1.5px solid', cursor: 'pointer', fontSize: '0.78rem',
-                borderColor: activeFilter === opt ? '#3b82f6' : '#e2e8f0',
-                background:  activeFilter === opt ? '#eff6ff' : '#fff',
-                color:       activeFilter === opt ? '#1d4ed8' : '#64748b',
-                fontWeight:  activeFilter === opt ? 600 : 400,
-              }}>
-              {opt}
-            </button>
-          ))}
+          {filterOptions.map(opt => {
+            const isActive = filterMode === 'group'
+              ? groupFilters.includes(opt)
+              : activeFilter === opt
+            return (
+              <button key={opt} type="button"
+                onClick={() => {
+                  if (filterMode === 'group') {
+                    setGroupFilters(prev => prev.includes(opt) ? prev.filter(x => x !== opt) : [...prev, opt])
+                  } else {
+                    setActiveFilter(opt === activeFilter ? null : opt)
+                  }
+                }}
+                style={{
+                  padding: '4px 12px', borderRadius: 20, border: '1.5px solid', cursor: 'pointer', fontSize: '0.78rem',
+                  borderColor: isActive ? '#3b82f6' : '#e2e8f0',
+                  background:  isActive ? '#eff6ff' : '#fff',
+                  color:       isActive ? '#1d4ed8' : '#64748b',
+                  fontWeight:  isActive ? 600 : 400,
+                }}>
+                {opt}
+              </button>
+            )
+          })}
         </div>
 
         <p style={{ fontSize: '0.78rem', color: '#94a3b8' }}>{filtered.length} outcome{filtered.length !== 1 ? 's' : ''}</p>
@@ -706,26 +721,54 @@ function AnalyticsView({ school, supabase: sb }) {
         )}
       </div>
 
-      {/* Inner tab bar */}
-      <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', borderRadius: 10, padding: 4 }}>
-        {ANALYTICS_TABS.map(t => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setActiveTab(t.id)}
-            style={{
-              flex: 1, padding: '7px 12px', border: 'none', borderRadius: 7,
-              fontSize: '0.8rem',
-              fontWeight: activeTab === t.id ? 600 : 400,
-              color:      activeTab === t.id ? '#1e293b' : '#64748b',
-              background: activeTab === t.id ? '#fff' : 'transparent',
-              boxShadow:  activeTab === t.id ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-              cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap',
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
+      {/* Inner tab bar + Generate Report button */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', borderRadius: 10, padding: 4, flex: 1 }}>
+          {ANALYTICS_TABS.map(t => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setActiveTab(t.id)}
+              style={{
+                flex: 1, padding: '7px 12px', border: 'none', borderRadius: 7,
+                fontSize: '0.8rem',
+                fontWeight: activeTab === t.id ? 600 : 400,
+                color:      activeTab === t.id ? '#1e293b' : '#64748b',
+                background: activeTab === t.id ? '#fff' : 'transparent',
+                boxShadow:  activeTab === t.id ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap',
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => generateReport({
+            schoolCtx,
+            readinessData,
+            upcomingReviews,
+            equityData,
+            fundingSourceData,
+            fundingDomainData,
+            totalCost,
+            allEvidence,
+            domains,
+            filterMode,
+            activeFilter,
+            groupFilters,
+          })}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '7px 16px', borderRadius: 7, border: 'none',
+            background: '#1e3a5f', color: '#fff',
+            fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
+            fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0,
+          }}
+        >
+          ↓ Generate Report
+        </button>
       </div>
 
       {activeTab === 'readiness' && <DomainReadiness />}
@@ -1193,7 +1236,7 @@ export default function App() {
         })()}
 
         {selectedSchool && selectedDomain === 'analytics' && (
-          <AnalyticsView school={selectedSchool} supabase={supabase} />
+          <AnalyticsView school={selectedSchool} supabase={supabase} schoolName={schoolName} />
         )}
 
         {selectedSchool && selectedDomain && selectedDomain !== 'analytics' && (
