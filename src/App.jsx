@@ -107,13 +107,8 @@ function AnalyticsView({ school, supabase: sb, schoolName = '' }) {
   const [domains, setDomains] = useState([])
   const [aLoading, setALoading] = useState(true)
   const [activeTab, setActiveTab] = useState('readiness')
-  const [schoolCtx, setSchoolCtx] = useState(() => {
-    try {
-      const stored = localStorage.getItem('analytics_ctx_' + school)
-      if (stored) return JSON.parse(stored)
-    } catch {}
-    return { totalPupils: 0, ppCount: 0, sendCount: 0, fsmCount: 0, ealCount: 0, lacCount: 0, wwcCount: 0 }
-  })
+  const [schoolCtx, setSchoolCtx] = useState({ totalPupils: 0, ppCount: 0, sendCount: 0, fsmCount: 0, ealCount: 0, lacCount: 0, wwcCount: 0 })
+  const [ctxLoading, setCtxLoading] = useState(true)
   const [editingCtx, setEditingCtx] = useState(false)
   const [ctxDraft, setCtxDraft] = useState({})
   const [filterMode, setFilterMode]     = useState('domain')
@@ -143,7 +138,30 @@ function AnalyticsView({ school, supabase: sb, schoolName = '' }) {
     })
   }, [school])
 
-  const today = new Date()
+  // Load school context from Supabase
+  useEffect(() => {
+    if (!school) return
+    setCtxLoading(true)
+    sb.from('school_context')
+      .select('total_pupils, pp_count, send_count, fsm_count, eal_count, lac_count, wwc_count')
+      .eq('school_id', school)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) console.error('Error loading school context:', error)
+        if (data) {
+          setSchoolCtx({
+            totalPupils: data.total_pupils,
+            ppCount:     data.pp_count,
+            sendCount:   data.send_count,
+            fsmCount:    data.fsm_count,
+            ealCount:    data.eal_count,
+            lacCount:    data.lac_count,
+            wwcCount:    data.wwc_count,
+          })
+        }
+        setCtxLoading(false)
+      })
+  }, [school])
 
   // Domain readiness
   const readinessData = domains.map((d, idx) => {
@@ -719,15 +737,26 @@ function AnalyticsView({ school, supabase: sb, schoolName = '' }) {
           </div>
           <button
             type="button"
-            onClick={() => {
+            onClick={async () => {
               if (editingCtx) {
                 const updated = { ...ctxDraft }
                 setSchoolCtx(updated)
-                localStorage.setItem('analytics_ctx_' + school, JSON.stringify(updated))
+                setEditingCtx(false)
+                await sb.from('school_context').upsert({
+                  school_id:    school,
+                  total_pupils: updated.totalPupils,
+                  pp_count:     updated.ppCount,
+                  send_count:   updated.sendCount,
+                  fsm_count:    updated.fsmCount,
+                  eal_count:    updated.ealCount,
+                  lac_count:    updated.lacCount,
+                  wwc_count:    updated.wwcCount,
+                  updated_at:   new Date().toISOString(),
+                }, { onConflict: 'school_id' })
               } else {
                 setCtxDraft({ ...schoolCtx })
+                setEditingCtx(true)
               }
-              setEditingCtx(v => !v)
             }}
             style={{ fontSize: '0.78rem', color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', flexShrink: 0 }}
           >
