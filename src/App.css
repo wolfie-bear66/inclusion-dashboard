@@ -148,13 +148,22 @@ body {
 
 /* Analytics — bottom row, teal accent */
 .domain-tab--analytics {
-  border-color: #ccfbf1;
+  border-color: #5eead4;
   background: #f0fdfa;
   border-style: solid;
+  width: 100%;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+}
+
+.domain-tab--analytics .domain-tab-name {
+  color: #0d9488;
 }
 
 .domain-tab--analytics:hover {
-  border-color: #5eead4;
+  border-color: #0d9488;
   background: #ccfbf1;
 }
 
