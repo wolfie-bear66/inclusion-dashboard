@@ -33,6 +33,20 @@ const INDICATOR_TYPES = [
   { value: 'external_service',   label: 'External Service' },
   { value: 'curriculum_element', label: 'Curriculum Element' },
 ]
+const PROVISION_CATEGORIES = [
+  { value: 'student_facing',    label: 'Student-Facing Intervention' },
+  { value: 'policy_structural', label: 'Policy / Structural' },
+  { value: 'whole_school',      label: 'Whole School Approach' },
+]
+const REACH_GROUPS = [
+  { field: 'reach_send',  label: 'SEND' },
+  { field: 'reach_pp',    label: 'PP' },
+  { field: 'reach_eal',   label: 'EAL' },
+  { field: 'reach_fsm',   label: 'FSM' },
+  { field: 'reach_lac',   label: 'LAC' },
+  { field: 'reach_wwc',   label: 'WWC' },
+  { field: 'reach_other', label: 'Other' },
+]
 const EV_GROUPS = [
   { value: 'grp_send', label: 'SEND' },
   { value: 'grp_pp',   label: 'PP' },
@@ -47,7 +61,7 @@ const EV_GROUPS = [
 const ENTRY_SELECT = [
   'id', 'provision_point_id', 'status',
   'grp_send', 'grp_pp', 'grp_eal', 'grp_fsm', 'grp_lac', 'grp_wwc', 'grp_other',
-  'evidence_entries(id, provision_name, brief_description, indicator_type, named_role_policy_document, delivered_by, send_tiers, pupils_reached, grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other, date_started, date_last_reviewed, next_review_due, funding_source, cost, review_cycle, evidence_notes, intended_outcomes, impact_on_outcomes, supporting_document_link, notes)',
+  'evidence_entries(id, provision_name, brief_description, indicator_type, provision_category, named_role_policy_document, delivered_by, send_tiers, pupils_reached, reach_total, reach_send, reach_pp, reach_eal, reach_fsm, reach_lac, reach_wwc, reach_other, grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other, date_started, date_last_reviewed, next_review_due, funding_source, cost, review_cycle, evidence_notes, intended_outcomes, impact_on_outcomes, supporting_document_link, notes)',
 ].join(', ')
 
 // ── Analytics sub-components ─────────────────────────────────────
@@ -100,6 +114,7 @@ const ANALYTICS_TABS = [
   { id: 'equity',    label: 'Enrichment Equity' },
   { id: 'funding',   label: 'Funding & Cost' },
   { id: 'outcomes',  label: 'Outcomes & Impact' },
+  { id: 'reach',     label: 'Group Reach' },
 ]
 
 function AnalyticsView({ school, supabase: sb, schoolName = '' }) {
@@ -123,8 +138,9 @@ function AnalyticsView({ school, supabase: sb, schoolName = '' }) {
           id, provision_point_id, status,
           grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other,
           provision_points(*, sub_domains(*, domains(id, name))),
-          evidence_entries(id, provision_name, funding_source, cost, next_review_due,
+          evidence_entries(id, provision_name, provision_category, funding_source, cost, next_review_due,
             evidence_notes, intended_outcomes, impact_on_outcomes, supporting_document_link,
+            reach_total, reach_send, reach_pp, reach_eal, reach_fsm, reach_lac, reach_wwc, reach_other,
             grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other)
         `)
         .eq('school_id', school),
@@ -189,6 +205,7 @@ function AnalyticsView({ school, supabase: sb, schoolName = '' }) {
   )
 
   // Upcoming reviews
+  const today = new Date()
   const upcomingReviews = allEvidence
     .filter(ev => ev.next_review_due)
     .map(ev => {
@@ -709,6 +726,162 @@ function AnalyticsView({ school, supabase: sb, schoolName = '' }) {
     )
   }
 
+  // ── Cross-domain group reach ─────────────────────────────────────
+  const REACH_COLS = REACH_GROUPS
+  const CTX_COHORTS = [
+    { field: 'reach_send',  cohort: schoolCtx.sendCount },
+    { field: 'reach_pp',    cohort: schoolCtx.ppCount },
+    { field: 'reach_eal',   cohort: schoolCtx.ealCount },
+    { field: 'reach_fsm',   cohort: schoolCtx.fsmCount },
+    { field: 'reach_lac',   cohort: schoolCtx.lacCount },
+    { field: 'reach_wwc',   cohort: schoolCtx.wwcCount },
+    { field: 'reach_other', cohort: null },
+  ]
+  const reachMatrix = domains.map((d, idx) => {
+    const domEvidence = allEvidence.filter(ev =>
+      ev.domainId === d.id &&
+      (ev.provision_category === 'student_facing' || ev.provision_category === 'whole_school' || Number(ev.reach_total) > 0)
+    )
+    return {
+      domain: d.name,
+      shortName: d.name.length > 14 ? d.name.split(/[&\s]/)[0] : d.name,
+      colour: aDomainColour(d.name, idx),
+      totalReach: domEvidence.reduce((s, ev) => s + (Number(ev.reach_total) || 0), 0),
+      groups: REACH_COLS.map(g => ({
+        label: g.label,
+        total: domEvidence.reduce((s, ev) => s + (Number(ev[g.field]) || 0), 0),
+      })),
+    }
+  })
+
+  function GroupReach() {
+    const hasAnyData = reachMatrix.some(r => r.totalReach > 0)
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <ACard>
+          <ASectionTitle sub="Student group reach across all domains — enter student numbers in evidence entries to populate">
+            Cross-Domain Student Reach
+          </ASectionTitle>
+          {!hasAnyData ? (
+            <p style={{ color: '#94a3b8', fontSize: '0.82rem' }}>
+              No reach data yet. Add student numbers to evidence entries using Student-Facing or Whole School provision types.
+            </p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: '8px 12px', color: '#64748b', fontWeight: 600, borderBottom: '2px solid #e2e8f0' }}>Domain</th>
+                    <th style={{ textAlign: 'right', padding: '8px 8px', color: '#64748b', fontWeight: 600, borderBottom: '2px solid #e2e8f0' }}>Total</th>
+                    {REACH_COLS.map((g, gi) => (
+                      <th key={g.field} style={{ textAlign: 'right', padding: '8px 8px', color: '#64748b', fontWeight: 600, borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                        {g.label}
+                        {CTX_COHORTS[gi].cohort > 0 && (
+                          <span style={{ display: 'block', fontSize: '0.65rem', color: '#94a3b8', fontWeight: 400 }}>
+                            of {CTX_COHORTS[gi].cohort}
+                          </span>
+                        )}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {reachMatrix.map((row, ri) => (
+                    <tr key={ri} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '10px 12px', fontWeight: 600, color: '#1e293b' }}>
+                        <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: row.colour, marginRight: 8 }} />
+                        {row.domain}
+                      </td>
+                      <td style={{ textAlign: 'right', padding: '10px 8px', color: row.totalReach > 0 ? '#1e293b' : '#cbd5e1', fontWeight: row.totalReach > 0 ? 700 : 400 }}>
+                        {row.totalReach || '—'}
+                      </td>
+                      {row.groups.map((g, gi) => {
+                        const cohort = CTX_COHORTS[gi].cohort
+                        const pct = cohort > 0 ? Math.round((g.total / cohort) * 100) : null
+                        const isGap = row.totalReach > 0 && cohort > 0 && g.total === 0
+                        return (
+                          <td key={gi} style={{
+                            textAlign: 'right', padding: '10px 8px',
+                            background: isGap ? '#fef2f2' : 'transparent',
+                            color: g.total > 0 ? '#1e293b' : isGap ? '#ef4444' : '#cbd5e1',
+                            fontWeight: g.total > 0 ? 600 : 400,
+                          }}>
+                            {g.total > 0 ? (
+                              <>
+                                {g.total}
+                                {pct !== null && <span style={{ fontSize: '0.68rem', color: '#94a3b8', marginLeft: 4 }}>({pct}%)</span>}
+                              </>
+                            ) : isGap ? (
+                              <span title="Gap: this domain reaches students but none recorded for this group">⚠</span>
+                            ) : '—'}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+                {schoolCtx.totalPupils > 0 && (
+                  <tfoot>
+                    <tr>
+                      <td colSpan={2 + REACH_COLS.length} style={{ padding: '8px 12px', fontSize: '0.7rem', color: '#94a3b8', borderTop: '2px solid #e2e8f0' }}>
+                        ⚠ Red cells indicate domains with student-facing provision but zero reach recorded for that group. Percentages are of school cohort totals.
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          )}
+        </ACard>
+
+        {hasAnyData && (
+          <ACard>
+            <ASectionTitle sub="How each domain reaches key student groups">Group Reach by Domain</ASectionTitle>
+            {REACH_COLS.map((g, gi) => {
+              const cohort = CTX_COHORTS[gi].cohort
+              const max = Math.max(...reachMatrix.map(r => r.groups[gi].total), cohort || 0, 1)
+              const rowsWithData = reachMatrix.filter(r => r.groups[gi].total > 0)
+              return (
+                <div key={g.field} style={{ marginBottom: 20 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b' }}>{g.label}</span>
+                    {cohort > 0 && <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Cohort: {cohort}</span>}
+                  </div>
+                  {rowsWithData.length === 0 ? (
+                    <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: 0 }}>No data</p>
+                  ) : (
+                    reachMatrix.map((row, ri) => {
+                      const val = row.groups[gi].total
+                      const barPct = Math.round((val / max) * 100)
+                      return (
+                        <div key={ri} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <span style={{ fontSize: '0.72rem', color: '#64748b', width: 88, flexShrink: 0, textAlign: 'right' }}>{row.shortName}</span>
+                          <div style={{ flex: 1, height: 6, background: '#f1f5f9', borderRadius: 3, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${barPct}%`, background: row.colour, borderRadius: 3, transition: 'width 0.4s' }} />
+                          </div>
+                          <span style={{ fontSize: '0.72rem', color: val > 0 ? '#1e293b' : '#cbd5e1', fontWeight: 600, width: 32, textAlign: 'right' }}>{val || '—'}</span>
+                        </div>
+                      )
+                    })
+                  )}
+                  {cohort > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                      <span style={{ fontSize: '0.68rem', color: '#94a3b8', width: 88, flexShrink: 0, textAlign: 'right' }}>Cohort</span>
+                      <div style={{ flex: 1, height: 6, background: '#f1f5f9', borderRadius: 3, position: 'relative' }}>
+                        <div style={{ position: 'absolute', left: `${Math.min(Math.round((cohort / max) * 100), 100)}%`, top: -1, width: 2, height: 8, background: '#94a3b8', borderRadius: 1 }} />
+                      </div>
+                      <span style={{ fontSize: '0.68rem', color: '#94a3b8', width: 32, textAlign: 'right' }}>{cohort}</span>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </ACard>
+        )}
+      </div>
+    )
+  }
+
   if (aLoading) return <p className="state-msg">Loading analytics…</p>
 
   return (
@@ -843,6 +1016,7 @@ function AnalyticsView({ school, supabase: sb, schoolName = '' }) {
       {activeTab === 'equity'    && <EnrichmentEquity />}
       {activeTab === 'funding'   && <FundingCost />}
       {activeTab === 'outcomes'  && <OutcomesImpact />}
+      {activeTab === 'reach'     && <GroupReach />}
     </div>
   )
 }
@@ -1421,151 +1595,211 @@ export default function App() {
 
             <div className="modal-body">
               <div className="detail-grid">
+                {(() => {
+                  const cat = draft.provision_category ?? ''
+                  const isStudentFacing  = cat === 'student_facing'
+                  const isPolicyStruct   = cat === 'policy_structural'
+                  const isWholeSchool    = cat === 'whole_school'
+                  const isLegacy         = cat === ''
+                  const showReach        = isStudentFacing || isWholeSchool
+                  const showCost         = isStudentFacing || isWholeSchool || isLegacy
+                  const showOutcomes     = isStudentFacing || isWholeSchool || isLegacy
+                  const showDates        = isStudentFacing || isWholeSchool || isLegacy
 
-                <div className="df df--half">
-                  <label>Provision Name</label>
-                  <input type="text" value={draft.provision_name ?? ''} onChange={e => handleDraftChange('provision_name', e.target.value)} />
-                </div>
+                  const reachInputStyle = { padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: '0.85rem', width: '100%' }
 
-                <div className="df df--half">
-                  <label>Indicator Type</label>
-                  <select value={draft.indicator_type ?? ''} onChange={e => handleDraftChange('indicator_type', e.target.value)}>
-                    <option value="">—</option>
-                    {INDICATOR_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                  </select>
-                </div>
+                  return (
+                    <>
+                      {/* ── Always: name + provision type ── */}
+                      <div className="df df--half">
+                        <label>Provision Name</label>
+                        <input type="text" value={draft.provision_name ?? ''} onChange={e => handleDraftChange('provision_name', e.target.value)} />
+                      </div>
 
-                <div className="df df--full">
-                  <label>Brief Description</label>
-                  <textarea rows={2} value={draft.brief_description ?? ''} onChange={e => handleDraftChange('brief_description', e.target.value)} />
-                </div>
+                      <div className="df df--half">
+                        <label>Provision Type</label>
+                        <select value={cat} onChange={e => handleDraftChange('provision_category', e.target.value)}>
+                          <option value="">— Select type —</option>
+                          {PROVISION_CATEGORIES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                        </select>
+                      </div>
 
-                <div className="df df--half">
-                  <label>Named Role / Policy / Document</label>
-                  <input type="text" value={draft.named_role_policy_document ?? ''} onChange={e => handleDraftChange('named_role_policy_document', e.target.value)} />
-                </div>
+                      {/* ── Policy/Structural or Legacy: named role doc ── */}
+                      {(isPolicyStruct || isLegacy) && (
+                        <div className="df df--half">
+                          <label>Named Role / Policy / Document</label>
+                          <input type="text" value={draft.named_role_policy_document ?? ''} onChange={e => handleDraftChange('named_role_policy_document', e.target.value)} />
+                        </div>
+                      )}
 
-                <div className="df df--half">
-                  <label>Delivered By</label>
-                  <input type="text" value={draft.delivered_by ?? ''} onChange={e => handleDraftChange('delivered_by', e.target.value)} />
-                </div>
+                      {/* ── All except policy: brief description ── */}
+                      {!isPolicyStruct && (
+                        <div className={`df ${isPolicyStruct ? 'df--half' : 'df--full'}`}>
+                          <label>Brief Description</label>
+                          <textarea rows={2} value={draft.brief_description ?? ''} onChange={e => handleDraftChange('brief_description', e.target.value)} />
+                        </div>
+                      )}
 
-                <div className="df df--half">
-                  <label>SEND Tiers</label>
-                  <div className="tier-checkbox-group">
-                    {SEND_TIERS.map(t => {
-                      const selected = Array.isArray(draft.send_tiers) ? draft.send_tiers : []
-                      const checked = selected.includes(t.value)
-                      return (
-                        <label key={t.value} className="tier-checkbox-label">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => {
-                              const next = checked
-                                ? selected.filter(v => v !== t.value)
-                                : [...selected, t.value]
-                              handleDraftChange('send_tiers', next)
-                            }}
-                          />
-                          {t.label}
-                        </label>
-                      )
-                    })}
-                  </div>
-                </div>
+                      {/* ── Student-Facing: SEND tiers ── */}
+                      {(isStudentFacing || isLegacy) && (
+                        <div className="df df--half">
+                          <label>SEND Tiers</label>
+                          <div className="tier-checkbox-group">
+                            {SEND_TIERS.map(t => {
+                              const selected = Array.isArray(draft.send_tiers) ? draft.send_tiers : []
+                              const checked = selected.includes(t.value)
+                              return (
+                                <label key={t.value} className="tier-checkbox-label">
+                                  <input type="checkbox" checked={checked} onChange={() => {
+                                    const next = checked ? selected.filter(v => v !== t.value) : [...selected, t.value]
+                                    handleDraftChange('send_tiers', next)
+                                  }} />
+                                  {t.label}
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
 
-                <div className="df df--half">
-                  <label>Student Groups</label>
-                  <div className="tier-checkbox-group">
-                    {EV_GROUPS.map(g => (
-                      <label key={g.value} className="tier-checkbox-label">
-                        <input
-                          type="checkbox"
-                          checked={draft[g.value] ?? false}
-                          onChange={e => handleDraftChange(g.value, e.target.checked)}
-                        />
-                        {g.label}
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                      {/* ── Delivered By ── */}
+                      <div className="df df--half">
+                        <label>Delivered By</label>
+                        <input type="text" value={draft.delivered_by ?? ''} onChange={e => handleDraftChange('delivered_by', e.target.value)} />
+                      </div>
 
-                <div className="df df--quarter">
-                  <label>Pupils / People Reached</label>
-                  <input
-                    type="number" min="0" step="1"
-                    value={draft.pupils_reached ?? ''}
-                    onChange={e => handleDraftChange('pupils_reached', e.target.value === '' ? null : Number(e.target.value))}
-                  />
-                </div>
+                      {/* ── Student Reach numbers ── */}
+                      {showReach && (
+                        <div className="df df--full">
+                          <label>
+                            Students Reached
+                            {isWholeSchool && <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: '0.75rem', marginLeft: 6 }}>(optional)</span>}
+                          </label>
+                          {isStudentFacing && <span className="field-hint">Group counts can overlap — a student may belong to multiple groups</span>}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px 12px', marginTop: 8 }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              <label style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Total</label>
+                              <input type="number" min="0" step="1" style={reachInputStyle}
+                                value={draft.reach_total ?? ''}
+                                onChange={e => handleDraftChange('reach_total', e.target.value === '' ? null : Number(e.target.value))} />
+                            </div>
+                            {REACH_GROUPS.map(g => (
+                              <div key={g.field} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                <label style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>{g.label}</label>
+                                <input type="number" min="0" step="1" style={reachInputStyle}
+                                  value={draft[g.field] ?? ''}
+                                  onChange={e => handleDraftChange(g.field, e.target.value === '' ? null : Number(e.target.value))} />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
-                <div className="df df--quarter">
-                  <label>Annual Cost £</label>
-                  <input
-                    type="number" min="0" step="1"
-                    value={draft.cost ?? ''}
-                    onChange={e => handleDraftChange('cost', e.target.value === '' ? null : Number(e.target.value))}
-                  />
-                </div>
+                      {/* ── Legacy: old checkboxes + pupils_reached ── */}
+                      {isLegacy && (
+                        <>
+                          <div className="df df--half">
+                            <label>Student Groups</label>
+                            <div className="tier-checkbox-group">
+                              {EV_GROUPS.map(g => (
+                                <label key={g.value} className="tier-checkbox-label">
+                                  <input type="checkbox" checked={draft[g.value] ?? false} onChange={e => handleDraftChange(g.value, e.target.checked)} />
+                                  {g.label}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="df df--quarter">
+                            <label>Pupils / People Reached</label>
+                            <input type="number" min="0" step="1"
+                              value={draft.pupils_reached ?? ''}
+                              onChange={e => handleDraftChange('pupils_reached', e.target.value === '' ? null : Number(e.target.value))} />
+                          </div>
+                        </>
+                      )}
 
-                <div className="df df--half">
-                  <label>Funding Source</label>
-                  <select value={draft.funding_source ?? ''} onChange={e => handleDraftChange('funding_source', e.target.value)}>
-                    <option value="">—</option>
-                    {FUNDING_SOURCES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
-                  </select>
-                </div>
+                      {/* ── Cost & funding ── */}
+                      {showCost && (
+                        <>
+                          <div className="df df--quarter">
+                            <label>Annual Cost £</label>
+                            <input type="number" min="0" step="1"
+                              value={draft.cost ?? ''}
+                              onChange={e => handleDraftChange('cost', e.target.value === '' ? null : Number(e.target.value))} />
+                          </div>
+                          <div className="df df--half">
+                            <label>Funding Source</label>
+                            <select value={draft.funding_source ?? ''} onChange={e => handleDraftChange('funding_source', e.target.value)}>
+                              <option value="">—</option>
+                              {FUNDING_SOURCES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                            </select>
+                          </div>
+                        </>
+                      )}
 
-                <div className="df df--half">
-                  <label>Date Provision Started</label>
-                  <input type="date" value={draft.date_started ?? ''} onChange={e => handleDraftChange('date_started', e.target.value || null)} />
-                </div>
+                      {/* ── Date fields ── */}
+                      {showDates && (
+                        <>
+                          <div className="df df--half">
+                            <label>Date Provision Started</label>
+                            <input type="date" value={draft.date_started ?? ''} onChange={e => handleDraftChange('date_started', e.target.value || null)} />
+                          </div>
+                          <div className="df df--half">
+                            <label>Date Last Reviewed</label>
+                            <input type="date" value={draft.date_last_reviewed ?? ''} onChange={e => handleDraftChange('date_last_reviewed', e.target.value || null)} />
+                          </div>
+                          <div className="df df--half">
+                            <label>Next Review Due</label>
+                            <input type="date" value={draft.next_review_due ?? ''} onChange={e => handleDraftChange('next_review_due', e.target.value || null)} />
+                          </div>
+                          <div className="df df--half">
+                            <label>Review Cycle</label>
+                            <select value={draft.review_cycle ?? ''} onChange={e => handleDraftChange('review_cycle', e.target.value)}>
+                              <option value="">—</option>
+                              {REVIEW_CYCLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                            </select>
+                          </div>
+                        </>
+                      )}
 
-                <div className="df df--half">
-                  <label>Date Last Reviewed</label>
-                  <input type="date" value={draft.date_last_reviewed ?? ''} onChange={e => handleDraftChange('date_last_reviewed', e.target.value || null)} />
-                </div>
+                      {/* ── Intended outcomes ── */}
+                      {showOutcomes && (
+                        <div className="df df--full">
+                          <label>Intended Outcomes</label>
+                          {isStudentFacing && <span className="field-hint">What barriers are you aiming to remove for this group?</span>}
+                          <textarea rows={3} value={draft.intended_outcomes ?? ''} onChange={e => handleDraftChange('intended_outcomes', e.target.value)} />
+                        </div>
+                      )}
 
-                <div className="df df--half">
-                  <label>Next Review Due</label>
-                  <input type="date" value={draft.next_review_due ?? ''} onChange={e => handleDraftChange('next_review_due', e.target.value || null)} />
-                </div>
+                      {/* ── Impact on outcomes (student-facing + legacy) ── */}
+                      {(isStudentFacing || isLegacy) && (
+                        <div className="df df--full">
+                          <label>Impact on Outcomes</label>
+                          <textarea rows={3} value={draft.impact_on_outcomes ?? ''} onChange={e => handleDraftChange('impact_on_outcomes', e.target.value)} />
+                        </div>
+                      )}
 
-                <div className="df df--half">
-                  <label>Review Cycle</label>
-                  <select value={draft.review_cycle ?? ''} onChange={e => handleDraftChange('review_cycle', e.target.value)}>
-                    <option value="">—</option>
-                    {REVIEW_CYCLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                  </select>
-                </div>
+                      {/* ── Evidence / implementation evidence ── */}
+                      {(isStudentFacing || isWholeSchool || isLegacy) && (
+                        <div className="df df--full">
+                          <label>{isWholeSchool ? 'Implementation Evidence' : 'Evidence of Impact'}</label>
+                          <textarea rows={3} value={draft.evidence_notes ?? ''} onChange={e => handleDraftChange('evidence_notes', e.target.value)} />
+                        </div>
+                      )}
 
-                <div className="df df--full">
-                  <label>Intended Outcomes</label>
-                  <span className="field-hint">What barriers are you aiming to remove for this group?</span>
-                  <textarea rows={3} placeholder="Describe the intended outcome for the pupils this entry targets..." value={draft.intended_outcomes ?? ''} onChange={e => handleDraftChange('intended_outcomes', e.target.value)} />
-                </div>
+                      {/* ── Always: document link + notes ── */}
+                      <div className="df df--full">
+                        <label>Supporting Document Link</label>
+                        <input type="url" placeholder="https://…" value={draft.supporting_document_link ?? ''} onChange={e => handleDraftChange('supporting_document_link', e.target.value)} />
+                      </div>
 
-                <div className="df df--full">
-                  <label>Impact on Outcomes</label>
-                  <textarea rows={3} value={draft.impact_on_outcomes ?? ''} onChange={e => handleDraftChange('impact_on_outcomes', e.target.value)} />
-                </div>
-
-                <div className="df df--full">
-                  <label>Evidence of Impact</label>
-                  <textarea rows={3} value={draft.evidence_notes ?? ''} onChange={e => handleDraftChange('evidence_notes', e.target.value)} />
-                </div>
-
-                <div className="df df--full">
-                  <label>Supporting Document Link</label>
-                  <input type="url" placeholder="https://…" value={draft.supporting_document_link ?? ''} onChange={e => handleDraftChange('supporting_document_link', e.target.value)} />
-                </div>
-
-                <div className="df df--full">
-                  <label>Notes</label>
-                  <textarea rows={2} value={draft.notes ?? ''} onChange={e => handleDraftChange('notes', e.target.value)} />
-                </div>
-
+                      <div className="df df--full">
+                        <label>Notes</label>
+                        <textarea rows={2} value={draft.notes ?? ''} onChange={e => handleDraftChange('notes', e.target.value)} />
+                      </div>
+                    </>
+                  )
+                })()}
               </div>
             </div>
 
