@@ -775,11 +775,13 @@ export default function App() {
   const [modalSaveError, setModalSaveError] = useState(false)
   const modalRef = useRef(null)
 
-  // Initialise auth: restore session and subscribe to changes
+  // Initialise auth: restore session and subscribe to changes.
+  // Do NOT clear authLoading here — we wait until the profile fetch resolves
+  // so the loading screen stays up until we know the correct initial view.
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
-      setAuthLoading(false)
+      // authLoading cleared by the session effect once profile is resolved
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
@@ -787,7 +789,8 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // When session changes: load profile (→ school) and domain structure
+  // When session changes: load profile (→ role + school) and domain structure.
+  // authLoading is cleared here once we know which view to show.
   useEffect(() => {
     if (!session) {
       setSelectedSchool('')
@@ -801,6 +804,7 @@ export default function App() {
       setUserMatId(null)
       setView('school')
       setBrowsingSchoolName('')
+      setAuthLoading(false)
       return
     }
 
@@ -810,8 +814,13 @@ export default function App() {
       .eq('id', session.user.id)
       .single()
       .then(({ data, error }) => {
-        if (error || !data) { console.error('Error loading profile:', error); return }
+        if (error || !data) {
+          console.error('[Profile] fetch error:', error)
+          setAuthLoading(false)
+          return
+        }
         const role = data.role ?? 'contributor'
+        console.log('[Profile] raw role from Supabase:', data.role, '→ resolved as:', role)
         setUserRole(role)
         setUserMatId(data.mat_id ?? null)
         if (role === 'mat_admin') {
@@ -821,6 +830,7 @@ export default function App() {
           setSchoolName(data.schools?.name ?? '')
           setView('school')
         }
+        setAuthLoading(false)
       })
 
     supabase
