@@ -773,7 +773,7 @@ body {
 /* ── Login page ── */
 .login-page {
   min-height: 100vh;
-  background: #f5f6fa;
+  background: #f0f4f8;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -783,25 +783,59 @@ body {
 .login-card {
   background: #fff;
   border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  padding: 40px 36px;
+  border-radius: 16px;
   width: 100%;
-  max-width: 400px;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.07);
+  max-width: 860px;
+  box-shadow: 0 4px 32px rgba(0,0,0,0.09);
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+}
+
+.login-panel {
+  flex: 1;
+  padding: 48px 40px;
+  display: flex;
+  flex-direction: column;
+}
+
+.login-panel--signin {
+  background: #fff;
+}
+
+.login-panel--demo {
+  background: #f0f6ff;
+  justify-content: center;
+  gap: 20px;
+}
+
+.login-divider {
+  width: 1px;
+  background: #e2e8f0;
+  flex-shrink: 0;
 }
 
 .login-title {
-  font-size: 1.5rem;
+  font-size: 1.35rem;
   font-weight: 700;
   color: #1e3a5f;
-  text-align: center;
+  line-height: 1.35;
+  margin-bottom: 4px;
 }
 
-.login-sub {
-  margin-top: 6px;
-  text-align: center;
+.login-demo-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #1e3a5f;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.login-demo-sub {
   font-size: 0.9rem;
-  color: #64748b;
+  color: #475569;
+  line-height: 1.6;
+  margin: 0;
 }
 
 .login-form {
@@ -857,6 +891,7 @@ body {
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s;
+  width: 100%;
 }
 
 .login-btn:hover:not(:disabled) {
@@ -866,6 +901,44 @@ body {
 .login-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.login-btn-demo {
+  padding: 13px;
+  background: #1e3a5f;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  width: 100%;
+}
+
+.login-btn-demo:hover:not(:disabled) {
+  background: #16304f;
+}
+
+.login-btn-demo:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .login-card {
+    flex-direction: column;
+    max-width: 440px;
+  }
+
+  .login-divider {
+    width: auto;
+    height: 1px;
+  }
+
+  .login-panel {
+    padding: 36px 28px;
+  }
 }
 
 /* ── Header with logout ── */

@@ -1210,6 +1210,14 @@ export default function App() {
     if (error) setLoginError(error.message)
   }
 
+  async function handleDemoLogin() {
+    setLoginLoading(true)
+    setLoginError(null)
+    const { error } = await supabase.auth.signInWithPassword({ email: 'demo@testschool.co.uk', password: 'DemoAccess2026!' })
+    setLoginLoading(false)
+    if (error) setLoginError(error.message)
+  }
+
   async function handleLogout() {
     await supabase.auth.signOut()
     setSelectedDomain('')
@@ -1327,36 +1335,47 @@ export default function App() {
     return (
       <div className="login-page">
         <div className="login-card">
-          <h1 className="login-title">Inclusion Dashboard</h1>
-          <p className="login-sub">Sign in to continue</p>
-          <form className="login-form" onSubmit={handleLogin}>
-            <div className="login-field">
-              <label htmlFor="login-email">Email</label>
-              <input
-                id="login-email"
-                type="email"
-                autoComplete="email"
-                required
-                value={loginEmail}
-                onChange={e => setLoginEmail(e.target.value)}
-              />
-            </div>
-            <div className="login-field">
-              <label htmlFor="login-password">Password</label>
-              <input
-                id="login-password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={loginPassword}
-                onChange={e => setLoginPassword(e.target.value)}
-              />
-            </div>
-            {loginError && <p className="login-error">{loginError}</p>}
-            <button type="submit" className="login-btn" disabled={loginLoading}>
-              {loginLoading ? 'Signing in…' : 'Sign in'}
+          <div className="login-panel login-panel--signin">
+            <h1 className="login-title">Log in to your school's Inclusion Dashboard</h1>
+            <form className="login-form" onSubmit={handleLogin}>
+              <div className="login-field">
+                <label htmlFor="login-email">Email</label>
+                <input
+                  id="login-email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={loginEmail}
+                  onChange={e => setLoginEmail(e.target.value)}
+                />
+              </div>
+              <div className="login-field">
+                <label htmlFor="login-password">Password</label>
+                <input
+                  id="login-password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  value={loginPassword}
+                  onChange={e => setLoginPassword(e.target.value)}
+                />
+              </div>
+              {loginError && <p className="login-error">{loginError}</p>}
+              <button type="submit" className="login-btn" disabled={loginLoading}>
+                {loginLoading ? 'Signing in…' : 'Sign in'}
+              </button>
+            </form>
+          </div>
+
+          <div className="login-divider" aria-hidden="true" />
+
+          <div className="login-panel login-panel--demo">
+            <h2 className="login-demo-title">See the Inclusion Dashboard in action</h2>
+            <p className="login-demo-sub">Explore a fully populated demo school to see how the dashboard works before setting up your own.</p>
+            <button type="button" className="login-btn-demo" disabled={loginLoading} onClick={handleDemoLogin}>
+              {loginLoading ? 'Signing in…' : 'Explore Demo'}
             </button>
-          </form>
+          </div>
         </div>
       </div>
     )
