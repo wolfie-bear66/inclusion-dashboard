@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabaseClient'
+import MATDashboard from './MATDashboard'
 import './App.css'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, PieChart, Pie, RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts'
 
@@ -758,6 +759,13 @@ export default function App() {
   const [allStatuses, setAllStatuses] = useState({})
   const [allEvidenceCounts, setAllEvidenceCounts] = useState({})
 
+  // MAT / role state
+  const [userRole, setUserRole] = useState('contributor')
+  const [userMatId, setUserMatId] = useState(null)
+  // 'school' | 'mat' | 'school_readonly'
+  const [view, setView] = useState('school')
+  const [browsingSchoolName, setBrowsingSchoolName] = useState('')
+
   // Modal state
   const [modalPoint, setModalPoint] = useState(null)
   const [draft, setDraft] = useState({})
@@ -789,18 +797,30 @@ export default function App() {
       setDomainTotals({})
       setAllStatuses({})
       setAllEvidenceCounts({})
+      setUserRole('contributor')
+      setUserMatId(null)
+      setView('school')
+      setBrowsingSchoolName('')
       return
     }
 
     supabase
       .from('profiles')
-      .select('school_id, schools(name)')
+      .select('school_id, role, mat_id, schools(name)')
       .eq('id', session.user.id)
       .single()
       .then(({ data, error }) => {
-        if (error || !data?.school_id) { console.error('Error loading profile:', error); return }
-        setSelectedSchool(data.school_id)
-        setSchoolName(data.schools?.name ?? '')
+        if (error || !data) { console.error('Error loading profile:', error); return }
+        const role = data.role ?? 'contributor'
+        setUserRole(role)
+        setUserMatId(data.mat_id ?? null)
+        if (role === 'mat_admin') {
+          setView('mat')
+        } else {
+          setSelectedSchool(data.school_id)
+          setSchoolName(data.schools?.name ?? '')
+          setView('school')
+        }
       })
 
     supabase
@@ -930,6 +950,20 @@ export default function App() {
     setSelectedDomain('')
   }
 
+  function handleMatSchoolClick(schoolId, sName, domainId) {
+    setSelectedSchool(schoolId)
+    setBrowsingSchoolName(sName)
+    setSelectedDomain(domainId ?? '')
+    setView('school_readonly')
+  }
+
+  function handleBackToMat() {
+    setView('mat')
+    setSelectedSchool('')
+    setSelectedDomain('')
+    setBrowsingSchoolName('')
+  }
+
   async function handleStatusChange(ppId, status) {
     const currentEntry = entries[ppId] ?? {}
     setEntries(prev => ({ ...prev, [ppId]: { ...currentEntry, status } }))
@@ -1030,6 +1064,8 @@ export default function App() {
     if (modalRef.current && !modalRef.current.contains(e.target)) closeModal()
   }
 
+  const readOnly = view === 'school_readonly'
+
   const allPoints = subDomains.flatMap(sd => sd.provision_points)
   const answeredCount = allPoints.filter(p => entries[p.id]?.status).length
   const progress = allPoints.length ? Math.round((answeredCount / allPoints.length) * 100) : 0
@@ -1082,7 +1118,24 @@ export default function App() {
       <header className="header">
         <div className="header-left">
           <h1 className="header-title">Inclusion Dashboard</h1>
-          {schoolName && <p className="header-sub">{schoolName}</p>}
+          {view === 'school' && schoolName && <p className="header-sub">{schoolName}</p>}
+          {view === 'mat' && <p className="header-sub">MAT Dashboard</p>}
+          {view === 'school_readonly' && (
+            <p className="header-sub" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button type="button" onClick={handleBackToMat}
+                style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: 'inherit', padding: 0, fontWeight: 500 }}>
+                MAT Dashboard
+              </button>
+              <span style={{ color: '#94a3b8' }}>›</span>
+              <span>{browsingSchoolName}</span>
+              {selectedDomain && domains.find(d => d.id === selectedDomain) && (
+                <>
+                  <span style={{ color: '#94a3b8' }}>›</span>
+                  <span>{domains.find(d => d.id === selectedDomain).name}</span>
+                </>
+              )}
+            </p>
+          )}
         </div>
         <button type="button" className="logout-btn" onClick={handleLogout}>Sign out</button>
       </header>
@@ -1090,22 +1143,44 @@ export default function App() {
       <main className="main">
 
         <nav className="domain-nav" aria-label="Domains">
-          <button
-            type="button"
-            className={`domain-tab domain-tab--overview${!selectedDomain ? ' domain-tab--active' : ''}`}
-            onClick={() => setSelectedDomain('')}
-          >
-            <span className="domain-tab-name">Overview</span>
-            <span className="domain-tab-count">{Object.keys(ppDomainMap).length > 0 ? `${Object.values(allStatuses).filter(Boolean).length}/${Object.keys(ppDomainMap).length}` : '—'}</span>
-          </button>
-          <button
-            type="button"
-            className={`domain-tab domain-tab--overview${selectedDomain === 'analytics' ? ' domain-tab--active' : ''}`}
-            onClick={() => setSelectedDomain('analytics')}
-          >
-            <span className="domain-tab-name">Analytics</span>
-          </button>
-          {domains.map(d => {
+          {userRole === 'mat_admin' && view === 'mat' && (
+            <button
+              type="button"
+              className="domain-tab domain-tab--active"
+              onClick={() => setView('mat')}
+            >
+              <span className="domain-tab-name">MAT Dashboard</span>
+            </button>
+          )}
+          {userRole === 'mat_admin' && view !== 'mat' && (
+            <button
+              type="button"
+              className="domain-tab domain-tab--overview"
+              onClick={handleBackToMat}
+            >
+              <span className="domain-tab-name">← MAT Dashboard</span>
+            </button>
+          )}
+          {view !== 'mat' && (
+            <>
+              <button
+                type="button"
+                className={`domain-tab domain-tab--overview${!selectedDomain ? ' domain-tab--active' : ''}`}
+                onClick={() => setSelectedDomain('')}
+              >
+                <span className="domain-tab-name">Overview</span>
+                <span className="domain-tab-count">{Object.keys(ppDomainMap).length > 0 ? `${Object.values(allStatuses).filter(Boolean).length}/${Object.keys(ppDomainMap).length}` : '—'}</span>
+              </button>
+              <button
+                type="button"
+                className={`domain-tab domain-tab--overview${selectedDomain === 'analytics' ? ' domain-tab--active' : ''}`}
+                onClick={() => setSelectedDomain('analytics')}
+              >
+                <span className="domain-tab-name">Analytics</span>
+              </button>
+            </>
+          )}
+          {view !== 'mat' && domains.map(d => {
             const total = domainTotals[d.id] ?? 0
             const answered = Object.entries(ppDomainMap).filter(
               ([ppId, domId]) => domId === d.id && allStatuses[ppId]
@@ -1124,7 +1199,28 @@ export default function App() {
           })}
         </nav>
 
-        {selectedSchool && !selectedDomain && (() => {
+        {view === 'mat' && userMatId && (
+          <MATDashboard
+            supabase={supabase}
+            matId={userMatId}
+            onSchoolClick={handleMatSchoolClick}
+          />
+        )}
+
+        {readOnly && (
+          <div style={{
+            background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10,
+            padding: '12px 18px', display: 'flex', alignItems: 'center', gap: 10,
+            marginBottom: 4,
+          }}>
+            <span style={{ fontSize: '1rem' }}>👁</span>
+            <p style={{ fontSize: '0.85rem', color: '#1d4ed8', fontWeight: 500 }}>
+              Viewing <strong>{browsingSchoolName}</strong> — read only. Changes cannot be made from the MAT dashboard.
+            </p>
+          </div>
+        )}
+
+        {view !== 'mat' && selectedSchool && !selectedDomain && (() => {
           const allPpIds = Object.keys(ppDomainMap)
           const totTotal    = allPpIds.length
           const totInPlace  = allPpIds.filter(id => allStatuses[id] === 'in_place').length
@@ -1192,11 +1288,11 @@ export default function App() {
           )
         })()}
 
-        {selectedSchool && selectedDomain === 'analytics' && (
+        {view !== 'mat' && selectedSchool && selectedDomain === 'analytics' && (
           <AnalyticsView school={selectedSchool} supabase={supabase} />
         )}
 
-        {selectedSchool && selectedDomain && selectedDomain !== 'analytics' && (
+        {view !== 'mat' && selectedSchool && selectedDomain && selectedDomain !== 'analytics' && (
           loading ? (
             <p className="state-msg">Loading…</p>
           ) : subDomains.length === 0 ? (
@@ -1234,15 +1330,20 @@ export default function App() {
                                     key={s}
                                     type="button"
                                     className={`status-btn status-btn--${s.replace(/_/g, '-')}${entry.status === s ? ' active' : ''}`}
-                                    onClick={() => handleStatusChange(pp.id, s)}
+                                    onClick={readOnly ? undefined : () => handleStatusChange(pp.id, s)}
+                                    disabled={readOnly}
+                                    title={readOnly ? 'You do not have edit access to this school' : undefined}
+                                    style={readOnly ? { cursor: 'default', opacity: 0.65 } : undefined}
                                   >
                                     {STATUS_LABELS[s]}
                                   </button>
                                 ))}
                               </div>
-                              <button type="button" className="evidence-btn" onClick={() => openModal(pp)}>
-                                Add Evidence
-                              </button>
+                              {!readOnly && (
+                                <button type="button" className="evidence-btn" onClick={() => openModal(pp)}>
+                                  Add Evidence
+                                </button>
+                              )}
                             </div>
                           </div>
 
@@ -1432,21 +1533,26 @@ export default function App() {
             </div>
 
             <div className="modal-footer">
-              {draftId && (
+              {draftId && !readOnly && (
                 <button type="button" className="delete-btn" onClick={handleModalDelete} disabled={modalSaving}>
                   Delete
                 </button>
               )}
               <div className="modal-footer-right">
-                {modalSaveMsg && (
+                {readOnly && (
+                  <span style={{ fontSize: '0.78rem', color: '#64748b', fontStyle: 'italic' }}>Read only — viewing {browsingSchoolName}</span>
+                )}
+                {!readOnly && modalSaveMsg && (
                   <span className={`save-msg${modalSaveError ? ' save-msg--error' : ' save-msg--ok'}`}>
                     {modalSaveMsg}
                   </span>
                 )}
                 <button type="button" className="modal-cancel-btn" onClick={closeModal}>Close</button>
-                <button type="button" className="save-btn" onClick={handleModalSave} disabled={modalSaving}>
-                  {modalSaving ? 'Saving…' : 'Save'}
-                </button>
+                {!readOnly && (
+                  <button type="button" className="save-btn" onClick={handleModalSave} disabled={modalSaving}>
+                    {modalSaving ? 'Saving…' : 'Save'}
+                  </button>
+                )}
               </div>
             </div>
 
