@@ -29,16 +29,16 @@ SET name   = 'Springwell Academy',
     mat_id = 'aaaaaaaa-0000-0000-0000-000000000001'
 WHERE id = '00000000-0000-0000-0000-000000000001';
 
--- 6. Insert Rydell High as the second MAT school
-INSERT INTO schools (id, name, mat_id)
-VALUES ('00000000-0000-0000-0000-000000000002', 'Rydell High', 'aaaaaaaa-0000-0000-0000-000000000001')
-ON CONFLICT (id) DO NOTHING;
--- Rydell High starts with no entries, no evidence — all provision points will show as blank
-
--- 7. Assign mat_admin role to the Test School profile
---    This is the profile currently linked to Test School (id: 9c539de8-...)
---    Check your Supabase Auth dashboard to confirm which email this maps to
-UPDATE profiles
-SET role   = 'mat_admin',
+-- 6. Rename existing Test School → Rydell High and link to Demo MAT
+UPDATE schools
+SET name   = 'Rydell High',
     mat_id = 'aaaaaaaa-0000-0000-0000-000000000001'
+WHERE id = 'e0a1ae72-3a42-4145-b2a2-a741a00556ab';
+-- Existing entries for this school remain; provision points with no entry show as blank
+
+-- 7. Assign mat_admin role to the associated profile and point school_id at Rydell High
+UPDATE profiles
+SET role      = 'mat_admin',
+    mat_id    = 'aaaaaaaa-0000-0000-0000-000000000001',
+    school_id = 'e0a1ae72-3a42-4145-b2a2-a741a00556ab'
 WHERE id = '9c539de8-0ddf-43d7-974b-e55406966bb3';
