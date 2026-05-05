@@ -4,6 +4,7 @@ import MATDashboard from './MATDashboard'
 import './App.css'
 import { generateReport } from './generateReport'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, PieChart, Pie, RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts'
+import { Analytics } from '@vercel/analytics/react'
 
 const STATUSES = ['in_place', 'in_progress', 'not_in_place']
 const STATUS_LABELS = { in_place: 'In Place', in_progress: 'In Progress', not_in_place: 'Not In Place' }
@@ -1967,6 +1968,7 @@ export default function App() {
           </div>
         </div>
       )}
+      <Analytics />
     </div>
   )
 }
