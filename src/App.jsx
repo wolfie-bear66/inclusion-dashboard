@@ -58,6 +58,17 @@ const EV_GROUPS = [
   { value: 'grp_other', label: 'Other' },
 ]
 
+const PROVISION_POINT_CATEGORIES = [
+  'Named Person',
+  'Policy / Published Document',
+  'Internal Process / System',
+  'Staff Training & CPD',
+  'Direct Provision for Students',
+  'Monitoring & Data',
+  'External Partnership',
+  'Family & Community Engagement',
+]
+
 // entries holds status + group flags; evidence detail lives in evidence_entries (nested)
 const ENTRY_SELECT = [
   'id', 'provision_point_id', 'status',
@@ -1043,6 +1054,10 @@ export default function App() {
   const [domainTotals, setDomainTotals] = useState({})
   const [allStatuses, setAllStatuses] = useState({})
   const [allEvidenceCounts, setAllEvidenceCounts] = useState({})
+  const [ppCategoryMap, setPpCategoryMap] = useState({})
+  const [ppInfoMap, setPpInfoMap] = useState({})
+  const [overviewMode, setOverviewMode] = useState('domain')
+  const [selectedCategory, setSelectedCategory] = useState(null)
 
   // MAT / role state
   const [userRole, setUserRole] = useState('contributor')
@@ -1085,6 +1100,10 @@ export default function App() {
       setDomainTotals({})
       setAllStatuses({})
       setAllEvidenceCounts({})
+     setPpCategoryMap({})
+      setPpInfoMap({})
+      setOverviewMode('domain')
+      setSelectedCategory(null)
       setUserRole('contributor')
       setUserMatId(null)
       setView('school')
@@ -1120,17 +1139,21 @@ export default function App() {
 
     supabase
       .from('domains')
-      .select('id, name, display_order, sub_domains(provision_points(id))')
+      .select('id, name, display_order, sub_domains(id, name, provision_points(id, label, category))')
       .order('display_order')
       .then(({ data, error }) => {
         if (error) { console.error('Error loading domains:', error); return }
         const newPpDomainMap = {}
         const newDomainTotals = {}
+        const newPpCategoryMap = {}
+        const newPpInfoMap = {}
         for (const domain of data ?? []) {
           let count = 0
           for (const sd of domain.sub_domains ?? []) {
             for (const pp of sd.provision_points ?? []) {
               newPpDomainMap[pp.id] = domain.id
+              newPpCategoryMap[pp.id] = pp.category ?? ''
+              newPpInfoMap[pp.id] = { label: pp.label, domainId: domain.id, domainName: domain.name, subDomainName: sd.name }
               count++
             }
           }
@@ -1139,6 +1162,8 @@ export default function App() {
         setDomains((data ?? []).map(({ sub_domains: _sd, ...d }) => d))
         setPpDomainMap(newPpDomainMap)
         setDomainTotals(newDomainTotals)
+        setPpCategoryMap(newPpCategoryMap)
+        setPpInfoMap(newPpInfoMap)
       })
   }, [session])
 
@@ -1600,38 +1625,163 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="dash-grid">
-                {domains.map(d => {
-                  const ppIds    = Object.entries(ppDomainMap).filter(([, did]) => did === d.id).map(([id]) => id)
-                  const total    = ppIds.length
-                  const inPlace  = ppIds.filter(id => allStatuses[id] === 'in_place').length
-                  const inProg   = ppIds.filter(id => allStatuses[id] === 'in_progress').length
-                  const notIn    = ppIds.filter(id => allStatuses[id] === 'not_in_place').length
-                  const answered = inPlace + inProg + notIn
-                  const evidence = ppIds.filter(id => (allEvidenceCounts[id] ?? 0) > 0).length
-                  const pct      = total ? Math.round((answered / total) * 100) : 0
-                  return (
-                    <button key={d.id} type="button" className="dash-card" onClick={() => setSelectedDomain(d.id)}>
-                      <h3 className="dash-card-name">{d.name}</h3>
-                      <div className="dash-progress">
-                        <div className="dash-progress-track">
-                          <div className="dash-progress-fill" style={{ width: `${pct}%` }} />
-                        </div>
-                        <span className="dash-progress-label">{answered}/{total}</span>
-                      </div>
-                      <div className="dash-counts">
-                        <span className="dash-count dash-count--green">{inPlace} in place</span>
-                        <span className="dash-count dash-count--amber">{inProg} in progress</span>
-                        <span className="dash-count dash-count--red">{notIn} not in place</span>
-                      </div>
-                      <div className="dash-evidence">
-                        <span className="dash-evidence-icon">◆</span>
-                        {evidence} provision point{evidence !== 1 ? 's' : ''} with evidence
-                      </div>
-                    </button>
-                  )
-                })}
+              {/* Toggle */}
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+                <button
+                  type="button"
+                  onClick={() => { setOverviewMode('domain'); setSelectedCategory(null) }}
+                  style={{
+                    padding: '6px 20px', fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer',
+                    border: '1.5px solid #e2e8f0', borderRight: 'none',
+                    borderRadius: '8px 0 0 8px',
+                    background: overviewMode === 'domain' ? '#6366f1' : '#fff',
+                    color:      overviewMode === 'domain' ? '#fff'    : '#475569',
+                  }}
+                >
+                  By domain
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setOverviewMode('category'); setSelectedCategory(null) }}
+                  style={{
+                    padding: '6px 20px', fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer',
+                    border: '1.5px solid #e2e8f0',
+                    borderRadius: '0 8px 8px 0',
+                    background: overviewMode === 'category' ? '#6366f1' : '#fff',
+                    color:      overviewMode === 'category' ? '#fff'    : '#475569',
+                  }}
+                >
+                  By category
+                </button>
               </div>
+
+              {/* By domain — existing cards */}
+              {overviewMode === 'domain' && (
+                <div className="dash-grid">
+                  {domains.map(d => {
+                    const ppIds    = Object.entries(ppDomainMap).filter(([, did]) => did === d.id).map(([id]) => id)
+                    const total    = ppIds.length
+                    const inPlace  = ppIds.filter(id => allStatuses[id] === 'in_place').length
+                    const inProg   = ppIds.filter(id => allStatuses[id] === 'in_progress').length
+                    const notIn    = ppIds.filter(id => allStatuses[id] === 'not_in_place').length
+                    const answered = inPlace + inProg + notIn
+                    const evidence = ppIds.filter(id => (allEvidenceCounts[id] ?? 0) > 0).length
+                    const pct      = total ? Math.round((answered / total) * 100) : 0
+                    return (
+                      <button key={d.id} type="button" className="dash-card" onClick={() => setSelectedDomain(d.id)}>
+                        <h3 className="dash-card-name">{d.name}</h3>
+                        <div className="dash-progress">
+                          <div className="dash-progress-track">
+                            <div className="dash-progress-fill" style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="dash-progress-label">{answered}/{total}</span>
+                        </div>
+                        <div className="dash-counts">
+                          <span className="dash-count dash-count--green">{inPlace} in place</span>
+                          <span className="dash-count dash-count--amber">{inProg} in progress</span>
+                          <span className="dash-count dash-count--red">{notIn} not in place</span>
+                        </div>
+                        <div className="dash-evidence">
+                          <span className="dash-evidence-icon">◆</span>
+                          {evidence} provision point{evidence !== 1 ? 's' : ''} with evidence
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* By category — category cards */}
+              {overviewMode === 'category' && !selectedCategory && (
+                <div className="dash-grid">
+                  {PROVISION_POINT_CATEGORIES.map(cat => {
+                    const ppIds    = Object.entries(ppCategoryMap).filter(([, c]) => c === cat).map(([id]) => id)
+                    const total    = ppIds.length
+                    const inPlace  = ppIds.filter(id => allStatuses[id] === 'in_place').length
+                    const inProg   = ppIds.filter(id => allStatuses[id] === 'in_progress').length
+                    const notIn    = ppIds.filter(id => allStatuses[id] === 'not_in_place').length
+                    const answered = inPlace + inProg + notIn
+                    const pct      = total ? Math.round((answered / total) * 100) : 0
+                    return (
+                      <button key={cat} type="button" className="dash-card" onClick={() => setSelectedCategory(cat)}>
+                        <h3 className="dash-card-name">{cat}</h3>
+                        <div className="dash-progress">
+                          <div className="dash-progress-track">
+                            <div className="dash-progress-fill" style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="dash-progress-label">{answered}/{total}</span>
+                        </div>
+                        <div className="dash-counts">
+                          <span className="dash-count dash-count--green">{inPlace} in place</span>
+                          <span className="dash-count dash-count--amber">{inProg} in progress</span>
+                          <span className="dash-count dash-count--red">{notIn} not in place</span>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* By category — provision point list */}
+              {overviewMode === 'category' && selectedCategory && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategory(null)}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      marginBottom: 16, padding: '6px 14px',
+                      border: '1.5px solid #e2e8f0', borderRadius: 8,
+                      background: '#fff', color: '#475569',
+                      fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer',
+                    }}
+                  >
+                    ← Back
+                  </button>
+                  <h2 style={{ fontSize: '1.05rem', fontWeight: 600, color: '#1e293b', marginBottom: 12 }}>{selectedCategory}</h2>
+                  <div className="provision-list">
+                    {Object.entries(ppCategoryMap)
+                      .filter(([, c]) => c === selectedCategory)
+                      .map(([ppId]) => {
+                        const info   = ppInfoMap[ppId]
+                        if (!info) return null
+                        const status = allStatuses[ppId]
+                        const pp     = { id: ppId, label: info.label }
+                        return (
+                          <div key={ppId} className="provision-item">
+                            <div className="provision-row">
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <span className="provision-name">{info.label}</span>
+                                <div style={{ display: 'flex', gap: 6, marginTop: 3 }}>
+                                  <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{info.domainName}</span>
+                                  <span style={{ fontSize: '0.72rem', color: '#cbd5e1' }}>·</span>
+                                  <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{info.subDomainName}</span>
+                                </div>
+                              </div>
+                              <div className="provision-actions">
+                                <div className="status-group">
+                                  {STATUSES.map(s => (
+                                    <button
+                                      key={s}
+                                      type="button"
+                                      className={`status-btn status-btn--${s.replace(/_/g, '-')}${status === s ? ' active' : ''}`}
+                                      onClick={() => handleStatusChange(ppId, s)}
+                                    >
+                                      {STATUS_LABELS[s]}
+                                    </button>
+                                  ))}
+                                </div>
+                                <button type="button" className="evidence-btn" onClick={() => openModal(pp)}>
+                                  Add Evidence
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                  </div>
+                </div>
+              )}
             </div>
           )
         })()}
