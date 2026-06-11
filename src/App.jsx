@@ -34,6 +34,16 @@ const INDICATOR_TYPES = [
   { value: 'external_service',   label: 'External Service' },
   { value: 'curriculum_element', label: 'Curriculum Element' },
 ]
+const PROVISION_POINT_CATEGORIES = [
+  'Named Person',
+  'Policy / Published Document',
+  'Internal Process / System',
+  'Staff Training & CPD',
+  'Direct Provision for Students',
+  'Monitoring & Data',
+  'External Partnership',
+  'Family & Community Engagement',
+]
 const PROVISION_CATEGORIES = [
   { value: 'student_facing',    label: 'Student-Facing Intervention' },
   { value: 'policy_structural', label: 'Policy / Structural' },
@@ -56,17 +66,6 @@ const EV_GROUPS = [
   { value: 'grp_lac',  label: 'LAC' },
   { value: 'grp_wwc',  label: 'White Working Class' },
   { value: 'grp_other', label: 'Other' },
-]
-
-const PROVISION_POINT_CATEGORIES = [
-  'Named Person',
-  'Policy / Published Document',
-  'Internal Process / System',
-  'Staff Training & CPD',
-  'Direct Provision for Students',
-  'Monitoring & Data',
-  'External Partnership',
-  'Family & Community Engagement',
 ]
 
 // entries holds status + group flags; evidence detail lives in evidence_entries (nested)
@@ -129,18 +128,517 @@ const ANALYTICS_TABS = [
   { id: 'reach',     label: 'Group Reach' },
 ]
 
-function AnalyticsView({ school, supabase: sb, schoolName = '' }) {
+// ── Sidebar domain colours (spec-provided) ────────────────────────────
+const SIDEBAR_DOMAIN_COLOURS = {
+  SEND:       '#7F77DD',
+  Equity:     '#BA7517',
+  Attendance: '#D4537E',
+  Enrichment: '#1D9E75',
+  Belonging:  '#D85A30',
+  Wellbeing:  '#639922',
+}
+function sidebarDomainColour(name) {
+  for (const [key, colour] of Object.entries(SIDEBAR_DOMAIN_COLOURS)) {
+    if (name.includes(key)) return colour
+  }
+  return '#64748b'
+}
+
+function Sidebar({
+  domains, allSubDomains, ppDomainMap, allStatuses, schoolName,
+  selectedDomain, setSelectedDomain,
+  sidebarDomainsOpen, setSidebarDomainsOpen,
+  sidebarCatsOpen, setSidebarCatsOpen,
+  sidebarAnalyticsOpen, setSidebarAnalyticsOpen,
+  setAnalyticsTabRequest,
+  onGenerateReport,
+  analyticsTabRequest,
+  overviewMode, selectedCategory,
+  setOverviewMode, setSelectedCategory,
+}) {
+  const totalPP   = Object.keys(ppDomainMap).length
+  const answered  = Object.values(allStatuses).filter(Boolean).length
+
+  const isHome    = !selectedDomain
+  const isReport  = selectedDomain === 'report-builder'
+  const isDomain  = (id) => selectedDomain === id
+  const isAnalytics = selectedDomain === 'analytics'
+  const isAnalyticsTab = (id) => isAnalytics && analyticsTabRequest === id
+
+  const [hovered, setHovered] = useState(null)
+
+  function navBtn({ id, icon, label, active, onClick, indent = false, teal = false }) {
+    const isHovered = hovered === id
+    return (
+      <button
+        key={id}
+        type="button"
+        onMouseEnter={() => setHovered(id)}
+        onMouseLeave={() => setHovered(null)}
+        onClick={onClick}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 9,
+          width: '100%', padding: indent ? '7px 14px 7px 34px' : '8px 14px',
+          border: 'none', borderLeft: `3px solid ${active ? '#1D9E75' : 'transparent'}`,
+          background: teal
+            ? (active || isHovered) ? '#E1F5EE' : '#f6fefb'
+            : active ? '#f0fdf4' : isHovered ? '#f8fafc' : 'transparent',
+          color: teal ? '#0F6E56' : active ? '#1e293b' : '#334155',
+          fontSize: indent ? '0.78rem' : '0.83rem',
+          fontWeight: active ? 600 : teal ? 600 : 400,
+          cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+          transition: 'background 0.12s',
+        }}
+      >
+        {!indent && <i className={`ti ${icon}`} style={{ fontSize: '1rem', flexShrink: 0, color: teal ? '#0F6E56' : active ? '#1D9E75' : '#94a3b8', lineHeight: 1 }} />}
+        <span style={{ flex: 1 }}>{label}</span>
+      </button>
+    )
+  }
+
+  function expanderBtn({ id, icon, label, open, onToggle, active }) {
+    const isHovered = hovered === id
+    return (
+      <button
+        type="button"
+        onMouseEnter={() => setHovered(id)}
+        onMouseLeave={() => setHovered(null)}
+        onClick={onToggle}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 9,
+          width: '100%', padding: '8px 14px',
+          border: 'none', borderLeft: `3px solid ${active ? '#1D9E75' : 'transparent'}`,
+          background: active ? '#f0fdf4' : isHovered ? '#f8fafc' : 'transparent',
+          color: active ? '#1e293b' : '#334155',
+          fontSize: '0.83rem', fontWeight: active ? 600 : 400,
+          cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+          transition: 'background 0.12s',
+        }}
+      >
+        <i className={`ti ${icon}`} style={{ fontSize: '1rem', flexShrink: 0, color: active ? '#1D9E75' : '#94a3b8', lineHeight: 1 }} />
+        <span style={{ flex: 1 }}>{label}</span>
+        <i className={`ti ${open ? 'ti-chevron-up' : 'ti-chevron-down'}`}
+           style={{ fontSize: '0.7rem', color: '#b0bec5', lineHeight: 1 }} />
+      </button>
+    )
+  }
+
+  return (
+    <aside style={{
+      width: 220, flexShrink: 0,
+      borderRight: '0.5px solid #e2e8f0',
+      background: '#fff',
+      display: 'flex', flexDirection: 'column',
+      overflowY: 'auto',
+    }}>
+      {/* Logo area */}
+      <div style={{ padding: '16px 16px 14px', borderBottom: '0.5px solid #e2e8f0', flexShrink: 0 }}>
+        <p style={{ fontSize: 13, fontWeight: 500, color: '#1e293b', lineHeight: 1.3 }}>
+          {schoolName || 'Inclusion Dashboard'}
+        </p>
+        {schoolName && (
+          <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>Inclusion Dashboard</p>
+        )}
+      </div>
+
+      {/* Nav */}
+      <nav style={{ flex: 1, paddingTop: 6 }}>
+        {/* Home */}
+        {navBtn({ id: 'home', icon: 'ti-home', label: 'Home', active: isHome,
+          onClick: () => { setSelectedDomain(''); setAnalyticsTabRequest(null); setOverviewMode('domain'); setSelectedCategory(null) } })}
+
+        {/* Domains */}
+        {expanderBtn({
+          id: 'domains-expander', icon: 'ti-layout-grid', label: 'Domains',
+          open: sidebarDomainsOpen, onToggle: () => setSidebarDomainsOpen(v => !v),
+          active: !!(selectedDomain && selectedDomain !== 'analytics' && selectedDomain !== '__report__' && !sidebarDomainsOpen),
+        })}
+        {sidebarDomainsOpen && domains.map(d => {
+          const colour = sidebarDomainColour(d.name)
+          const active = isDomain(d.id)
+          const isH = hovered === `domain-${d.id}`
+          return (
+            <button key={d.id} type="button"
+              onMouseEnter={() => setHovered(`domain-${d.id}`)}
+              onMouseLeave={() => setHovered(null)}
+              onClick={() => { setSelectedDomain(d.id); setAnalyticsTabRequest(null) }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                width: '100%', padding: '7px 14px 7px 34px',
+                border: 'none', borderLeft: `3px solid ${active ? '#1D9E75' : 'transparent'}`,
+                background: active ? '#f0fdf4' : isH ? '#f8fafc' : 'transparent',
+                color: active ? '#1e293b' : '#334155',
+                fontSize: '0.78rem', fontWeight: active ? 600 : 400,
+                cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                transition: 'background 0.12s',
+              }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: colour, flexShrink: 0 }} />
+              {d.name}
+            </button>
+          )
+        })}
+
+        {/* Categories */}
+        {expanderBtn({
+          id: 'cats-expander', icon: 'ti-tag', label: 'Categories',
+          open: sidebarCatsOpen, onToggle: () => setSidebarCatsOpen(v => !v),
+          active: !selectedDomain && overviewMode === 'category',
+        })}
+        {sidebarCatsOpen && PROVISION_POINT_CATEGORIES.map(cat => {
+          const active = !selectedDomain && overviewMode === 'category' && selectedCategory === cat
+          const isH = hovered === `cat-${cat}`
+          return (
+            <button key={cat} type="button"
+              onMouseEnter={() => setHovered(`cat-${cat}`)}
+              onMouseLeave={() => setHovered(null)}
+              onClick={() => { setSelectedDomain(''); setAnalyticsTabRequest(null); setOverviewMode('category'); setSelectedCategory(cat) }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                width: '100%', padding: '7px 14px 7px 34px',
+                border: 'none', borderLeft: `3px solid ${active ? '#1D9E75' : 'transparent'}`,
+                background: active ? '#f0fdf4' : isH ? '#f8fafc' : 'transparent',
+                color: active ? '#1e293b' : '#334155',
+                fontSize: '0.78rem', fontWeight: active ? 600 : 400,
+                cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                transition: 'background 0.12s',
+              }}>
+              {cat}
+            </button>
+          )
+        })}
+
+        {/* Analytics */}
+        {expanderBtn({
+          id: 'analytics-expander', icon: 'ti-chart-bar', label: 'Analytics',
+          open: sidebarAnalyticsOpen, onToggle: () => setSidebarAnalyticsOpen(v => !v),
+          active: isAnalytics,
+        })}
+        {sidebarAnalyticsOpen && ANALYTICS_TABS.map(t => {
+          const active = isAnalyticsTab(t.id)
+          const isH = hovered === `atab-${t.id}`
+          return (
+            <button key={t.id} type="button"
+              onMouseEnter={() => setHovered(`atab-${t.id}`)}
+              onMouseLeave={() => setHovered(null)}
+              onClick={() => { setSelectedDomain('analytics'); setAnalyticsTabRequest(t.id) }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                width: '100%', padding: '7px 14px 7px 34px',
+                border: 'none', borderLeft: `3px solid ${active ? '#1D9E75' : 'transparent'}`,
+                background: active ? '#f0fdf4' : isH ? '#f8fafc' : 'transparent',
+                color: active ? '#1e293b' : '#334155',
+                fontSize: '0.78rem', fontWeight: active ? 600 : 400,
+                cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                transition: 'background 0.12s',
+              }}>
+              {t.label}
+            </button>
+          )
+        })}
+
+        {/* Divider */}
+        <div style={{ height: '0.5px', background: '#e2e8f0', margin: '6px 0' }} />
+
+        {/* Generate Report */}
+        {navBtn({
+          id: 'generate-report', icon: 'ti-file-export',
+          label: 'Generate Report',
+          active: isReport, teal: true,
+          onClick: onGenerateReport,
+        })}
+      </nav>
+
+      {/* Footer */}
+      <div style={{ borderTop: '0.5px solid #e2e8f0', padding: '10px 16px', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <i className="ti ti-circle-check" style={{ fontSize: '0.8rem', color: '#1D9E75' }} />
+          <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+            {answered} of {totalPP} recorded
+          </span>
+        </div>
+      </div>
+    </aside>
+  )
+}
+
+// ── ReportBuilder shared mini-components ─────────────────────────────
+function RBIconBox({ bg, color, icon }) {
+  return (
+    <div style={{ width: 32, height: 32, borderRadius: 8, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <i className={`ti ${icon}`} style={{ color, fontSize: '1rem', lineHeight: 1 }} />
+    </div>
+  )
+}
+function RBBadge({ text, included }) {
+  const always = included === undefined
+  return (
+    <span style={{
+      fontSize: '0.7rem', fontWeight: 600, padding: '3px 9px', borderRadius: 20, flexShrink: 0, whiteSpace: 'nowrap',
+      background: always || included ? '#E1F5EE' : '#f1f5f9',
+      color:      always || included ? '#0F6E56' : '#64748b',
+    }}>{text}</span>
+  )
+}
+function RBToggle({ value, onChange }) {
+  return (
+    <button type="button" onClick={() => onChange(!value)} style={{
+      width: 36, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer',
+      background: value ? '#1D9E75' : '#cbd5e1', position: 'relative',
+      transition: 'background 0.2s', flexShrink: 0,
+    }}>
+      <span style={{
+        position: 'absolute', top: 2, left: value ? 18 : 2,
+        width: 16, height: 16, borderRadius: '50%', background: '#fff',
+        transition: 'left 0.2s', display: 'block',
+      }} />
+    </button>
+  )
+}
+function RBChartToggle({ options, value, onChange }) {
+  return (
+    <div style={{ display: 'flex', gap: 3, background: '#f1f5f9', borderRadius: 6, padding: 3, alignSelf: 'flex-start' }}>
+      {options.map(opt => (
+        <button key={opt.value} type="button" onClick={() => onChange(opt.value)} style={{
+          padding: '4px 11px', border: 'none', borderRadius: 4, fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit',
+          background: value === opt.value ? '#fff' : 'transparent',
+          color:      value === opt.value ? '#1e293b' : '#64748b',
+          fontWeight: value === opt.value ? 600 : 400,
+          boxShadow:  value === opt.value ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+        }}>{opt.label}</button>
+      ))}
+    </div>
+  )
+}
+
+function ReportBuilder({ schoolName = '', allSubDomains = [] }) {
+  const [includeEquity,   setIncludeEquity]   = useState(true)
+  const [equityChart,     setEquityChart]     = useState('table')
+  const [includeFunding,  setIncludeFunding]  = useState(true)
+  const [fundingChart,    setFundingChart]    = useState('bar')
+  const [includeOutcomes, setIncludeOutcomes] = useState(true)
+  const [outcomeMode,     setOutcomeMode]     = useState('all')
+  const [outcomeSelected, setOutcomeSelected] = useState([])
+  const [includeReach,    setIncludeReach]    = useState(false)
+  const [reachChart,      setReachChart]      = useState('table')
+
+  const domainPills    = ['SEND Support & Needs', 'Equity & Disadvantage', 'Attendance & Engagement', 'Enrichment', 'Belonging', 'Wellbeing']
+  const groupPills     = ['Pupil Premium', 'SEND', 'FSM', 'EAL', 'LAC', 'White Working Class']
+  const subDomainPills = [...new Set(allSubDomains.map(sd => sd.name))].sort()
+
+  function changeMode(mode) { setOutcomeMode(mode); setOutcomeSelected([]) }
+  function togglePill(val)  { setOutcomeSelected(prev => prev.includes(val) ? prev.filter(x => x !== val) : [...prev, val]) }
+
+  const pillOptions = outcomeMode === 'domain' ? domainPills : outcomeMode === 'group' ? groupPills : outcomeMode === 'subdomain' ? subDomainPills : []
+
+  const outcomesPreview = (() => {
+    if (outcomeMode === 'all') return 'Report will include all outcomes across all domains'
+    const noun = outcomeMode === 'domain' ? 'domains' : outcomeMode === 'group' ? 'student groups' : 'sub-domains'
+    if (outcomeSelected.length === 0) return `Select one or more ${noun}`
+    return `Report will include outcomes for ${outcomeSelected.join(', ')}`
+  })()
+
+  const outcomeSuffix = outcomeMode !== 'all' && outcomeSelected.length > 0 ? ` (${outcomeSelected.join(', ')})` : ''
+  const includedSections = [
+    'domain readiness',
+    ...(includeEquity   ? ['enrichment equity']               : []),
+    ...(includeFunding  ? ['funding & cost']                   : []),
+    ...(includeOutcomes ? [`outcomes & impact${outcomeSuffix}`]: []),
+    ...(includeReach    ? ['group reach']                      : []),
+  ]
+
+  function handleGeneratePdf() {
+    generateReport({
+      schoolCtx: {}, readinessData: [], upcomingReviews: [], equityData: [],
+      fundingSourceData: [], fundingDomainData: [], totalCost: 0,
+      allEvidence: [], domains: [], schoolName,
+      options: { includeEquity, equityChart, includeFunding, fundingChart, includeOutcomes, outcomeMode, outcomeSelected, includeReach, reachChart },
+    })
+  }
+
+  const card = { background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '14px 18px', marginBottom: 10 }
+  const row  = { display: 'flex', alignItems: 'center', gap: 12 }
+  const body = { marginTop: 14, paddingTop: 14, borderTop: '1px solid #f1f5f9' }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+      {/* Header */}
+      <div style={{ paddingBottom: 16, borderBottom: '1px solid #e2e8f0', marginBottom: 20 }}>
+        <h1 style={{ fontSize: 15, fontWeight: 500, color: '#1e293b', marginBottom: 4 }}>Report builder</h1>
+        <p style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5 }}>Choose what to include and how to present it. School context and domain readiness are always included.</p>
+      </div>
+
+      {/* Section cards */}
+      <div style={{ flex: 1, paddingBottom: 72 }}>
+
+        {/* 1. Domain Readiness */}
+        <div style={card}>
+          <div style={row}>
+            <RBIconBox bg="#E1F5EE" color="#0F6E56" icon="ti-circle-check" />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>Domain Readiness</p>
+              <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Overall % readiness, by-domain breakdown, upcoming reviews</p>
+            </div>
+            <RBBadge text="Always included" />
+          </div>
+        </div>
+
+        {/* 2. Enrichment Equity */}
+        <div style={card}>
+          <div style={row}>
+            <RBIconBox bg="#E1F5EE" color="#0F6E56" icon="ti-scale" />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>Enrichment Equity</p>
+              <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Group coverage across enrichment sub-domains</p>
+            </div>
+            <RBBadge text={includeEquity ? 'Included' : 'Not included'} included={includeEquity} />
+            <RBToggle value={includeEquity} onChange={setIncludeEquity} />
+          </div>
+          {includeEquity && (
+            <div style={body}>
+              <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 8 }}>Chart style</p>
+              <RBChartToggle options={[{value:'table',label:'Table'},{value:'radar',label:'Radar'}]} value={equityChart} onChange={setEquityChart} />
+            </div>
+          )}
+        </div>
+
+        {/* 3. Funding & Cost */}
+        <div style={card}>
+          <div style={row}>
+            <RBIconBox bg="#E6F1FB" color="#185FA5" icon="ti-currency-pound" />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>Funding & Cost</p>
+              <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Total spend, per-pupil costs, by domain and funding stream</p>
+            </div>
+            <RBBadge text={includeFunding ? 'Included' : 'Not included'} included={includeFunding} />
+            <RBToggle value={includeFunding} onChange={setIncludeFunding} />
+          </div>
+          {includeFunding && (
+            <div style={body}>
+              <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 8 }}>Chart style</p>
+              <RBChartToggle options={[{value:'bar',label:'Bar chart'},{value:'table',label:'Table'}]} value={fundingChart} onChange={setFundingChart} />
+            </div>
+          )}
+        </div>
+
+        {/* 4. Outcomes & Impact */}
+        <div style={card}>
+          <div style={row}>
+            <RBIconBox bg="#FAEEDA" color="#854F0B" icon="ti-target" />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>Outcomes & Impact</p>
+              <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Intended outcomes and evidence of impact</p>
+            </div>
+            <RBBadge text={includeOutcomes ? 'Included' : 'Not included'} included={includeOutcomes} />
+            <RBToggle value={includeOutcomes} onChange={setIncludeOutcomes} />
+          </div>
+          {includeOutcomes && (
+            <div style={body}>
+              <div style={{ marginBottom: 14 }}>
+                <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 8 }}>Filter by</p>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {[['all','All'],['domain','Domain'],['group','Student group'],['subdomain','Sub-domain']].map(([mode, label]) => {
+                    const active = outcomeMode === mode
+                    return (
+                      <button key={mode} type="button" onClick={() => changeMode(mode)} style={{
+                        padding: '5px 12px', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit',
+                        border: `1.5px solid ${active ? '#1D9E75' : '#e2e8f0'}`,
+                        background: active ? '#E1F5EE' : '#fff',
+                        color:      active ? '#0F6E56' : '#64748b',
+                        fontSize: '0.78rem', fontWeight: active ? 600 : 400,
+                      }}>{label}</button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {outcomeMode !== 'all' && pillOptions.length > 0 && (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                    {pillOptions.map(opt => {
+                      const sel = outcomeSelected.includes(opt)
+                      return (
+                        <button key={opt} type="button" onClick={() => togglePill(opt)} style={{
+                          padding: '4px 11px', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit',
+                          border: `1.5px solid ${sel ? '#1D9E75' : '#e2e8f0'}`,
+                          background: sel ? '#E1F5EE' : '#fff',
+                          color:      sel ? '#0F6E56' : '#475569',
+                          fontSize: '0.75rem', fontWeight: sel ? 600 : 400,
+                        }}>{opt}</button>
+                      )
+                    })}
+                  </div>
+                  <button type="button" onClick={() => setOutcomeSelected([])} style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    fontSize: '0.75rem', color: '#1D9E75', padding: 0, fontFamily: 'inherit',
+                  }}>Clear selection</button>
+                </div>
+              )}
+
+              <div style={{ background: '#f8fafc', borderRadius: 8, padding: '9px 12px', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <i className="ti ti-info-circle" style={{ color: '#1D9E75', fontSize: '0.9rem', flexShrink: 0, marginTop: 1 }} />
+                <p style={{ fontSize: '0.78rem', color: '#475569', lineHeight: 1.5 }}>{outcomesPreview}</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 5. Group Reach */}
+        <div style={card}>
+          <div style={row}>
+            <RBIconBox bg="#FBEAF0" color="#993556" icon="ti-users" />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>Group Reach</p>
+              <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Student numbers reached per group across all domains</p>
+            </div>
+            <RBBadge text={includeReach ? 'Included' : 'Not included'} included={includeReach} />
+            <RBToggle value={includeReach} onChange={setIncludeReach} />
+          </div>
+          {includeReach && (
+            <div style={body}>
+              <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 8 }}>Chart style</p>
+              <RBChartToggle options={[{value:'table',label:'Table'},{value:'bar',label:'Bar chart'}]} value={reachChart} onChange={setReachChart} />
+            </div>
+          )}
+        </div>
+
+      </div>
+
+      {/* Sticky generate bar */}
+      <div style={{
+        position: 'sticky', bottom: 0, background: '#fff',
+        borderTop: '1px solid #e2e8f0', padding: '12px 0',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16,
+      }}>
+        <p style={{ fontSize: '0.8rem', color: '#64748b', flex: 1, minWidth: 0 }}>
+          Includes {includedSections.length} section{includedSections.length !== 1 ? 's' : ''} — {includedSections.join(', ')}
+        </p>
+        <button type="button" onClick={handleGeneratePdf} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '9px 18px', borderRadius: 8, border: 'none',
+          background: '#1D9E75', color: '#fff',
+          fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0, fontFamily: 'inherit',
+        }}>
+          <i className="ti ti-download" style={{ fontSize: '0.9rem', lineHeight: 1 }} />
+          Generate PDF
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = null }) {
   const [analyticsEntries, setAnalyticsEntries] = useState([])
   const [domains, setDomains] = useState([])
   const [aLoading, setALoading] = useState(true)
   const [activeTab, setActiveTab] = useState('readiness')
+
+  useEffect(() => {
+    if (tabRequest) setActiveTab(tabRequest)
+  }, [tabRequest])
   const [schoolCtx, setSchoolCtx] = useState({ totalPupils: 0, ppCount: 0, sendCount: 0, fsmCount: 0, ealCount: 0, lacCount: 0, wwcCount: 0 })
   const [ctxLoading, setCtxLoading] = useState(true)
   const [editingCtx, setEditingCtx] = useState(false)
   const [ctxDraft, setCtxDraft] = useState({})
-  const [filterMode, setFilterMode]     = useState('domain')
-  const [activeFilter, setActiveFilter] = useState(null)
-  const [groupFilters, setGroupFilters] = useState([])
 
   useEffect(() => {
     setALoading(true)
@@ -579,20 +1077,6 @@ function AnalyticsView({ school, supabase: sb, schoolName = '' }) {
         }
       })
 
-    const filterOptions = filterMode === 'domain'
-      ? [...new Set(allItems.map(i => i.domain).filter(Boolean))]
-      : filterMode === 'group'
-      ? [...new Set(allItems.flatMap(i => i.groups))]
-      : [...new Set(allItems.map(i => i.subDomain).filter(Boolean))]
-
-    const filtered = filterMode === 'group' && groupFilters.length > 0
-      ? allItems.filter(i => i.groups.some(g => groupFilters.includes(g)))
-      : activeFilter
-        ? filterMode === 'domain'
-          ? allItems.filter(i => i.domain === activeFilter)
-          : allItems.filter(i => i.subDomain === activeFilter)
-        : allItems
-
     if (allItems.length === 0) return (
       <ACard>
         <ASectionTitle sub="Intended outcomes and evidence of impact">Outcomes & Impact</ASectionTitle>
@@ -601,67 +1085,8 @@ function AnalyticsView({ school, supabase: sb, schoolName = '' }) {
     )
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', borderRadius: 8, padding: 3, alignSelf: 'flex-start' }}>
-          {[['domain','By Domain'],['group','By Group'],['subdomain','By Sub-domain']].map(([mode, label]) => (
-            <button key={mode} type="button"
-              onClick={() => { setFilterMode(mode); setActiveFilter(null); setGroupFilters([]) }}
-              style={{
-                padding: '5px 12px', border: 'none', borderRadius: 6, fontSize: '0.78rem', cursor: 'pointer',
-                fontWeight:  filterMode === mode ? 600 : 400,
-                color:       filterMode === mode ? '#1e293b' : '#64748b',
-                background:  filterMode === mode ? '#fff' : 'transparent',
-                boxShadow:   filterMode === mode ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              }}>
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          <button type="button" onClick={() => { setActiveFilter(null); setGroupFilters([]) }}
-            style={{
-              padding: '4px 12px', borderRadius: 20, border: '1.5px solid', cursor: 'pointer', fontSize: '0.78rem',
-              borderColor: !activeFilter && groupFilters.length === 0 ? '#3b82f6' : '#e2e8f0',
-              background:  !activeFilter && groupFilters.length === 0 ? '#eff6ff' : '#fff',
-              color:       !activeFilter && groupFilters.length === 0 ? '#1d4ed8' : '#64748b',
-              fontWeight:  !activeFilter && groupFilters.length === 0 ? 600 : 400,
-            }}>
-            All
-          </button>
-          {filterOptions.map(opt => {
-            const isActive = filterMode === 'group'
-              ? groupFilters.includes(opt)
-              : activeFilter === opt
-            return (
-              <button key={opt} type="button"
-                onClick={() => {
-                  if (filterMode === 'group') {
-                    setGroupFilters(prev => prev.includes(opt) ? prev.filter(x => x !== opt) : [...prev, opt])
-                  } else {
-                    setActiveFilter(opt === activeFilter ? null : opt)
-                  }
-                }}
-                style={{
-                  padding: '4px 12px', borderRadius: 20, border: '1.5px solid', cursor: 'pointer', fontSize: '0.78rem',
-                  borderColor: isActive ? '#3b82f6' : '#e2e8f0',
-                  background:  isActive ? '#eff6ff' : '#fff',
-                  color:       isActive ? '#1d4ed8' : '#64748b',
-                  fontWeight:  isActive ? 600 : 400,
-                }}>
-                {opt}
-              </button>
-            )
-          })}
-        </div>
-
-        <p style={{ fontSize: '0.78rem', color: '#94a3b8' }}>{filtered.length} outcome{filtered.length !== 1 ? 's' : ''}</p>
-
-        {filtered.length === 0
-          ? <ACard><p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No outcomes match this filter.</p></ACard>
-          : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {filtered.map((item, i) => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {allItems.map((item, i) => (
                 <ACard key={i}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: item.intended || item.impact ? 12 : 0 }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, flex: 1, minWidth: 0 }}>
@@ -730,10 +1155,7 @@ function AnalyticsView({ school, supabase: sb, schoolName = '' }) {
                     </div>
                   )}
                 </ACard>
-              ))}
-            </div>
-          )
-        }
+        ))}
       </div>
     )
   }
@@ -996,32 +1418,6 @@ function AnalyticsView({ school, supabase: sb, schoolName = '' }) {
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={() => generateReport({
-            schoolCtx,
-            readinessData,
-            upcomingReviews,
-            equityData,
-            fundingSourceData,
-            fundingDomainData,
-            totalCost,
-            allEvidence,
-            domains,
-            filterMode,
-            activeFilter,
-            groupFilters,
-          })}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '7px 16px', borderRadius: 7, border: 'none',
-            background: '#1e3a5f', color: '#fff',
-            fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
-            fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0,
-          }}
-        >
-          ↓ Generate Report
-        </button>
       </div>
 
       {activeTab === 'readiness' && <DomainReadiness />}
@@ -1054,10 +1450,19 @@ export default function App() {
   const [domainTotals, setDomainTotals] = useState({})
   const [allStatuses, setAllStatuses] = useState({})
   const [allEvidenceCounts, setAllEvidenceCounts] = useState({})
+  const [allSubDomains, setAllSubDomains] = useState([])
   const [ppCategoryMap, setPpCategoryMap] = useState({})
-  const [ppInfoMap, setPpInfoMap] = useState({})
-  const [overviewMode, setOverviewMode] = useState('domain')
+  const [ppInfoMap, setPpInfoMap]         = useState({})
+  const [overviewMode, setOverviewMode]   = useState('domain')
   const [selectedCategory, setSelectedCategory] = useState(null)
+
+  // Sidebar state
+  const [sidebarDomainsOpen, setSidebarDomainsOpen] = useState(false)
+  const [sidebarCatsOpen, setSidebarCatsOpen] = useState(false)
+  const [sidebarAnalyticsOpen, setSidebarAnalyticsOpen] = useState(false)
+  const [analyticsTabRequest, setAnalyticsTabRequest] = useState(null)
+  const [expandedSDs, setExpandedSDs] = useState(new Set())
+  const [expandedCatDomains, setExpandedCatDomains] = useState(new Set())
 
   // MAT / role state
   const [userRole, setUserRole] = useState('contributor')
@@ -1100,7 +1505,8 @@ export default function App() {
       setDomainTotals({})
       setAllStatuses({})
       setAllEvidenceCounts({})
-     setPpCategoryMap({})
+      setAllSubDomains([])
+      setPpCategoryMap({})
       setPpInfoMap({})
       setOverviewMode('domain')
       setSelectedCategory(null)
@@ -1143,13 +1549,15 @@ export default function App() {
       .order('display_order')
       .then(({ data, error }) => {
         if (error) { console.error('Error loading domains:', error); return }
-        const newPpDomainMap = {}
-        const newDomainTotals = {}
-        const newPpCategoryMap = {}
-        const newPpInfoMap = {}
+        const newPpDomainMap    = {}
+        const newDomainTotals   = {}
+        const newSubDomains     = []
+        const newPpCategoryMap  = {}
+        const newPpInfoMap      = {}
         for (const domain of data ?? []) {
           let count = 0
           for (const sd of domain.sub_domains ?? []) {
+            newSubDomains.push({ id: sd.id, name: sd.name, domainId: domain.id, domainName: domain.name })
             for (const pp of sd.provision_points ?? []) {
               newPpDomainMap[pp.id] = domain.id
               newPpCategoryMap[pp.id] = pp.category ?? ''
@@ -1162,6 +1570,7 @@ export default function App() {
         setDomains((data ?? []).map(({ sub_domains: _sd, ...d }) => d))
         setPpDomainMap(newPpDomainMap)
         setDomainTotals(newDomainTotals)
+        setAllSubDomains(newSubDomains)
         setPpCategoryMap(newPpCategoryMap)
         setPpInfoMap(newPpInfoMap)
       })
@@ -1192,6 +1601,7 @@ export default function App() {
       setSubDomains([])
       setEntries({})
       setEvidenceEntries({})
+      setExpandedSDs(new Set())
       return
     }
 
@@ -1229,6 +1639,8 @@ export default function App() {
       setLoading(false)
     })
   }, [selectedSchool, selectedDomain])
+
+  useEffect(() => { setExpandedCatDomains(new Set()) }, [selectedCategory])
 
   useEffect(() => {
     document.body.style.overflow = modalPoint ? 'hidden' : ''
@@ -1457,7 +1869,6 @@ export default function App() {
       <header className="header">
         <div className="header-left">
           <h1 className="header-title">Inclusion Dashboard</h1>
-          {view === 'school' && schoolName && <p className="header-sub">{schoolName}</p>}
           {view === 'mat' && <p className="header-sub">MAT Dashboard</p>}
           {view === 'school_readonly' && (
             <p className="header-sub" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1479,98 +1890,33 @@ export default function App() {
         <button type="button" className="logout-btn" onClick={handleLogout}>Sign out</button>
       </header>
 
-      <main className="main">
+      <div className="app-body">
+        {view !== 'mat' && (
+          <Sidebar
+            domains={domains}
+            allSubDomains={allSubDomains}
+            ppDomainMap={ppDomainMap}
+            allStatuses={allStatuses}
+            schoolName={schoolName}
+            selectedDomain={selectedDomain}
+            setSelectedDomain={setSelectedDomain}
+            sidebarDomainsOpen={sidebarDomainsOpen}
+            setSidebarDomainsOpen={setSidebarDomainsOpen}
+            sidebarCatsOpen={sidebarCatsOpen}
+            setSidebarCatsOpen={setSidebarCatsOpen}
+            sidebarAnalyticsOpen={sidebarAnalyticsOpen}
+            setSidebarAnalyticsOpen={setSidebarAnalyticsOpen}
+            analyticsTabRequest={analyticsTabRequest}
+            setAnalyticsTabRequest={setAnalyticsTabRequest}
+            onGenerateReport={() => setSelectedDomain('report-builder')}
+            overviewMode={overviewMode}
+            selectedCategory={selectedCategory}
+            setOverviewMode={setOverviewMode}
+            setSelectedCategory={setSelectedCategory}
+          />
+        )}
 
-        <nav className="domain-nav" aria-label="Domains">
-          {/* MAT admin nav — shown instead of school nav when on MAT dashboard */}
-          {userRole === 'mat_admin' && view === 'mat' && (
-            <div className="domain-nav-row domain-nav-row--top">
-              <button
-                type="button"
-                className="domain-tab domain-tab--overview domain-tab--overview-active"
-                onClick={() => setView('mat')}
-              >
-                <span className="domain-tab-name">MAT Dashboard</span>
-              </button>
-            </div>
-          )}
-          {userRole === 'mat_admin' && view !== 'mat' && (
-            <div className="domain-nav-row domain-nav-row--top">
-              <button
-                type="button"
-                className="domain-tab domain-tab--overview"
-                onClick={handleBackToMat}
-              >
-                <span className="domain-tab-name">← MAT Dashboard</span>
-              </button>
-            </div>
-          )}
-
-          {/* Standard school nav — hidden when on MAT dashboard */}
-          {view !== 'mat' && (
-            <>
-              {/* Row 1: Overview */}
-              <div className="domain-nav-row domain-nav-row--top">
-                <button
-                  type="button"
-                  className={`domain-tab domain-tab--overview${!selectedDomain ? ' domain-tab--overview-active' : ''}`}
-                  onClick={() => setSelectedDomain('')}
-                >
-                  <span className="domain-tab-name">⊞ Overview</span>
-                  <span className="domain-tab-count">
-                    {Object.keys(ppDomainMap).length > 0
-                      ? `${Object.values(allStatuses).filter(Boolean).length} of ${Object.keys(ppDomainMap).length} indicators recorded`
-                      : '—'}
-                  </span>
-                </button>
-              </div>
-
-              {/* Row 2: Domain pills */}
-              <div className="domain-nav-row domain-nav-row--domains">
-                {domains.map((d, idx) => {
-                  const total = domainTotals[d.id] ?? 0
-                  const answered = Object.entries(ppDomainMap).filter(
-                    ([ppId, domId]) => domId === d.id && allStatuses[ppId]
-                  ).length
-                  const colour = DOMAIN_COLOUR_MAP.find(c => d.name.includes(c.key))?.colour
-                    ?? DOMAIN_COLOUR_MAP[idx % DOMAIN_COLOUR_MAP.length]?.colour
-                    ?? '#6366f1'
-                  const isActive = selectedDomain === d.id
-                  return (
-                    <button
-                      key={d.id}
-                      type="button"
-                      className="domain-tab domain-tab--coloured"
-                      style={{
-                        borderColor: isActive ? colour : 'transparent',
-                        borderLeftColor: colour,
-                        background: isActive ? colour : '#fff',
-                        boxShadow: isActive ? `0 2px 8px ${colour}40` : undefined,
-                      }}
-                      onClick={() => setSelectedDomain(d.id)}
-                    >
-                      <span className="domain-tab-name" style={{ color: isActive ? '#fff' : '#334155' }}>{d.name}</span>
-                      <span className="domain-tab-count" style={{ color: isActive ? 'rgba(255,255,255,0.7)' : '#94a3b8' }}>
-                        {answered}/{total}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-
-              {/* Row 3: Analytics */}
-              <div className="domain-nav-row domain-nav-row--bottom">
-                <button
-                  type="button"
-                  className={`domain-tab domain-tab--analytics${selectedDomain === 'analytics' ? ' domain-tab--analytics-active' : ''}`}
-                  onClick={() => setSelectedDomain('analytics')}
-                >
-                  <span className="domain-tab-name">◈ Analytics</span>
-                </button>
-              </div>
-            </>
-          )}
-        </nav>
+        <main className="main">
 
         {view === 'mat' && userMatId && (
           <MATDashboard
@@ -1625,37 +1971,22 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Toggle */}
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-                <button
-                  type="button"
-                  onClick={() => { setOverviewMode('domain'); setSelectedCategory(null) }}
-                  style={{
-                    padding: '6px 20px', fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer',
-                    border: '1.5px solid #e2e8f0', borderRight: 'none',
-                    borderRadius: '8px 0 0 8px',
-                    background: overviewMode === 'domain' ? '#6366f1' : '#fff',
-                    color:      overviewMode === 'domain' ? '#fff'    : '#475569',
-                  }}
-                >
-                  By domain
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setOverviewMode('category'); setSelectedCategory(null) }}
-                  style={{
-                    padding: '6px 20px', fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer',
-                    border: '1.5px solid #e2e8f0',
-                    borderRadius: '0 8px 8px 0',
-                    background: overviewMode === 'category' ? '#6366f1' : '#fff',
-                    color:      overviewMode === 'category' ? '#fff'    : '#475569',
-                  }}
-                >
-                  By category
-                </button>
+              {/* Mode toggle */}
+              <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', borderRadius: 8, padding: 3, alignSelf: 'flex-start' }}>
+                {[['domain','By domain'],['category','By category']].map(([mode, label]) => (
+                  <button key={mode} type="button"
+                    onClick={() => { setOverviewMode(mode); setSelectedCategory(null) }}
+                    style={{
+                      padding: '5px 14px', border: 'none', borderRadius: 6, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit',
+                      background: overviewMode === mode ? '#fff' : 'transparent',
+                      color:      overviewMode === mode ? '#1e293b' : '#64748b',
+                      fontWeight: overviewMode === mode ? 600 : 400,
+                      boxShadow:  overviewMode === mode ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                    }}>{label}</button>
+                ))}
               </div>
 
-              {/* By domain — existing cards */}
+              {/* By domain — domain cards */}
               {overviewMode === 'domain' && (
                 <div className="dash-grid">
                   {domains.map(d => {
@@ -1695,13 +2026,13 @@ export default function App() {
               {overviewMode === 'category' && !selectedCategory && (
                 <div className="dash-grid">
                   {PROVISION_POINT_CATEGORIES.map(cat => {
-                    const ppIds    = Object.entries(ppCategoryMap).filter(([, c]) => c === cat).map(([id]) => id)
-                    const total    = ppIds.length
-                    const inPlace  = ppIds.filter(id => allStatuses[id] === 'in_place').length
-                    const inProg   = ppIds.filter(id => allStatuses[id] === 'in_progress').length
-                    const notIn    = ppIds.filter(id => allStatuses[id] === 'not_in_place').length
+                    const ppIds  = Object.entries(ppCategoryMap).filter(([, c]) => c === cat).map(([id]) => id)
+                    const total  = ppIds.length
+                    const inPlace = ppIds.filter(id => allStatuses[id] === 'in_place').length
+                    const inProg  = ppIds.filter(id => allStatuses[id] === 'in_progress').length
+                    const notIn   = ppIds.filter(id => allStatuses[id] === 'not_in_place').length
                     const answered = inPlace + inProg + notIn
-                    const pct      = total ? Math.round((answered / total) * 100) : 0
+                    const pct    = total ? Math.round((answered / total) * 100) : 0
                     return (
                       <button key={cat} type="button" className="dash-card" onClick={() => setSelectedCategory(cat)}>
                         <h3 className="dash-card-name">{cat}</h3>
@@ -1722,155 +2053,387 @@ export default function App() {
                 </div>
               )}
 
-              {/* By category — provision point list */}
-              {overviewMode === 'category' && selectedCategory && (
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedCategory(null)}
-                    style={{
+              {/* By category — provision point list grouped by domain */}
+              {overviewMode === 'category' && selectedCategory && (() => {
+                const catPpIds = Object.entries(ppCategoryMap).filter(([, c]) => c === selectedCategory).map(([id]) => id)
+                const catTotal = catPpIds.length
+                const catInPlace = catPpIds.filter(id => allStatuses[id] === 'in_place').length
+
+                // Group by domain, preserving domain order from `domains` array
+                const domainGroupMap = {}
+                for (const ppId of catPpIds) {
+                  const info = ppInfoMap[ppId]
+                  if (!info) continue
+                  if (!domainGroupMap[info.domainId]) {
+                    domainGroupMap[info.domainId] = { domainId: info.domainId, domainName: info.domainName, pps: [] }
+                  }
+                  domainGroupMap[info.domainId].pps.push({ id: ppId, label: info.label })
+                }
+                const domainGroupList = domains
+                  .filter(d => domainGroupMap[d.id])
+                  .map(d => domainGroupMap[d.id])
+
+                function toggleCatDomain(domainId) {
+                  setExpandedCatDomains(prev => {
+                    const next = new Set(prev)
+                    if (next.has(domainId)) next.delete(domainId)
+                    else next.add(domainId)
+                    return next
+                  })
+                }
+
+                return (
+                  <div>
+                    {/* Back button */}
+                    <button type="button" onClick={() => setSelectedCategory(null)} style={{
                       display: 'inline-flex', alignItems: 'center', gap: 6,
                       marginBottom: 16, padding: '6px 14px',
                       border: '1.5px solid #e2e8f0', borderRadius: 8,
                       background: '#fff', color: '#475569',
-                      fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer',
-                    }}
-                  >
-                    ← Back
-                  </button>
-                  <h2 style={{ fontSize: '1.05rem', fontWeight: 600, color: '#1e293b', marginBottom: 12 }}>{selectedCategory}</h2>
-                  <div className="provision-list">
-                    {Object.entries(ppCategoryMap)
-                      .filter(([, c]) => c === selectedCategory)
-                      .map(([ppId]) => {
-                        const info   = ppInfoMap[ppId]
-                        if (!info) return null
-                        const status = allStatuses[ppId]
-                        const pp     = { id: ppId, label: info.label }
-                        return (
-                          <div key={ppId} className="provision-item">
-                            <div className="provision-row">
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <span className="provision-name">{info.label}</span>
-                                <div style={{ display: 'flex', gap: 6, marginTop: 3 }}>
-                                  <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{info.domainName}</span>
-                                  <span style={{ fontSize: '0.72rem', color: '#cbd5e1' }}>·</span>
-                                  <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{info.subDomainName}</span>
-                                </div>
-                              </div>
-                              <div className="provision-actions">
-                                <div className="status-group">
-                                  {STATUSES.map(s => (
-                                    <button
-                                      key={s}
-                                      type="button"
-                                      className={`status-btn status-btn--${s.replace(/_/g, '-')}${status === s ? ' active' : ''}`}
-                                      onClick={() => handleStatusChange(ppId, s)}
-                                    >
-                                      {STATUS_LABELS[s]}
-                                    </button>
-                                  ))}
-                                </div>
-                                <button type="button" className="evidence-btn" onClick={() => openModal(pp)}>
-                                  Add Evidence
-                                </button>
-                              </div>
+                      fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+                    }}>← Back</button>
+
+                    {/* Category header */}
+                    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b' }}>{selectedCategory}</span>
+                      <span style={{ fontSize: 12, color: '#94a3b8' }}>{catTotal} point{catTotal !== 1 ? 's' : ''} · {catInPlace} in place</span>
+                    </div>
+
+                    {/* Domain collapsible sections */}
+                    {domainGroupList.map(group => {
+                      const isExpanded = expandedCatDomains.has(group.domainId)
+                      const pps = group.pps
+                      const ppCount = pps.length
+                      const domColour = sidebarDomainColour(group.domainName)
+                      const grpInPlace   = pps.filter(p => allStatuses[p.id] === 'in_place').length
+                      const grpInProg    = pps.filter(p => allStatuses[p.id] === 'in_progress').length
+                      const grpUntouched = pps.filter(p => !allStatuses[p.id]).length
+                      const needsTrunc   = ppCount > 3 && !isExpanded
+                      const visiblePPs   = needsTrunc ? pps.slice(0, 3) : pps
+
+                      return (
+                        <div key={group.domainId} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, marginBottom: 8, overflow: 'hidden' }}>
+                          {/* Section header */}
+                          <button type="button" onClick={() => toggleCatDomain(group.domainId)}
+                            style={{
+                              width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                              padding: '11px 16px', background: 'none', border: 'none', cursor: 'pointer',
+                              borderBottom: '0.5px solid #e2e8f0', fontFamily: 'inherit', textAlign: 'left',
+                            }}>
+                            <i className="ti ti-chevron-down"
+                               style={{ fontSize: '0.8rem', color: '#94a3b8', flexShrink: 0, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: domColour, flexShrink: 0 }} />
+                            <span style={{ fontSize: 13, fontWeight: 500, color: '#1e293b' }}>{group.domainName}</span>
+                            <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 2 }}>({ppCount})</span>
+                            <div style={{ flex: 1 }} />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#334155' }}>
+                                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#1D9E75', display: 'inline-block', flexShrink: 0 }} />
+                                {grpInPlace}
+                              </span>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#334155' }}>
+                                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#BA7517', display: 'inline-block', flexShrink: 0 }} />
+                                {grpInProg}
+                              </span>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#94a3b8' }}>
+                                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#cbd5e1', display: 'inline-block', flexShrink: 0 }} />
+                                {grpUntouched}
+                              </span>
                             </div>
+                          </button>
+
+                          {/* Provision point rows */}
+                          <div style={{ position: 'relative' }}>
+                            {visiblePPs.map((pp, ppIdx) => {
+                              const status = allStatuses[pp.id]
+                              const evList = evidenceEntries[pp.id] ?? []
+                              const stripeColour = status === 'in_place' ? '#1D9E75' : status === 'in_progress' ? '#BA7517' : status === 'not_in_place' ? '#E24B4A' : '#e2e8f0'
+                              return (
+                                <div key={pp.id} className="pp-row"
+                                  style={{
+                                    borderLeft: `3px solid ${stripeColour}`,
+                                    borderTop: ppIdx > 0 ? '0.5px solid #f1f5f9' : 'none',
+                                    background: '#fff',
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', flexWrap: 'wrap' }}>
+                                    <span style={{ flex: 1, minWidth: 160, fontSize: 13, color: '#1e293b' }}>{pp.label}</span>
+                                    {evList.length > 0 && (
+                                      <span className="evidence-count-badge" title={`${evList.length} evidence ${evList.length === 1 ? 'entry' : 'entries'}`}>
+                                        {evList.length}
+                                      </span>
+                                    )}
+                                    <div className="provision-actions">
+                                      <div className="status-group">
+                                        {STATUSES.map(s => (
+                                          <button
+                                            key={s}
+                                            type="button"
+                                            className={`status-btn status-btn--${s.replace(/_/g, '-')}${status === s ? ' active' : ''}`}
+                                            onClick={readOnly ? undefined : () => handleStatusChange(pp.id, s)}
+                                            disabled={readOnly}
+                                            title={readOnly ? 'You do not have edit access to this school' : undefined}
+                                            style={readOnly ? { cursor: 'default', opacity: 0.65 } : undefined}
+                                          >
+                                            {STATUS_LABELS[s]}
+                                          </button>
+                                        ))}
+                                      </div>
+                                      {!readOnly && (
+                                        <button type="button" className="evidence-btn" onClick={() => openModal(pp)}>
+                                          Add Evidence
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {evList.length > 0 && (
+                                    <ul className="evidence-list">
+                                      {evList.map(ev => (
+                                        <li key={ev.id}>
+                                          <button type="button" className="evidence-list-item" onClick={() => openModal(pp, ev)}>
+                                            {ev.provision_name || 'Untitled entry'}
+                                          </button>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </div>
+                              )
+                            })}
+
+                            {/* Fade mask when truncated */}
+                            {needsTrunc && (
+                              <div style={{
+                                position: 'absolute', bottom: 0, left: 0, right: 0, height: 40,
+                                background: 'linear-gradient(to bottom, rgba(255,255,255,0), #fff)',
+                                pointerEvents: 'none',
+                              }} />
+                            )}
                           </div>
-                        )
-                      })}
+
+                          {/* Show all / Show less */}
+                          {needsTrunc && (
+                            <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', borderTop: '0.5px solid #f1f5f9' }}>
+                              <button type="button" onClick={() => toggleCatDomain(group.domainId)} style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                                fontSize: 12, color: '#1D9E75', padding: '4px 8px',
+                              }}>
+                                Show all {ppCount} points <i className="ti ti-chevron-down" style={{ fontSize: '0.75rem' }} />
+                              </button>
+                            </div>
+                          )}
+                          {isExpanded && ppCount > 3 && (
+                            <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', borderTop: '0.5px solid #f1f5f9' }}>
+                              <button type="button" onClick={() => toggleCatDomain(group.domainId)} style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                                fontSize: 12, color: '#1D9E75', padding: '4px 8px',
+                              }}>
+                                Show less <i className="ti ti-chevron-up" style={{ fontSize: '0.75rem' }} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
-                </div>
-              )}
+                )
+              })()}
             </div>
           )
         })()}
 
         {view !== 'mat' && selectedSchool && selectedDomain === 'analytics' && (
-          <AnalyticsView school={selectedSchool} supabase={supabase} schoolName={schoolName} />
+          <AnalyticsView school={selectedSchool} supabase={supabase} schoolName={schoolName} tabRequest={analyticsTabRequest} />
         )}
 
-        {view !== 'mat' && selectedSchool && selectedDomain && selectedDomain !== 'analytics' && (
+        {view !== 'mat' && selectedSchool && selectedDomain === 'report-builder' && (
+          <ReportBuilder schoolName={schoolName} allSubDomains={allSubDomains} />
+        )}
+
+        {view !== 'mat' && selectedSchool && selectedDomain && selectedDomain !== 'analytics' && selectedDomain !== 'report-builder' && (
           loading ? (
             <p className="state-msg">Loading…</p>
           ) : subDomains.length === 0 ? (
             <p className="state-msg">No provision points found for this domain.</p>
-          ) : (
-            <>
-              <div className="progress-wrap">
-                <div className="progress-track">
-                  <div className="progress-fill" style={{ width: `${progress}%` }} />
+          ) : (() => {
+            const currentDomain = domains.find(d => d.id === selectedDomain)
+            const domColour = currentDomain ? sidebarDomainColour(currentDomain.name) : '#64748b'
+            const domInPlace = allPoints.filter(p => entries[p.id]?.status === 'in_place').length
+            const domTotal = allPoints.length
+            const domPct = domTotal ? Math.round((domInPlace / domTotal) * 100) : 0
+            function toggleSD(sdId) {
+              setExpandedSDs(prev => {
+                const next = new Set(prev)
+                if (next.has(sdId)) next.delete(sdId)
+                else next.add(sdId)
+                return next
+              })
+            }
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                {/* Domain header */}
+                <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 18px', marginBottom: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: '50%', background: domColour, flexShrink: 0 }} />
+                      <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b' }}>{currentDomain?.name}</span>
+                    </div>
+                    <span style={{ fontSize: 12, color: '#94a3b8' }}>{domInPlace} of {domTotal} in place</span>
+                  </div>
+                  <div style={{ height: 4, borderRadius: 2, background: '#f1f5f9', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${domPct}%`, background: domColour, borderRadius: 2, transition: 'width 0.4s' }} />
+                  </div>
                 </div>
-                <span className="progress-label">{answeredCount} / {allPoints.length} answered</span>
-              </div>
 
-              {subDomains.map(sd => (
-                <section key={sd.id} className="subdomain">
-                  <h2 className="subdomain-title">{sd.name}</h2>
-                  <div className="provision-list">
-                    {sd.provision_points.map(pp => {
-                      const entry = entries[pp.id] ?? {}
-                      const evList = evidenceEntries[pp.id] ?? []
-                      return (
-                        <div key={pp.id} className="provision-item">
+                {/* Sub-domain collapsible sections */}
+                {subDomains.map(sd => {
+                  const isExpanded = expandedSDs.has(sd.id)
+                  const pps = sd.provision_points
+                  const ppCount = pps.length
+                  const sdInPlace   = pps.filter(p => entries[p.id]?.status === 'in_place').length
+                  const sdInProg    = pps.filter(p => entries[p.id]?.status === 'in_progress').length
+                  const sdUntouched = pps.filter(p => !entries[p.id]?.status).length
+                  const needsTrunc  = ppCount > 3 && !isExpanded
+                  const visiblePPs  = needsTrunc ? pps.slice(0, 3) : pps
 
-                          <div className="provision-row">
-                            <span className="provision-name">{pp.label}</span>
-                            {evList.length > 0 && (
-                              <span className="evidence-count-badge" title={`${evList.length} evidence ${evList.length === 1 ? 'entry' : 'entries'}`}>
-                                {evList.length}
-                              </span>
-                            )}
-                            <div className="provision-actions">
-                              <div className="status-group">
-                                {STATUSES.map(s => (
-                                  <button
-                                    key={s}
-                                    type="button"
-                                    className={`status-btn status-btn--${s.replace(/_/g, '-')}${entry.status === s ? ' active' : ''}`}
-                                    onClick={readOnly ? undefined : () => handleStatusChange(pp.id, s)}
-                                    disabled={readOnly}
-                                    title={readOnly ? 'You do not have edit access to this school' : undefined}
-                                    style={readOnly ? { cursor: 'default', opacity: 0.65 } : undefined}
-                                  >
-                                    {STATUS_LABELS[s]}
-                                  </button>
-                                ))}
+                  return (
+                    <div key={sd.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, marginBottom: 8, overflow: 'hidden' }}>
+                      {/* Section header — click anywhere to toggle */}
+                      <button type="button" onClick={() => toggleSD(sd.id)}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                          padding: '11px 16px', background: 'none', border: 'none', cursor: 'pointer',
+                          borderBottom: '0.5px solid #e2e8f0', fontFamily: 'inherit', textAlign: 'left',
+                        }}>
+                        <i className="ti ti-chevron-down"
+                           style={{ fontSize: '0.8rem', color: '#94a3b8', flexShrink: 0, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+                        <span style={{ fontSize: 13, fontWeight: 500, color: '#1e293b' }}>{sd.name}</span>
+                        <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 2 }}>({ppCount})</span>
+                        <div style={{ flex: 1 }} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#334155' }}>
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#1D9E75', display: 'inline-block', flexShrink: 0 }} />
+                            {sdInPlace}
+                          </span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#334155' }}>
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#BA7517', display: 'inline-block', flexShrink: 0 }} />
+                            {sdInProg}
+                          </span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#94a3b8' }}>
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#cbd5e1', display: 'inline-block', flexShrink: 0 }} />
+                            {sdUntouched}
+                          </span>
+                        </div>
+                      </button>
+
+                      {/* Provision point rows */}
+                      <div style={{ position: 'relative' }}>
+                        {visiblePPs.map((pp, ppIdx) => {
+                          const entry = entries[pp.id] ?? {}
+                          const evList = evidenceEntries[pp.id] ?? []
+                          const status = entry.status
+                          const stripeColour = status === 'in_place' ? '#1D9E75' : status === 'in_progress' ? '#BA7517' : status === 'not_in_place' ? '#E24B4A' : '#e2e8f0'
+                          return (
+                            <div key={pp.id} className="pp-row"
+                              style={{
+                                borderLeft: `3px solid ${stripeColour}`,
+                                borderTop: ppIdx > 0 ? '0.5px solid #f1f5f9' : 'none',
+                                background: '#fff',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', flexWrap: 'wrap' }}>
+                                <span style={{ flex: 1, minWidth: 160, fontSize: 13, color: '#1e293b' }}>{pp.label}</span>
+                                {evList.length > 0 && (
+                                  <span className="evidence-count-badge" title={`${evList.length} evidence ${evList.length === 1 ? 'entry' : 'entries'}`}>
+                                    {evList.length}
+                                  </span>
+                                )}
+                                <div className="provision-actions">
+                                  <div className="status-group">
+                                    {STATUSES.map(s => (
+                                      <button
+                                        key={s}
+                                        type="button"
+                                        className={`status-btn status-btn--${s.replace(/_/g, '-')}${entry.status === s ? ' active' : ''}`}
+                                        onClick={readOnly ? undefined : () => handleStatusChange(pp.id, s)}
+                                        disabled={readOnly}
+                                        title={readOnly ? 'You do not have edit access to this school' : undefined}
+                                        style={readOnly ? { cursor: 'default', opacity: 0.65 } : undefined}
+                                      >
+                                        {STATUS_LABELS[s]}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  {!readOnly && (
+                                    <button type="button" className="evidence-btn" onClick={() => openModal(pp)}>
+                                      Add Evidence
+                                    </button>
+                                  )}
+                                </div>
                               </div>
-                              {!readOnly && (
-                                <button type="button" className="evidence-btn" onClick={() => openModal(pp)}>
-                                  Add Evidence
-                                </button>
+                              {evList.length > 0 && (
+                                <ul className="evidence-list">
+                                  {evList.map(ev => (
+                                    <li key={ev.id}>
+                                      <button
+                                        type="button"
+                                        className="evidence-list-item"
+                                        onClick={() => openModal(pp, ev)}
+                                      >
+                                        {ev.provision_name || 'Untitled entry'}
+                                      </button>
+                                    </li>
+                                  ))}
+                                </ul>
                               )}
                             </div>
-                          </div>
+                          )
+                        })}
 
-                          {evList.length > 0 && (
-                            <ul className="evidence-list">
-                              {evList.map(ev => (
-                                <li key={ev.id}>
-                                  <button
-                                    type="button"
-                                    className="evidence-list-item"
-                                    onClick={() => openModal(pp, ev)}
-                                  >
-                                    {ev.provision_name || 'Untitled entry'}
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
+                        {/* Fade mask when truncated */}
+                        {needsTrunc && (
+                          <div style={{
+                            position: 'absolute', bottom: 0, left: 0, right: 0, height: 40,
+                            background: 'linear-gradient(to bottom, rgba(255,255,255,0), #fff)',
+                            pointerEvents: 'none',
+                          }} />
+                        )}
+                      </div>
 
+                      {/* Show all / Show less controls */}
+                      {needsTrunc && (
+                        <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', borderTop: '0.5px solid #f1f5f9' }}>
+                          <button type="button" onClick={() => toggleSD(sd.id)} style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                            fontSize: 12, color: '#1D9E75', padding: '4px 8px',
+                          }}>
+                            Show all {ppCount} points <i className="ti ti-chevron-down" style={{ fontSize: '0.75rem' }} />
+                          </button>
                         </div>
-                      )
-                    })}
-                  </div>
-                </section>
-              ))}
-            </>
-          )
+                      )}
+                      {isExpanded && ppCount > 3 && (
+                        <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', borderTop: '0.5px solid #f1f5f9' }}>
+                          <button type="button" onClick={() => toggleSD(sd.id)} style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                            fontSize: 12, color: '#1D9E75', padding: '4px 8px',
+                          }}>
+                            Show less <i className="ti ti-chevron-up" style={{ fontSize: '0.75rem' }} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })()
         )}
-      </main>
+        </main>
+      </div>
 
       {modalPoint && (
         <div className="modal-overlay" onClick={handleOverlayClick}>

@@ -30,14 +30,30 @@ body {
   opacity: 0.75;
 }
 
-/* ── Main layout ── */
+/* ── App shell layout ── */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── Main content area ── */
 .main {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 32px 24px 80px;
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px 32px 80px;
   display: flex;
   flex-direction: column;
   gap: 24px;
+  min-width: 0;
 }
 
 /* ── Selectors ── */
@@ -496,6 +512,11 @@ body {
 .evidence-btn:hover {
   background: #1e3a5f;
   color: #fff;
+}
+
+/* ── Collapsible provision point row ── */
+.pp-row:hover {
+  background: #f8fafc !important;
 }
 
 /* ── States ── */
