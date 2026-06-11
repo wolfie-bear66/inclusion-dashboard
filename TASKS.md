@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 11 June 2026
+Last updated: 11 June 2026 (Session 8)
 
 ---
 
@@ -37,6 +37,7 @@ Last updated: 11 June 2026
 - [x] **Categories sidebar fix** — wired to PROVISION_POINT_CATEGORIES (Named Person etc.) not sub-domains
 - [x] **Session 6 — School context on home screen** — extracted SchoolContextPanel to module scope, added to home screen above domain cards with overall readiness headline (large %, progress bar). schoolCtx state lifted to App level so both home and Analytics share the same data.
 - [x] **Session 7 — PDF logic update** — rewrote `generateReport.js` to respond to all Report Builder options: conditional sections (equity, funding, outcomes, reach), chart style choices (table vs radar fallback / bar vs table), outcomes filter by domain/group/subdomain, group reach table and bar chart. Dynamic page count — footer `Page X of N` now reflects actual pages. Old fixed 3-page structure replaced with flowing y-position layout.
+- [x] **Mobile / tablet sidebar** — added isMobile state (resize listener, <768px breakpoint), hamburger button (ti-menu-2) in main content area, overlay sidebar with backdrop (rgba 30% black), auto-close on nav item tap. Desktop behaviour unchanged.
 
 ---
 
@@ -45,8 +46,6 @@ Last updated: 11 June 2026
 ### Immediate
 
 - [ ] **Home screen redesign** — once school context is on the home screen (Session 6), refine the landing to feel like a proper entry point: 86% readiness headline, six domain RAG cards, school context panel, prompt toward domains with gaps.
-
-- [ ] **Mobile / tablet sidebar** — collapse sidebar to hamburger menu at narrower viewports. Important before any MAT demo on a tablet or shared link opened on a phone.
 
 ### Pilot and validation
 

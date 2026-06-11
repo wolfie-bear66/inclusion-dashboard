@@ -155,6 +155,7 @@ function Sidebar({
   analyticsTabRequest,
   overviewMode, selectedCategory,
   setOverviewMode, setSelectedCategory,
+  onClose,
 }) {
   const totalPP   = Object.keys(ppDomainMap).length
   const answered  = Object.values(allStatuses).filter(Boolean).length
@@ -245,7 +246,7 @@ function Sidebar({
       <nav style={{ flex: 1, paddingTop: 6 }}>
         {/* Home */}
         {navBtn({ id: 'home', icon: 'ti-home', label: 'Home', active: isHome,
-          onClick: () => { setSelectedDomain(''); setAnalyticsTabRequest(null); setOverviewMode('domain'); setSelectedCategory(null) } })}
+          onClick: () => { setSelectedDomain(''); setAnalyticsTabRequest(null); setOverviewMode('domain'); setSelectedCategory(null); onClose() } })}
 
         {/* Domains */}
         {expanderBtn({
@@ -261,7 +262,7 @@ function Sidebar({
             <button key={d.id} type="button"
               onMouseEnter={() => setHovered(`domain-${d.id}`)}
               onMouseLeave={() => setHovered(null)}
-              onClick={() => { setSelectedDomain(d.id); setAnalyticsTabRequest(null) }}
+              onClick={() => { setSelectedDomain(d.id); setAnalyticsTabRequest(null); onClose() }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 width: '100%', padding: '7px 14px 7px 34px',
@@ -291,7 +292,7 @@ function Sidebar({
             <button key={cat} type="button"
               onMouseEnter={() => setHovered(`cat-${cat}`)}
               onMouseLeave={() => setHovered(null)}
-              onClick={() => { setSelectedDomain(''); setAnalyticsTabRequest(null); setOverviewMode('category'); setSelectedCategory(cat) }}
+              onClick={() => { setSelectedDomain(''); setAnalyticsTabRequest(null); setOverviewMode('category'); setSelectedCategory(cat); onClose() }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 width: '100%', padding: '7px 14px 7px 34px',
@@ -320,7 +321,7 @@ function Sidebar({
             <button key={t.id} type="button"
               onMouseEnter={() => setHovered(`atab-${t.id}`)}
               onMouseLeave={() => setHovered(null)}
-              onClick={() => { setSelectedDomain('analytics'); setAnalyticsTabRequest(t.id) }}
+              onClick={() => { setSelectedDomain('analytics'); setAnalyticsTabRequest(t.id); onClose() }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 width: '100%', padding: '7px 14px 7px 34px',
@@ -344,7 +345,7 @@ function Sidebar({
           id: 'generate-report', icon: 'ti-file-export',
           label: 'Generate Report',
           active: isReport, teal: true,
-          onClick: onGenerateReport,
+          onClick: () => { onGenerateReport(); onClose() },
         })}
       </nav>
 
@@ -1507,6 +1508,10 @@ export default function App() {
   const [expandedSDs, setExpandedSDs] = useState(new Set())
   const [expandedCatDomains, setExpandedCatDomains] = useState(new Set())
 
+  // Mobile sidebar
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768)
+
   // MAT / role state
   const [userRole, setUserRole] = useState('contributor')
   const [userMatId, setUserMatId] = useState(null)
@@ -1714,6 +1719,12 @@ export default function App() {
     document.body.style.overflow = modalPoint ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
   }, [modalPoint])
+
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
 
   // evidenceEntry = null → new; evidenceEntry = existing row → edit
   function openModal(pp, evidenceEntry = null) {
@@ -1973,33 +1984,63 @@ export default function App() {
         <button type="button" className="logout-btn" onClick={handleLogout}>Sign out</button>
       </header>
 
-      <div className="app-body">
-        {view !== 'mat' && (
-          <Sidebar
-            domains={domains}
-            allSubDomains={allSubDomains}
-            ppDomainMap={ppDomainMap}
-            allStatuses={allStatuses}
-            schoolName={schoolName}
-            selectedDomain={selectedDomain}
-            setSelectedDomain={setSelectedDomain}
-            sidebarDomainsOpen={sidebarDomainsOpen}
-            setSidebarDomainsOpen={setSidebarDomainsOpen}
-            sidebarCatsOpen={sidebarCatsOpen}
-            setSidebarCatsOpen={setSidebarCatsOpen}
-            sidebarAnalyticsOpen={sidebarAnalyticsOpen}
-            setSidebarAnalyticsOpen={setSidebarAnalyticsOpen}
-            analyticsTabRequest={analyticsTabRequest}
-            setAnalyticsTabRequest={setAnalyticsTabRequest}
-            onGenerateReport={() => setSelectedDomain('report-builder')}
-            overviewMode={overviewMode}
-            selectedCategory={selectedCategory}
-            setOverviewMode={setOverviewMode}
-            setSelectedCategory={setSelectedCategory}
+      <div className="app-body" style={{ position: 'relative' }}>
+        {/* Backdrop — mobile only, when sidebar is open */}
+        {isMobile && sidebarOpen && view !== 'mat' && (
+          <div
+            onClick={() => setSidebarOpen(false)}
+            style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 99 }}
           />
         )}
 
+        {/* Sidebar — always on desktop; overlay on mobile when open */}
+        {view !== 'mat' && (!isMobile || sidebarOpen) && (
+          <div style={isMobile ? {
+            position: 'absolute', left: 0, top: 0, height: '100%', zIndex: 100, overflowY: 'auto',
+          } : {}}>
+            <Sidebar
+              domains={domains}
+              allSubDomains={allSubDomains}
+              ppDomainMap={ppDomainMap}
+              allStatuses={allStatuses}
+              schoolName={schoolName}
+              selectedDomain={selectedDomain}
+              setSelectedDomain={setSelectedDomain}
+              sidebarDomainsOpen={sidebarDomainsOpen}
+              setSidebarDomainsOpen={setSidebarDomainsOpen}
+              sidebarCatsOpen={sidebarCatsOpen}
+              setSidebarCatsOpen={setSidebarCatsOpen}
+              sidebarAnalyticsOpen={sidebarAnalyticsOpen}
+              setSidebarAnalyticsOpen={setSidebarAnalyticsOpen}
+              analyticsTabRequest={analyticsTabRequest}
+              setAnalyticsTabRequest={setAnalyticsTabRequest}
+              onGenerateReport={() => setSelectedDomain('report-builder')}
+              overviewMode={overviewMode}
+              selectedCategory={selectedCategory}
+              setOverviewMode={setOverviewMode}
+              setSelectedCategory={setSelectedCategory}
+              onClose={() => setSidebarOpen(false)}
+            />
+          </div>
+        )}
+
         <main className="main">
+          {/* Hamburger — mobile only */}
+          {isMobile && view !== 'mat' && (
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(v => !v)}
+              aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+              style={{
+                padding: 10, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                background: 'var(--color-background-secondary, #f1f5f9)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                alignSelf: 'flex-start', marginBottom: 8, borderRadius: 6,
+              }}
+            >
+              <i className="ti ti-menu-2" style={{ fontSize: 24, lineHeight: 1 }} />
+            </button>
+          )}
 
         {view === 'mat' && userMatId && (
           <MATDashboard
