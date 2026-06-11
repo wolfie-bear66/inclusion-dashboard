@@ -1134,7 +1134,77 @@ function GroupReach({ reachMatrix, schoolCtx }) {
   )
 }
 
-function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = null }) {
+function SchoolContextPanel({ schoolCtx, onSave, ctxLoading }) {
+  const [editingCtx, setEditingCtx] = useState(false)
+  const [ctxDraft, setCtxDraft] = useState({})
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '16px 20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <p style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>School Context</p>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+            {[
+              { label: 'Total pupils', value: schoolCtx.totalPupils },
+              { label: 'PP',           value: schoolCtx.ppCount },
+              { label: 'SEND',         value: schoolCtx.sendCount },
+              { label: 'FSM',          value: schoolCtx.fsmCount },
+              { label: 'EAL',          value: schoolCtx.ealCount },
+              { label: 'LAC',          value: schoolCtx.lacCount },
+              { label: 'WW Class',     value: schoolCtx.wwcCount },
+            ].map((f, i) => (
+              <div key={i} style={{ textAlign: 'center' }}>
+                <p style={{ fontSize: '1rem', fontWeight: 700, color: '#1e293b' }}>{ctxLoading ? '…' : (f.value || '—')}</p>
+                <p style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{f.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={async () => {
+            if (editingCtx) {
+              const updated = { ...ctxDraft }
+              setEditingCtx(false)
+              await onSave(updated)
+            } else {
+              setCtxDraft({ ...schoolCtx })
+              setEditingCtx(true)
+            }
+          }}
+          style={{ fontSize: '0.78rem', color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', flexShrink: 0 }}
+        >
+          {editingCtx ? 'Done' : 'Edit'}
+        </button>
+      </div>
+      {editingCtx && (
+        <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px 16px' }}>
+          {[
+            { key: 'totalPupils', label: 'Total pupils' },
+            { key: 'ppCount',    label: 'Pupil Premium' },
+            { key: 'sendCount',  label: 'SEND' },
+            { key: 'fsmCount',   label: 'FSM' },
+            { key: 'ealCount',   label: 'EAL' },
+            { key: 'lacCount',   label: 'LAC' },
+            { key: 'wwcCount',   label: 'WW Class' },
+          ].map(f => (
+            <div key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b' }}>{f.label}</label>
+              <input
+                type="number" min="0"
+                style={{ padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: '0.85rem' }}
+                value={ctxDraft[f.key] ?? 0}
+                onChange={e => setCtxDraft(prev => ({ ...prev, [f.key]: Number(e.target.value) }))}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = null, schoolCtx, onSave, ctxLoading }) {
   const [analyticsEntries, setAnalyticsEntries] = useState([])
   const [domains, setDomains] = useState([])
   const [aLoading, setALoading] = useState(true)
@@ -1143,10 +1213,6 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
   useEffect(() => {
     if (tabRequest) setActiveTab(tabRequest)
   }, [tabRequest])
-  const [schoolCtx, setSchoolCtx] = useState({ totalPupils: 0, ppCount: 0, sendCount: 0, fsmCount: 0, ealCount: 0, lacCount: 0, wwcCount: 0 })
-  const [ctxLoading, setCtxLoading] = useState(true)
-  const [editingCtx, setEditingCtx] = useState(false)
-  const [ctxDraft, setCtxDraft] = useState({})
 
   useEffect(() => {
     setALoading(true)
@@ -1170,31 +1236,6 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
       setDomains(domainsRes.data ?? [])
       setALoading(false)
     })
-  }, [school])
-
-  // Load school context from Supabase
-  useEffect(() => {
-    if (!school) return
-    setCtxLoading(true)
-    sb.from('school_context')
-      .select('total_pupils, pp_count, send_count, fsm_count, eal_count, lac_count, wwc_count')
-      .eq('school_id', school)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (error) console.error('Error loading school context:', error)
-        if (data) {
-          setSchoolCtx({
-            totalPupils: data.total_pupils,
-            ppCount:     data.pp_count,
-            sendCount:   data.send_count,
-            fsmCount:    data.fsm_count,
-            ealCount:    data.eal_count,
-            lacCount:    data.lac_count,
-            wwcCount:    data.wwc_count,
-          })
-        }
-        setCtxLoading(false)
-      })
   }, [school])
 
   // Domain readiness
@@ -1319,80 +1360,7 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* School context panel */}
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '16px 20px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <p style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>School Context</p>
-            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-              {[
-                { label: 'Total pupils', value: schoolCtx.totalPupils },
-                { label: 'PP',           value: schoolCtx.ppCount },
-                { label: 'SEND',         value: schoolCtx.sendCount },
-                { label: 'FSM',          value: schoolCtx.fsmCount },
-                { label: 'EAL',          value: schoolCtx.ealCount },
-                { label: 'LAC',          value: schoolCtx.lacCount },
-                { label: 'WW Class',     value: schoolCtx.wwcCount },
-              ].map((f, i) => (
-                <div key={i} style={{ textAlign: 'center' }}>
-                  <p style={{ fontSize: '1rem', fontWeight: 700, color: '#1e293b' }}>{f.value || '—'}</p>
-                  <p style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{f.label}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={async () => {
-              if (editingCtx) {
-                const updated = { ...ctxDraft }
-                setSchoolCtx(updated)
-                setEditingCtx(false)
-                await sb.from('school_context').upsert({
-                  school_id:    school,
-                  total_pupils: updated.totalPupils,
-                  pp_count:     updated.ppCount,
-                  send_count:   updated.sendCount,
-                  fsm_count:    updated.fsmCount,
-                  eal_count:    updated.ealCount,
-                  lac_count:    updated.lacCount,
-                  wwc_count:    updated.wwcCount,
-                  updated_at:   new Date().toISOString(),
-                }, { onConflict: 'school_id' })
-              } else {
-                setCtxDraft({ ...schoolCtx })
-                setEditingCtx(true)
-              }
-            }}
-            style={{ fontSize: '0.78rem', color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', flexShrink: 0 }}
-          >
-            {editingCtx ? 'Done' : 'Edit'}
-          </button>
-        </div>
-        {editingCtx && (
-          <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px 16px' }}>
-            {[
-              { key: 'totalPupils', label: 'Total pupils' },
-              { key: 'ppCount',    label: 'Pupil Premium' },
-              { key: 'sendCount',  label: 'SEND' },
-              { key: 'fsmCount',   label: 'FSM' },
-              { key: 'ealCount',   label: 'EAL' },
-              { key: 'lacCount',   label: 'LAC' },
-              { key: 'wwcCount',   label: 'WW Class' },
-            ].map(f => (
-              <div key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b' }}>{f.label}</label>
-                <input
-                  type="number" min="0"
-                  style={{ padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: '0.85rem' }}
-                  value={ctxDraft[f.key] ?? 0}
-                  onChange={e => setCtxDraft(prev => ({ ...prev, [f.key]: Number(e.target.value) }))}
-                  onBlur={() => setSchoolCtx({ ...ctxDraft })}
-                />
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      <SchoolContextPanel schoolCtx={schoolCtx} onSave={onSave} ctxLoading={ctxLoading} />
 
       {/* Inner tab bar + Generate Report button */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -1527,6 +1495,10 @@ export default function App() {
   const [overviewMode, setOverviewMode]   = useState('domain')
   const [selectedCategory, setSelectedCategory] = useState(null)
 
+  // School context — lifted from AnalyticsView so home screen and analytics share it
+  const [schoolCtx, setSchoolCtx] = useState({ totalPupils: 0, ppCount: 0, sendCount: 0, fsmCount: 0, ealCount: 0, lacCount: 0, wwcCount: 0 })
+  const [ctxLoading, setCtxLoading] = useState(true)
+
   // Sidebar state
   const [sidebarDomainsOpen, setSidebarDomainsOpen] = useState(false)
   const [sidebarCatsOpen, setSidebarCatsOpen] = useState(false)
@@ -1645,6 +1617,32 @@ export default function App() {
         setPpInfoMap(newPpInfoMap)
       })
   }, [session])
+
+  // Load school context from Supabase
+  useEffect(() => {
+    if (!selectedSchool) { setCtxLoading(false); return }
+    setCtxLoading(true)
+    supabase
+      .from('school_context')
+      .select('total_pupils, pp_count, send_count, fsm_count, eal_count, lac_count, wwc_count')
+      .eq('school_id', selectedSchool)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) console.error('Error loading school context:', error)
+        if (data) {
+          setSchoolCtx({
+            totalPupils: data.total_pupils,
+            ppCount:     data.pp_count,
+            sendCount:   data.send_count,
+            fsmCount:    data.fsm_count,
+            ealCount:    data.eal_count,
+            lacCount:    data.lac_count,
+            wwcCount:    data.wwc_count,
+          })
+        }
+        setCtxLoading(false)
+      })
+  }, [selectedSchool])
 
   // Lightweight load: statuses + evidence counts for all domains, current school
   useEffect(() => {
@@ -1772,6 +1770,21 @@ export default function App() {
     setSelectedSchool('')
     setSelectedDomain('')
     setBrowsingSchoolName('')
+  }
+
+  async function handleCtxSave(updated) {
+    setSchoolCtx(updated)
+    await supabase.from('school_context').upsert({
+      school_id:    selectedSchool,
+      total_pupils: updated.totalPupils,
+      pp_count:     updated.ppCount,
+      send_count:   updated.sendCount,
+      fsm_count:    updated.fsmCount,
+      eal_count:    updated.ealCount,
+      lac_count:    updated.lacCount,
+      wwc_count:    updated.wwcCount,
+      updated_at:   new Date().toISOString(),
+    }, { onConflict: 'school_id' })
   }
 
   async function handleStatusChange(ppId, status) {
@@ -2011,37 +2024,24 @@ export default function App() {
 
         {view !== 'mat' && selectedSchool && !selectedDomain && (() => {
           const allPpIds = Object.keys(ppDomainMap)
-          const totTotal    = allPpIds.length
-          const totInPlace  = allPpIds.filter(id => allStatuses[id] === 'in_place').length
-          const totInProg   = allPpIds.filter(id => allStatuses[id] === 'in_progress').length
-          const totNotIn    = allPpIds.filter(id => allStatuses[id] === 'not_in_place').length
-          const totEvidence = allPpIds.filter(id => (allEvidenceCounts[id] ?? 0) > 0).length
+          const totTotal   = allPpIds.length
+          const totInPlace = allPpIds.filter(id => allStatuses[id] === 'in_place').length
+          const readPct    = totTotal ? Math.round((totInPlace / totTotal) * 100) : 0
           return (
             <div className="dashboard">
-              <div className="dash-summary">
-                <div className="dash-stat">
-                  <span className="dash-stat-value">{totTotal}</span>
-                  <span className="dash-stat-label">Total Points</span>
-                </div>
-                <div className="dash-stat dash-stat--green">
-                  <span className="dash-stat-value">{totInPlace}</span>
-                  <span className="dash-stat-label">In Place</span>
-                </div>
-                <div className="dash-stat dash-stat--amber">
-                  <span className="dash-stat-value">{totInProg}</span>
-                  <span className="dash-stat-label">In Progress</span>
-                </div>
-                <div className="dash-stat dash-stat--red">
-                  <span className="dash-stat-value">{totNotIn}</span>
-                  <span className="dash-stat-label">Not In Place</span>
-                </div>
-                <div className="dash-stat dash-stat--blue">
-                  <span className="dash-stat-value">{totEvidence}</span>
-                  <span className="dash-stat-label">With Evidence</span>
+              {/* 1. School context panel */}
+              <SchoolContextPanel schoolCtx={schoolCtx} onSave={handleCtxSave} ctxLoading={ctxLoading} />
+
+              {/* 2. Overall readiness headline */}
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px' }}>
+                <p style={{ fontSize: '3rem', fontWeight: 500, color: '#1D9E75', lineHeight: 1, marginBottom: 6 }}>{readPct}%</p>
+                <p style={{ fontSize: 13, color: '#94a3b8' }}>{totInPlace} of {totTotal} indicators in place</p>
+                <div style={{ height: 6, borderRadius: 99, background: 'var(--color-background-secondary, #f1f5f9)', overflow: 'hidden', marginTop: 8 }}>
+                  <div style={{ height: '100%', width: `${readPct}%`, background: '#1D9E75', borderRadius: 99, transition: 'width 0.4s' }} />
                 </div>
               </div>
 
-              {/* Mode toggle */}
+              {/* 3. Mode toggle */}
               <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', borderRadius: 8, padding: 3, alignSelf: 'flex-start' }}>
                 {[['domain','By domain'],['category','By category']].map(([mode, label]) => (
                   <button key={mode} type="button"
@@ -2249,7 +2249,7 @@ export default function App() {
         })()}
 
         {view !== 'mat' && selectedSchool && selectedDomain === 'analytics' && (
-          <AnalyticsView school={selectedSchool} supabase={supabase} schoolName={schoolName} tabRequest={analyticsTabRequest} />
+          <AnalyticsView school={selectedSchool} supabase={supabase} schoolName={schoolName} tabRequest={analyticsTabRequest} schoolCtx={schoolCtx} onSave={handleCtxSave} ctxLoading={ctxLoading} />
         )}
 
         {view !== 'mat' && selectedSchool && selectedDomain === 'report-builder' && (
