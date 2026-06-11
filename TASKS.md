@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: June 2026
+Last updated: 11 June 2026
 
 ---
 
@@ -35,20 +35,14 @@ Last updated: June 2026
 - [x] **Session 5 — Category view redesign** — same collapsible pattern grouped by domain within each category
 - [x] **Audit — codebase cleanup** — removed unused imports (PieChart, Pie), lifted 5 analytics components to module scope, extracted ProvisionPointRow and ShowToggle components, removed debug console.log calls
 - [x] **Categories sidebar fix** — wired to PROVISION_POINT_CATEGORIES (Named Person etc.) not sub-domains
-
----
-
-## In progress
-
-- [ ] **Session 6 — School context on home screen** — extract SchoolContextPanel to module scope, add to home screen above domain cards with overall readiness headline (large %, progress bar). Lift schoolCtx state to App level so both home and Analytics share the same data.
+- [x] **Session 6 — School context on home screen** — extracted SchoolContextPanel to module scope, added to home screen above domain cards with overall readiness headline (large %, progress bar). schoolCtx state lifted to App level so both home and Analytics share the same data.
+- [x] **Session 7 — PDF logic update** — rewrote `generateReport.js` to respond to all Report Builder options: conditional sections (equity, funding, outcomes, reach), chart style choices (table vs radar fallback / bar vs table), outcomes filter by domain/group/subdomain, group reach table and bar chart. Dynamic page count — footer `Page X of N` now reflects actual pages. Old fixed 3-page structure replaced with flowing y-position layout.
 
 ---
 
 ## Up next (priority order)
 
 ### Immediate
-
-- [ ] **PDF logic update** — update `generateReport.js` to respond to the options object from Report Builder: conditionally include/exclude sections, apply outcomes filter, handle chart style choices (table vs radar/bar). The `options` parameter exists in the function signature but is only logged, not used.
 
 - [ ] **Home screen redesign** — once school context is on the home screen (Session 6), refine the landing to feel like a proper entry point: 86% readiness headline, six domain RAG cards, school context panel, prompt toward domains with gaps.
 
@@ -67,8 +61,6 @@ Last updated: June 2026
 ### Analytics
 
 - [ ] **Outcomes & Impact tab search** — now filter UI is removed, consider a simple search box to help users navigate long outcome card lists.
-
-- [ ] **Group Reach in PDF** — wire group reach table/bar chart into PDF output once report builder PDF logic is done.
 
 ### Commercial preparation
 
@@ -92,7 +84,6 @@ Last updated: June 2026
 
 ## Known issues / technical debt
 
-- [ ] `generateReport.js` — `options` parameter exists but only logged (line 540). Not yet wired into page-drawing logic.
 - [ ] Sub-domains RLS errors appearing in console — pre-existing, not blocking, needs investigation.
 - [ ] `evidenceEntries` is empty on category view (domain-specific fetch only) — existing behaviour, not broken, but worth revisiting if evidence needs to show in category view.
 
