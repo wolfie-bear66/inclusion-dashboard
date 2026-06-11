@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient'
 import MATDashboard from './MATDashboard'
 import './App.css'
 import { generateReport } from './generateReport'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, PieChart, Pie, RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts'
 
 const STATUSES = ['in_place', 'in_progress', 'not_in_place']
 const STATUS_LABELS = { in_place: 'In Place', in_progress: 'In Progress', not_in_place: 'Not In Place' }
@@ -626,6 +626,514 @@ function ReportBuilder({ schoolName = '', allSubDomains = [] }) {
   )
 }
 
+function DomainReadiness({ readinessData, upcomingReviews }) {
+  const grandTotal   = readinessData.reduce((s, d) => s + d.total, 0)
+  const grandInPlace = readinessData.reduce((s, d) => s + d.inPlace, 0)
+  const overallPct   = grandTotal ? Math.round((grandInPlace / grandTotal) * 100) : 0
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <ACard>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, marginBottom: 16 }}>
+          <span style={{ fontSize: '3.5rem', fontWeight: 800, color: '#10b981', lineHeight: 1 }}>{overallPct}%</span>
+          <div style={{ paddingBottom: 6 }}>
+            <p style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1e293b' }}>Overall readiness</p>
+            <p style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>{grandInPlace} of {grandTotal} indicators In Place</p>
+          </div>
+        </div>
+        <div style={{ height: 10, borderRadius: 6, background: '#f1f5f9', overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${overallPct}%`, borderRadius: 6, background: '#10b981', transition: 'width 0.5s' }} />
+        </div>
+      </ACard>
+
+      {readinessData.length > 0 && (
+        <ACard>
+          <ASectionTitle sub="Status breakdown across provision points per domain">By Domain</ASectionTitle>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {readinessData.map((d, i) => {
+              const pctIn  = d.total ? Math.round((d.inPlace    / d.total) * 100) : 0
+              const pctProg = d.total ? Math.round((d.inProgress / d.total) * 100) : 0
+              return (
+                <div key={i}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b' }}>{d.fullName}</span>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      {d.inPlace} in place · {d.inProgress} in progress · {d.notInPlace} not started
+                    </span>
+                  </div>
+                  <div style={{ height: 8, borderRadius: 4, background: '#f1f5f9', overflow: 'hidden', position: 'relative' }}>
+                    <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${pctIn + pctProg}%`, background: d.colour, opacity: 0.2, borderRadius: 4 }} />
+                    <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${pctIn}%`, background: d.colour, borderRadius: 4, transition: 'width 0.4s' }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </ACard>
+      )}
+
+      {upcomingReviews.length > 0 && (
+        <ACard>
+          <ASectionTitle sub="Evidence entries with a review due within the next 60 days">Compliance Forecast</ASectionTitle>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {upcomingReviews.map((ev, i) => {
+              const bg  = ev.urgency === 'urgent' ? '#fef2f2' : ev.urgency === 'soon' ? '#fffbeb' : '#f8fafc'
+              const col = ev.urgency === 'urgent' ? '#dc2626' : ev.urgency === 'soon' ? '#d97706' : '#475569'
+              return (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 12px', borderRadius: 8, background: bg }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: '0.8rem', fontWeight: 600, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {ev.provision_name || ev.entryLabel}
+                    </p>
+                    <p style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 1 }}>{ev.domainName}</p>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                      {new Date(ev.next_review_due).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                    </p>
+                    <p style={{ fontSize: '0.72rem', fontWeight: 700, color: col, marginTop: 1 }}>
+                      {ev.daysLeft <= 0 ? 'Overdue' : `${ev.daysLeft}d left`}
+                    </p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </ACard>
+      )}
+    </div>
+  )
+}
+
+function EnrichmentEquity({ equityData, schoolCtx }) {
+  const EQ_GROUPS = [
+    { key: 'grp_pp',   label: 'Pupil Premium',      ctxKey: 'ppCount' },
+    { key: 'grp_send', label: 'SEND',                ctxKey: 'sendCount' },
+    { key: 'grp_fsm',  label: 'FSM',                 ctxKey: 'fsmCount' },
+    { key: 'grp_wwc',  label: 'White Working Class', ctxKey: 'wwcCount' },
+    { key: 'grp_eal',  label: 'EAL',                 ctxKey: 'ealCount' },
+  ]
+  const [selectedGroup, setSelectedGroup] = useState(EQ_GROUPS[0].label)
+
+  if (equityData.length === 0) return (
+    <ACard>
+      <ASectionTitle sub="Enrichment provision coverage broken down by student group">Enrichment Equity</ASectionTitle>
+      <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No enrichment entries found.</p>
+    </ACard>
+  )
+
+  const radarData = equityData.map(sd => ({
+    subject: sd.subDomain,
+    [selectedGroup]: sd.groups.find(g => g.label === selectedGroup)?.pct ?? 0,
+    'All Pupils': 100,
+  }))
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {EQ_GROUPS.map(g => (
+          <button key={g.label} type="button" onClick={() => setSelectedGroup(g.label)}
+            style={{
+              padding: '6px 14px', borderRadius: 20, border: '1.5px solid', cursor: 'pointer', fontSize: '0.8rem',
+              borderColor: selectedGroup === g.label ? '#14b8a6' : '#e2e8f0',
+              background:  selectedGroup === g.label ? '#f0fdfa' : '#fff',
+              color:       selectedGroup === g.label ? '#0d9488' : '#475569',
+              fontWeight:  selectedGroup === g.label ? 600 : 400,
+            }}>
+            {g.label} ({schoolCtx[g.ctxKey] || '—'})
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <ACard>
+          <ASectionTitle sub={`${selectedGroup} vs all pupils across enrichment sub-domains`}>Coverage Radar</ASectionTitle>
+          <ResponsiveContainer width="100%" height={260}>
+            <RadarChart data={radarData}>
+              <PolarGrid />
+              <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10 }} />
+              <Radar name="All Pupils" dataKey="All Pupils" stroke="#e2e8f0" fill="#e2e8f0" fillOpacity={0.3} />
+              <Radar name={selectedGroup} dataKey={selectedGroup} stroke="#14b8a6" fill="#14b8a6" fillOpacity={0.5} />
+              <Tooltip formatter={v => `${v}%`} />
+            </RadarChart>
+          </ResponsiveContainer>
+        </ACard>
+
+        <ACard>
+          <ASectionTitle sub="% of provision points targeting the selected group per sub-domain">By Sub-domain</ASectionTitle>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {equityData.map((sd, i) => {
+              const grp = sd.groups.find(g => g.label === selectedGroup)
+              const pct = grp?.pct ?? 0
+              const gap = 100 - pct
+              return (
+                <div key={i}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span style={{ fontSize: '0.78rem', color: '#475569' }}>{sd.subDomain}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {gap > 15 && (
+                        <span style={{ fontSize: '0.68rem', background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>
+                          ⚠ {gap}pt gap
+                        </span>
+                      )}
+                      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1e293b' }}>{pct}%</span>
+                    </div>
+                  </div>
+                  <div style={{ height: 7, borderRadius: 4, background: '#f1f5f9', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${pct}%`, borderRadius: 4, background: '#14b8a6', transition: 'width 0.4s' }} />
+                  </div>
+                  <p style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 3 }}>{grp?.count ?? 0} of {sd.total} provision points</p>
+                </div>
+              )
+            })}
+          </div>
+        </ACard>
+      </div>
+    </div>
+  )
+}
+
+function FundingCost({ fundingDomainData, fundingSourceData, totalCost, schoolCtx }) {
+  const [showFundingInputs, setShowFundingInputs] = useState(false)
+  const [fundingReceived, setFundingReceived] = useState({})
+
+  const equitySpend = fundingDomainData.find(d => d.fullName?.includes('Equity'))?.value ?? 0
+  const sendSpend   = fundingDomainData.find(d => d.fullName?.includes('SEND'))?.value ?? 0
+  const perPupil    = schoolCtx.totalPupils ? Math.round(totalCost / schoolCtx.totalPupils) : null
+  const perPP       = schoolCtx.ppCount     ? Math.round(equitySpend / schoolCtx.ppCount)   : null
+  const perSEND     = schoolCtx.sendCount   ? Math.round(sendSpend   / schoolCtx.sendCount) : null
+
+  if (totalCost === 0) return (
+    <ACard>
+      <ASectionTitle sub="Annual cost of provision grouped by funding source and domain">Funding & Cost</ASectionTitle>
+      <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No cost data recorded yet.</p>
+    </ACard>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+        {[
+          { label: 'Total spend',    value: `£${totalCost.toLocaleString()}` },
+          { label: 'Per pupil',      value: perPupil  ? `£${perPupil.toLocaleString()}`  : '—' },
+          { label: 'Per PP pupil',   value: perPP     ? `£${perPP.toLocaleString()}`     : '—' },
+          { label: 'Per SEND pupil', value: perSEND   ? `£${perSEND.toLocaleString()}`   : '—' },
+        ].map((s, i) => (
+          <ACard key={i}>
+            <p style={{ fontSize: '1.5rem', fontWeight: 700, color: '#1e293b' }}>{s.value}</p>
+            <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 4 }}>{s.label}</p>
+          </ACard>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <ACard>
+          <ASectionTitle sub="Annual spend by domain">By Domain</ASectionTitle>
+          {fundingDomainData.length === 0
+            ? <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No domain cost data.</p>
+            : (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={fundingDomainData} layout="vertical" barCategoryGap="30%" margin={{ left: 0 }}>
+                  <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={v => `£${v.toLocaleString()}`} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={72} />
+                  <Tooltip formatter={v => `£${Number(v).toLocaleString()}`} />
+                  <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                    {fundingDomainData.map((d, idx) => <Cell key={idx} fill={d.colour} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )
+          }
+        </ACard>
+
+        <ACard>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div>
+              <p style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1e293b' }}>Funding Streams</p>
+              <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Spend proportion by source</p>
+            </div>
+            <button type="button" onClick={() => setShowFundingInputs(v => !v)}
+              style={{ fontSize: '0.75rem', color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+              {showFundingInputs ? 'Hide' : 'Add funding received'}
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {fundingSourceData.map((fs, i) => {
+              const pct      = totalCost ? Math.round((fs.value / totalCost) * 100) : 0
+              const received = Number(fundingReceived[fs.name] ?? 0)
+              const diff     = received - fs.value
+              return (
+                <div key={i}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span style={{ fontSize: '0.78rem', color: '#475569' }}>{fs.name}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {received > 0 && (
+                        <span style={{ fontSize: '0.7rem', fontWeight: 600, color: diff >= 0 ? '#16a34a' : '#dc2626' }}>
+                          {diff >= 0 ? `+£${diff.toLocaleString()}` : `-£${Math.abs(diff).toLocaleString()}`}
+                        </span>
+                      )}
+                      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1e293b' }}>£{fs.value.toLocaleString()}</span>
+                    </div>
+                  </div>
+                  <div style={{ height: 7, borderRadius: 4, background: '#f1f5f9', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${pct}%`, borderRadius: 4, background: '#6366f1', transition: 'width 0.4s' }} />
+                  </div>
+                  {showFundingInputs && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                      <label style={{ fontSize: '0.7rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>Received £</label>
+                      <input type="number" min="0"
+                        style={{ flex: 1, padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: '0.8rem' }}
+                        value={fundingReceived[fs.name] ?? ''}
+                        onChange={e => setFundingReceived(prev => ({ ...prev, [fs.name]: e.target.value }))}
+                      />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </ACard>
+      </div>
+    </div>
+  )
+}
+
+function OutcomesImpact({ allEvidence, domains }) {
+  const allItems = allEvidence
+    .filter(ev => ev.intended_outcomes || ev.impact_on_outcomes || ev.evidence_notes)
+    .map(ev => {
+      const dIdx = domains.findIndex(d => d.id === ev.domainId)
+      return {
+        name:      ev.provision_name || ev.entryLabel,
+        point:     ev.entryLabel,
+        domain:    ev.domainName,
+        subDomain: ev.subDomainName,
+        colour:    dIdx >= 0 ? aDomainColour(ev.domainName, dIdx) : '#94a3b8',
+        groups:    A_GROUPS.filter(g => ev[g.key]).map(g => g.label),
+        intended:  ev.intended_outcomes,
+        impact:    ev.impact_on_outcomes,
+        docLink:   ev.supporting_document_link || null,
+      }
+    })
+
+  if (allItems.length === 0) return (
+    <ACard>
+      <ASectionTitle sub="Intended outcomes and evidence of impact">Outcomes & Impact</ASectionTitle>
+      <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No outcomes or impact data recorded yet.</p>
+    </ACard>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {allItems.map((item, i) => (
+              <ACard key={i}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: item.intended || item.impact ? 12 : 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, flex: 1, minWidth: 0 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: item.colour, flexShrink: 0, marginTop: 4 }} />
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>{item.name}</p>
+                      <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 2 }}>
+                        {item.domain}{item.subDomain ? ` · ${item.subDomain}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  {item.groups.length > 0 && (
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: '45%', marginLeft: 12 }}>
+                      {item.groups.map((g, gi) => <AGroupPill key={gi} label={g} />)}
+                    </div>
+                  )}
+                </div>
+                {item.intended && (
+                  <div style={{ marginBottom: item.impact ? 10 : 0 }}>
+                    <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Intended outcome</p>
+                    <p style={{ fontSize: '0.82rem', color: '#334155', lineHeight: 1.55 }}>{item.intended}</p>
+                  </div>
+                )}
+                {item.impact && (
+                  <div style={{ marginBottom: item.docLink ? 10 : 0 }}>
+                    <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Evidence of impact</p>
+                    <p style={{ fontSize: '0.82rem', color: '#334155', lineHeight: 1.55 }}>{item.impact}</p>
+                  </div>
+                )}
+                {item.docLink && (
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
+                    <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Supporting Document</p>
+                    <a
+                      href={item.docLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        fontSize: '0.8rem',
+                        color: '#2563eb',
+                        textDecoration: 'none',
+                        fontWeight: 500,
+                        padding: '5px 10px',
+                        borderRadius: 6,
+                        border: '1px solid #bfdbfe',
+                        background: '#eff6ff',
+                        maxWidth: '100%',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                      title={item.docLink}
+                    >
+                      <span style={{ flexShrink: 0 }}>↗</span>
+                      {(() => {
+                        try {
+                          const u = new URL(item.docLink)
+                          return u.hostname.replace(/^www\./, '') + (u.pathname !== '/' ? u.pathname.split('/').pop() || u.pathname : '')
+                        } catch {
+                          return item.docLink
+                        }
+                      })()}
+                    </a>
+                  </div>
+                )}
+              </ACard>
+      ))}
+    </div>
+  )
+}
+
+function GroupReach({ reachMatrix, schoolCtx }) {
+  const CTX_COHORTS = [
+    { field: 'reach_send',  cohort: schoolCtx.sendCount },
+    { field: 'reach_pp',    cohort: schoolCtx.ppCount },
+    { field: 'reach_eal',   cohort: schoolCtx.ealCount },
+    { field: 'reach_fsm',   cohort: schoolCtx.fsmCount },
+    { field: 'reach_lac',   cohort: schoolCtx.lacCount },
+    { field: 'reach_wwc',   cohort: schoolCtx.wwcCount },
+    { field: 'reach_other', cohort: null },
+  ]
+  const hasAnyData = reachMatrix.some(r => r.totalReach > 0)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <ACard>
+        <ASectionTitle sub="Student group reach across all domains — enter student numbers in evidence entries to populate">
+          Cross-Domain Student Reach
+        </ASectionTitle>
+        {!hasAnyData ? (
+          <p style={{ color: '#94a3b8', fontSize: '0.82rem' }}>
+            No reach data yet. Add student numbers to evidence entries using Student-Facing or Whole School provision types.
+          </p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left', padding: '8px 12px', color: '#64748b', fontWeight: 600, borderBottom: '2px solid #e2e8f0' }}>Domain</th>
+                  <th style={{ textAlign: 'right', padding: '8px 8px', color: '#64748b', fontWeight: 600, borderBottom: '2px solid #e2e8f0' }}>Total</th>
+                  {REACH_GROUPS.map((g, gi) => (
+                    <th key={g.field} style={{ textAlign: 'right', padding: '8px 8px', color: '#64748b', fontWeight: 600, borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                      {g.label}
+                      {CTX_COHORTS[gi].cohort > 0 && (
+                        <span style={{ display: 'block', fontSize: '0.65rem', color: '#94a3b8', fontWeight: 400 }}>
+                          of {CTX_COHORTS[gi].cohort}
+                        </span>
+                      )}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {reachMatrix.map((row, ri) => (
+                  <tr key={ri} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '10px 12px', fontWeight: 600, color: '#1e293b' }}>
+                      <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: row.colour, marginRight: 8 }} />
+                      {row.domain}
+                    </td>
+                    <td style={{ textAlign: 'right', padding: '10px 8px', color: row.totalReach > 0 ? '#1e293b' : '#cbd5e1', fontWeight: row.totalReach > 0 ? 700 : 400 }}>
+                      {row.totalReach || '—'}
+                    </td>
+                    {row.groups.map((g, gi) => {
+                      const cohort = CTX_COHORTS[gi].cohort
+                      const pct = cohort > 0 ? Math.round((g.total / cohort) * 100) : null
+                      const isGap = row.totalReach > 0 && cohort > 0 && g.total === 0
+                      return (
+                        <td key={gi} style={{
+                          textAlign: 'right', padding: '10px 8px',
+                          background: isGap ? '#fef2f2' : 'transparent',
+                          color: g.total > 0 ? '#1e293b' : isGap ? '#ef4444' : '#cbd5e1',
+                          fontWeight: g.total > 0 ? 600 : 400,
+                        }}>
+                          {g.total > 0 ? (
+                            <>
+                              {g.total}
+                              {pct !== null && <span style={{ fontSize: '0.68rem', color: '#94a3b8', marginLeft: 4 }}>({pct}%)</span>}
+                            </>
+                          ) : isGap ? (
+                            <span title="Gap: this domain reaches students but none recorded for this group">⚠</span>
+                          ) : '—'}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+              {schoolCtx.totalPupils > 0 && (
+                <tfoot>
+                  <tr>
+                    <td colSpan={2 + REACH_GROUPS.length} style={{ padding: '8px 12px', fontSize: '0.7rem', color: '#94a3b8', borderTop: '2px solid #e2e8f0' }}>
+                      ⚠ Red cells indicate domains with student-facing provision but zero reach recorded for that group. Percentages are of school cohort totals.
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        )}
+      </ACard>
+
+      {hasAnyData && (
+        <ACard>
+          <ASectionTitle sub="How each domain reaches key student groups">Group Reach by Domain</ASectionTitle>
+          {REACH_GROUPS.map((g, gi) => {
+            const cohort = CTX_COHORTS[gi].cohort
+            const max = Math.max(...reachMatrix.map(r => r.groups[gi].total), cohort || 0, 1)
+            const rowsWithData = reachMatrix.filter(r => r.groups[gi].total > 0)
+            return (
+              <div key={g.field} style={{ marginBottom: 20 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b' }}>{g.label}</span>
+                  {cohort > 0 && <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Cohort: {cohort}</span>}
+                </div>
+                {rowsWithData.length === 0 ? (
+                  <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: 0 }}>No data</p>
+                ) : (
+                  reachMatrix.map((row, ri) => {
+                    const val = row.groups[gi].total
+                    const barPct = Math.round((val / max) * 100)
+                    return (
+                      <div key={ri} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontSize: '0.72rem', color: '#64748b', width: 88, flexShrink: 0, textAlign: 'right' }}>{row.shortName}</span>
+                        <div style={{ flex: 1, height: 6, background: '#f1f5f9', borderRadius: 3, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${barPct}%`, background: row.colour, borderRadius: 3, transition: 'width 0.4s' }} />
+                        </div>
+                        <span style={{ fontSize: '0.72rem', color: val > 0 ? '#1e293b' : '#cbd5e1', fontWeight: 600, width: 32, textAlign: 'right' }}>{val || '—'}</span>
+                      </div>
+                    )
+                  })
+                )}
+                {cohort > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                    <span style={{ fontSize: '0.68rem', color: '#94a3b8', width: 88, flexShrink: 0, textAlign: 'right' }}>Cohort</span>
+                    <div style={{ flex: 1, height: 6, background: '#f1f5f9', borderRadius: 3, position: 'relative' }}>
+                      <div style={{ position: 'absolute', left: `${Math.min(Math.round((cohort / max) * 100), 100)}%`, top: -1, width: 2, height: 8, background: '#94a3b8', borderRadius: 1 }} />
+                    </div>
+                    <span style={{ fontSize: '0.68rem', color: '#94a3b8', width: 32, textAlign: 'right' }}>{cohort}</span>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </ACard>
+      )}
+    </div>
+  )
+}
+
 function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = null }) {
   const [analyticsEntries, setAnalyticsEntries] = useState([])
   const [domains, setDomains] = useState([])
@@ -788,389 +1296,7 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
     }),
   }))
 
-  // ── Inner tab views ───────────────────────────────────────────────
-  function DomainReadiness() {
-    const grandTotal   = readinessData.reduce((s, d) => s + d.total, 0)
-    const grandInPlace = readinessData.reduce((s, d) => s + d.inPlace, 0)
-    const overallPct   = grandTotal ? Math.round((grandInPlace / grandTotal) * 100) : 0
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <ACard>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, marginBottom: 16 }}>
-            <span style={{ fontSize: '3.5rem', fontWeight: 800, color: '#10b981', lineHeight: 1 }}>{overallPct}%</span>
-            <div style={{ paddingBottom: 6 }}>
-              <p style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1e293b' }}>Overall readiness</p>
-              <p style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>{grandInPlace} of {grandTotal} indicators In Place</p>
-            </div>
-          </div>
-          <div style={{ height: 10, borderRadius: 6, background: '#f1f5f9', overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${overallPct}%`, borderRadius: 6, background: '#10b981', transition: 'width 0.5s' }} />
-          </div>
-        </ACard>
-
-        {readinessData.length > 0 && (
-          <ACard>
-            <ASectionTitle sub="Status breakdown across provision points per domain">By Domain</ASectionTitle>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {readinessData.map((d, i) => {
-                const pctIn  = d.total ? Math.round((d.inPlace    / d.total) * 100) : 0
-                const pctProg = d.total ? Math.round((d.inProgress / d.total) * 100) : 0
-                return (
-                  <div key={i}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b' }}>{d.fullName}</span>
-                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                        {d.inPlace} in place · {d.inProgress} in progress · {d.notInPlace} not started
-                      </span>
-                    </div>
-                    <div style={{ height: 8, borderRadius: 4, background: '#f1f5f9', overflow: 'hidden', position: 'relative' }}>
-                      <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${pctIn + pctProg}%`, background: d.colour, opacity: 0.2, borderRadius: 4 }} />
-                      <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${pctIn}%`, background: d.colour, borderRadius: 4, transition: 'width 0.4s' }} />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </ACard>
-        )}
-
-        {upcomingReviews.length > 0 && (
-          <ACard>
-            <ASectionTitle sub="Evidence entries with a review due within the next 60 days">Compliance Forecast</ASectionTitle>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {upcomingReviews.map((ev, i) => {
-                const bg  = ev.urgency === 'urgent' ? '#fef2f2' : ev.urgency === 'soon' ? '#fffbeb' : '#f8fafc'
-                const col = ev.urgency === 'urgent' ? '#dc2626' : ev.urgency === 'soon' ? '#d97706' : '#475569'
-                return (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 12px', borderRadius: 8, background: bg }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: '0.8rem', fontWeight: 600, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {ev.provision_name || ev.entryLabel}
-                      </p>
-                      <p style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 1 }}>{ev.domainName}</p>
-                    </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                        {new Date(ev.next_review_due).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                      </p>
-                      <p style={{ fontSize: '0.72rem', fontWeight: 700, color: col, marginTop: 1 }}>
-                        {ev.daysLeft <= 0 ? 'Overdue' : `${ev.daysLeft}d left`}
-                      </p>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </ACard>
-        )}
-      </div>
-    )
-  }
-
-  function EnrichmentEquity() {
-    const EQ_GROUPS = [
-      { key: 'grp_pp',   label: 'Pupil Premium',      ctxKey: 'ppCount' },
-      { key: 'grp_send', label: 'SEND',                ctxKey: 'sendCount' },
-      { key: 'grp_fsm',  label: 'FSM',                 ctxKey: 'fsmCount' },
-      { key: 'grp_wwc',  label: 'White Working Class', ctxKey: 'wwcCount' },
-      { key: 'grp_eal',  label: 'EAL',                 ctxKey: 'ealCount' },
-    ]
-    const [selectedGroup, setSelectedGroup] = useState(EQ_GROUPS[0].label)
-
-    if (equityData.length === 0) return (
-      <ACard>
-        <ASectionTitle sub="Enrichment provision coverage broken down by student group">Enrichment Equity</ASectionTitle>
-        <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No enrichment entries found.</p>
-      </ACard>
-    )
-
-    const radarData = equityData.map(sd => ({
-      subject: sd.subDomain,
-      [selectedGroup]: sd.groups.find(g => g.label === selectedGroup)?.pct ?? 0,
-      'All Pupils': 100,
-    }))
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {EQ_GROUPS.map(g => (
-            <button key={g.label} type="button" onClick={() => setSelectedGroup(g.label)}
-              style={{
-                padding: '6px 14px', borderRadius: 20, border: '1.5px solid', cursor: 'pointer', fontSize: '0.8rem',
-                borderColor: selectedGroup === g.label ? '#14b8a6' : '#e2e8f0',
-                background:  selectedGroup === g.label ? '#f0fdfa' : '#fff',
-                color:       selectedGroup === g.label ? '#0d9488' : '#475569',
-                fontWeight:  selectedGroup === g.label ? 600 : 400,
-              }}>
-              {g.label} ({schoolCtx[g.ctxKey] || '—'})
-            </button>
-          ))}
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <ACard>
-            <ASectionTitle sub={`${selectedGroup} vs all pupils across enrichment sub-domains`}>Coverage Radar</ASectionTitle>
-            <ResponsiveContainer width="100%" height={260}>
-              <RadarChart data={radarData}>
-                <PolarGrid />
-                <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10 }} />
-                <Radar name="All Pupils" dataKey="All Pupils" stroke="#e2e8f0" fill="#e2e8f0" fillOpacity={0.3} />
-                <Radar name={selectedGroup} dataKey={selectedGroup} stroke="#14b8a6" fill="#14b8a6" fillOpacity={0.5} />
-                <Tooltip formatter={v => `${v}%`} />
-              </RadarChart>
-            </ResponsiveContainer>
-          </ACard>
-
-          <ACard>
-            <ASectionTitle sub="% of provision points targeting the selected group per sub-domain">By Sub-domain</ASectionTitle>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {equityData.map((sd, i) => {
-                const grp = sd.groups.find(g => g.label === selectedGroup)
-                const pct = grp?.pct ?? 0
-                const gap = 100 - pct
-                return (
-                  <div key={i}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontSize: '0.78rem', color: '#475569' }}>{sd.subDomain}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {gap > 15 && (
-                          <span style={{ fontSize: '0.68rem', background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>
-                            ⚠ {gap}pt gap
-                          </span>
-                        )}
-                        <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1e293b' }}>{pct}%</span>
-                      </div>
-                    </div>
-                    <div style={{ height: 7, borderRadius: 4, background: '#f1f5f9', overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${pct}%`, borderRadius: 4, background: '#14b8a6', transition: 'width 0.4s' }} />
-                    </div>
-                    <p style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 3 }}>{grp?.count ?? 0} of {sd.total} provision points</p>
-                  </div>
-                )
-              })}
-            </div>
-          </ACard>
-        </div>
-      </div>
-    )
-  }
-
-  function FundingCost() {
-    const [showFundingInputs, setShowFundingInputs] = useState(false)
-    const [fundingReceived, setFundingReceived] = useState({})
-
-    const equitySpend = fundingDomainData.find(d => d.fullName?.includes('Equity'))?.value ?? 0
-    const sendSpend   = fundingDomainData.find(d => d.fullName?.includes('SEND'))?.value ?? 0
-    const perPupil    = schoolCtx.totalPupils ? Math.round(totalCost / schoolCtx.totalPupils) : null
-    const perPP       = schoolCtx.ppCount     ? Math.round(equitySpend / schoolCtx.ppCount)   : null
-    const perSEND     = schoolCtx.sendCount   ? Math.round(sendSpend   / schoolCtx.sendCount) : null
-
-    if (totalCost === 0) return (
-      <ACard>
-        <ASectionTitle sub="Annual cost of provision grouped by funding source and domain">Funding & Cost</ASectionTitle>
-        <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No cost data recorded yet.</p>
-      </ACard>
-    )
-
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-          {[
-            { label: 'Total spend',    value: `£${totalCost.toLocaleString()}` },
-            { label: 'Per pupil',      value: perPupil  ? `£${perPupil.toLocaleString()}`  : '—' },
-            { label: 'Per PP pupil',   value: perPP     ? `£${perPP.toLocaleString()}`     : '—' },
-            { label: 'Per SEND pupil', value: perSEND   ? `£${perSEND.toLocaleString()}`   : '—' },
-          ].map((s, i) => (
-            <ACard key={i}>
-              <p style={{ fontSize: '1.5rem', fontWeight: 700, color: '#1e293b' }}>{s.value}</p>
-              <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 4 }}>{s.label}</p>
-            </ACard>
-          ))}
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <ACard>
-            <ASectionTitle sub="Annual spend by domain">By Domain</ASectionTitle>
-            {fundingDomainData.length === 0
-              ? <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No domain cost data.</p>
-              : (
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={fundingDomainData} layout="vertical" barCategoryGap="30%" margin={{ left: 0 }}>
-                    <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={v => `£${v.toLocaleString()}`} />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={72} />
-                    <Tooltip formatter={v => `£${Number(v).toLocaleString()}`} />
-                    <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                      {fundingDomainData.map((d, idx) => <Cell key={idx} fill={d.colour} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              )
-            }
-          </ACard>
-
-          <ACard>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div>
-                <p style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1e293b' }}>Funding Streams</p>
-                <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Spend proportion by source</p>
-              </div>
-              <button type="button" onClick={() => setShowFundingInputs(v => !v)}
-                style={{ fontSize: '0.75rem', color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                {showFundingInputs ? 'Hide' : 'Add funding received'}
-              </button>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {fundingSourceData.map((fs, i) => {
-                const pct      = totalCost ? Math.round((fs.value / totalCost) * 100) : 0
-                const received = Number(fundingReceived[fs.name] ?? 0)
-                const diff     = received - fs.value
-                return (
-                  <div key={i}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontSize: '0.78rem', color: '#475569' }}>{fs.name}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {received > 0 && (
-                          <span style={{ fontSize: '0.7rem', fontWeight: 600, color: diff >= 0 ? '#16a34a' : '#dc2626' }}>
-                            {diff >= 0 ? `+£${diff.toLocaleString()}` : `-£${Math.abs(diff).toLocaleString()}`}
-                          </span>
-                        )}
-                        <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1e293b' }}>£{fs.value.toLocaleString()}</span>
-                      </div>
-                    </div>
-                    <div style={{ height: 7, borderRadius: 4, background: '#f1f5f9', overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${pct}%`, borderRadius: 4, background: '#6366f1', transition: 'width 0.4s' }} />
-                    </div>
-                    {showFundingInputs && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                        <label style={{ fontSize: '0.7rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>Received £</label>
-                        <input type="number" min="0"
-                          style={{ flex: 1, padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: '0.8rem' }}
-                          value={fundingReceived[fs.name] ?? ''}
-                          onChange={e => setFundingReceived(prev => ({ ...prev, [fs.name]: e.target.value }))}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </ACard>
-        </div>
-      </div>
-    )
-  }
-
-  function OutcomesImpact() {
-    const allItems = allEvidence
-      .filter(ev => ev.intended_outcomes || ev.impact_on_outcomes || ev.evidence_notes)
-      .map(ev => {
-        const dIdx = domains.findIndex(d => d.id === ev.domainId)
-        return {
-          name:      ev.provision_name || ev.entryLabel,
-          point:     ev.entryLabel,
-          domain:    ev.domainName,
-          subDomain: ev.subDomainName,
-          colour:    dIdx >= 0 ? aDomainColour(ev.domainName, dIdx) : '#94a3b8',
-          groups:    A_GROUPS.filter(g => ev[g.key]).map(g => g.label),
-          intended:  ev.intended_outcomes,
-          impact:    ev.impact_on_outcomes,
-          docLink:   ev.supporting_document_link || null,
-        }
-      })
-
-    if (allItems.length === 0) return (
-      <ACard>
-        <ASectionTitle sub="Intended outcomes and evidence of impact">Outcomes & Impact</ASectionTitle>
-        <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No outcomes or impact data recorded yet.</p>
-      </ACard>
-    )
-
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {allItems.map((item, i) => (
-                <ACard key={i}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: item.intended || item.impact ? 12 : 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, flex: 1, minWidth: 0 }}>
-                      <span style={{ width: 10, height: 10, borderRadius: '50%', background: item.colour, flexShrink: 0, marginTop: 4 }} />
-                      <div style={{ minWidth: 0 }}>
-                        <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>{item.name}</p>
-                        <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 2 }}>
-                          {item.domain}{item.subDomain ? ` · ${item.subDomain}` : ''}
-                        </p>
-                      </div>
-                    </div>
-                    {item.groups.length > 0 && (
-                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: '45%', marginLeft: 12 }}>
-                        {item.groups.map((g, gi) => <AGroupPill key={gi} label={g} />)}
-                      </div>
-                    )}
-                  </div>
-                  {item.intended && (
-                    <div style={{ marginBottom: item.impact ? 10 : 0 }}>
-                      <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Intended outcome</p>
-                      <p style={{ fontSize: '0.82rem', color: '#334155', lineHeight: 1.55 }}>{item.intended}</p>
-                    </div>
-                  )}
-                  {item.impact && (
-                    <div style={{ marginBottom: item.docLink ? 10 : 0 }}>
-                      <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Evidence of impact</p>
-                      <p style={{ fontSize: '0.82rem', color: '#334155', lineHeight: 1.55 }}>{item.impact}</p>
-                    </div>
-                  )}
-                  {item.docLink && (
-                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
-                      <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Supporting Document</p>
-                      <a
-                        href={item.docLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          fontSize: '0.8rem',
-                          color: '#2563eb',
-                          textDecoration: 'none',
-                          fontWeight: 500,
-                          padding: '5px 10px',
-                          borderRadius: 6,
-                          border: '1px solid #bfdbfe',
-                          background: '#eff6ff',
-                          maxWidth: '100%',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                        title={item.docLink}
-                      >
-                        <span style={{ flexShrink: 0 }}>↗</span>
-                        {(() => {
-                          try {
-                            const u = new URL(item.docLink)
-                            return u.hostname.replace(/^www\./, '') + (u.pathname !== '/' ? u.pathname.split('/').pop() || u.pathname : '')
-                          } catch {
-                            return item.docLink
-                          }
-                        })()}
-                      </a>
-                    </div>
-                  )}
-                </ACard>
-        ))}
-      </div>
-    )
-  }
-
   // ── Cross-domain group reach ─────────────────────────────────────
-  const REACH_COLS = REACH_GROUPS
-  const CTX_COHORTS = [
-    { field: 'reach_send',  cohort: schoolCtx.sendCount },
-    { field: 'reach_pp',    cohort: schoolCtx.ppCount },
-    { field: 'reach_eal',   cohort: schoolCtx.ealCount },
-    { field: 'reach_fsm',   cohort: schoolCtx.fsmCount },
-    { field: 'reach_lac',   cohort: schoolCtx.lacCount },
-    { field: 'reach_wwc',   cohort: schoolCtx.wwcCount },
-    { field: 'reach_other', cohort: null },
-  ]
   const reachMatrix = domains.map((d, idx) => {
     const domEvidence = allEvidence.filter(ev =>
       ev.domainId === d.id &&
@@ -1181,140 +1307,12 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
       shortName: d.name.length > 14 ? d.name.split(/[&\s]/)[0] : d.name,
       colour: aDomainColour(d.name, idx),
       totalReach: domEvidence.reduce((s, ev) => s + (Number(ev.reach_total) || 0), 0),
-      groups: REACH_COLS.map(g => ({
+      groups: REACH_GROUPS.map(g => ({
         label: g.label,
         total: domEvidence.reduce((s, ev) => s + (Number(ev[g.field]) || 0), 0),
       })),
     }
   })
-
-  function GroupReach() {
-    const hasAnyData = reachMatrix.some(r => r.totalReach > 0)
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <ACard>
-          <ASectionTitle sub="Student group reach across all domains — enter student numbers in evidence entries to populate">
-            Cross-Domain Student Reach
-          </ASectionTitle>
-          {!hasAnyData ? (
-            <p style={{ color: '#94a3b8', fontSize: '0.82rem' }}>
-              No reach data yet. Add student numbers to evidence entries using Student-Facing or Whole School provision types.
-            </p>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: 'left', padding: '8px 12px', color: '#64748b', fontWeight: 600, borderBottom: '2px solid #e2e8f0' }}>Domain</th>
-                    <th style={{ textAlign: 'right', padding: '8px 8px', color: '#64748b', fontWeight: 600, borderBottom: '2px solid #e2e8f0' }}>Total</th>
-                    {REACH_COLS.map((g, gi) => (
-                      <th key={g.field} style={{ textAlign: 'right', padding: '8px 8px', color: '#64748b', fontWeight: 600, borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>
-                        {g.label}
-                        {CTX_COHORTS[gi].cohort > 0 && (
-                          <span style={{ display: 'block', fontSize: '0.65rem', color: '#94a3b8', fontWeight: 400 }}>
-                            of {CTX_COHORTS[gi].cohort}
-                          </span>
-                        )}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {reachMatrix.map((row, ri) => (
-                    <tr key={ri} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '10px 12px', fontWeight: 600, color: '#1e293b' }}>
-                        <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: row.colour, marginRight: 8 }} />
-                        {row.domain}
-                      </td>
-                      <td style={{ textAlign: 'right', padding: '10px 8px', color: row.totalReach > 0 ? '#1e293b' : '#cbd5e1', fontWeight: row.totalReach > 0 ? 700 : 400 }}>
-                        {row.totalReach || '—'}
-                      </td>
-                      {row.groups.map((g, gi) => {
-                        const cohort = CTX_COHORTS[gi].cohort
-                        const pct = cohort > 0 ? Math.round((g.total / cohort) * 100) : null
-                        const isGap = row.totalReach > 0 && cohort > 0 && g.total === 0
-                        return (
-                          <td key={gi} style={{
-                            textAlign: 'right', padding: '10px 8px',
-                            background: isGap ? '#fef2f2' : 'transparent',
-                            color: g.total > 0 ? '#1e293b' : isGap ? '#ef4444' : '#cbd5e1',
-                            fontWeight: g.total > 0 ? 600 : 400,
-                          }}>
-                            {g.total > 0 ? (
-                              <>
-                                {g.total}
-                                {pct !== null && <span style={{ fontSize: '0.68rem', color: '#94a3b8', marginLeft: 4 }}>({pct}%)</span>}
-                              </>
-                            ) : isGap ? (
-                              <span title="Gap: this domain reaches students but none recorded for this group">⚠</span>
-                            ) : '—'}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-                {schoolCtx.totalPupils > 0 && (
-                  <tfoot>
-                    <tr>
-                      <td colSpan={2 + REACH_COLS.length} style={{ padding: '8px 12px', fontSize: '0.7rem', color: '#94a3b8', borderTop: '2px solid #e2e8f0' }}>
-                        ⚠ Red cells indicate domains with student-facing provision but zero reach recorded for that group. Percentages are of school cohort totals.
-                      </td>
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-            </div>
-          )}
-        </ACard>
-
-        {hasAnyData && (
-          <ACard>
-            <ASectionTitle sub="How each domain reaches key student groups">Group Reach by Domain</ASectionTitle>
-            {REACH_COLS.map((g, gi) => {
-              const cohort = CTX_COHORTS[gi].cohort
-              const max = Math.max(...reachMatrix.map(r => r.groups[gi].total), cohort || 0, 1)
-              const rowsWithData = reachMatrix.filter(r => r.groups[gi].total > 0)
-              return (
-                <div key={g.field} style={{ marginBottom: 20 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b' }}>{g.label}</span>
-                    {cohort > 0 && <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Cohort: {cohort}</span>}
-                  </div>
-                  {rowsWithData.length === 0 ? (
-                    <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: 0 }}>No data</p>
-                  ) : (
-                    reachMatrix.map((row, ri) => {
-                      const val = row.groups[gi].total
-                      const barPct = Math.round((val / max) * 100)
-                      return (
-                        <div key={ri} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                          <span style={{ fontSize: '0.72rem', color: '#64748b', width: 88, flexShrink: 0, textAlign: 'right' }}>{row.shortName}</span>
-                          <div style={{ flex: 1, height: 6, background: '#f1f5f9', borderRadius: 3, overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: `${barPct}%`, background: row.colour, borderRadius: 3, transition: 'width 0.4s' }} />
-                          </div>
-                          <span style={{ fontSize: '0.72rem', color: val > 0 ? '#1e293b' : '#cbd5e1', fontWeight: 600, width: 32, textAlign: 'right' }}>{val || '—'}</span>
-                        </div>
-                      )
-                    })
-                  )}
-                  {cohort > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
-                      <span style={{ fontSize: '0.68rem', color: '#94a3b8', width: 88, flexShrink: 0, textAlign: 'right' }}>Cohort</span>
-                      <div style={{ flex: 1, height: 6, background: '#f1f5f9', borderRadius: 3, position: 'relative' }}>
-                        <div style={{ position: 'absolute', left: `${Math.min(Math.round((cohort / max) * 100), 100)}%`, top: -1, width: 2, height: 8, background: '#94a3b8', borderRadius: 1 }} />
-                      </div>
-                      <span style={{ fontSize: '0.68rem', color: '#94a3b8', width: 32, textAlign: 'right' }}>{cohort}</span>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </ACard>
-        )}
-      </div>
-    )
-  }
 
   if (aLoading) return <p className="state-msg">Loading analytics…</p>
 
@@ -1420,11 +1418,84 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
         </div>
       </div>
 
-      {activeTab === 'readiness' && <DomainReadiness />}
-      {activeTab === 'equity'    && <EnrichmentEquity />}
-      {activeTab === 'funding'   && <FundingCost />}
-      {activeTab === 'outcomes'  && <OutcomesImpact />}
-      {activeTab === 'reach'     && <GroupReach />}
+      {activeTab === 'readiness' && <DomainReadiness readinessData={readinessData} upcomingReviews={upcomingReviews} />}
+      {activeTab === 'equity'    && <EnrichmentEquity equityData={equityData} schoolCtx={schoolCtx} />}
+      {activeTab === 'funding'   && <FundingCost fundingDomainData={fundingDomainData} fundingSourceData={fundingSourceData} totalCost={totalCost} schoolCtx={schoolCtx} />}
+      {activeTab === 'outcomes'  && <OutcomesImpact allEvidence={allEvidence} domains={domains} />}
+      {activeTab === 'reach'     && <GroupReach reachMatrix={reachMatrix} schoolCtx={schoolCtx} />}
+    </div>
+  )
+}
+
+function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, onOpenModal, readOnly }) {
+  const stripeColour = status === 'in_place' ? '#1D9E75' : status === 'in_progress' ? '#BA7517' : status === 'not_in_place' ? '#E24B4A' : '#e2e8f0'
+  return (
+    <div className="pp-row"
+      style={{
+        borderLeft: `3px solid ${stripeColour}`,
+        borderTop: ppIdx > 0 ? '0.5px solid #f1f5f9' : 'none',
+        background: '#fff',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', flexWrap: 'wrap' }}>
+        <span style={{ flex: 1, minWidth: 160, fontSize: 13, color: '#1e293b' }}>{pp.label}</span>
+        {evidenceList.length > 0 && (
+          <span className="evidence-count-badge" title={`${evidenceList.length} evidence ${evidenceList.length === 1 ? 'entry' : 'entries'}`}>
+            {evidenceList.length}
+          </span>
+        )}
+        <div className="provision-actions">
+          <div className="status-group">
+            {STATUSES.map(s => (
+              <button
+                key={s}
+                type="button"
+                className={`status-btn status-btn--${s.replace(/_/g, '-')}${status === s ? ' active' : ''}`}
+                onClick={readOnly ? undefined : () => onStatusChange(pp.id, s)}
+                disabled={readOnly}
+                title={readOnly ? 'You do not have edit access to this school' : undefined}
+                style={readOnly ? { cursor: 'default', opacity: 0.65 } : undefined}
+              >
+                {STATUS_LABELS[s]}
+              </button>
+            ))}
+          </div>
+          {!readOnly && (
+            <button type="button" className="evidence-btn" onClick={() => onOpenModal(pp)}>
+              Add Evidence
+            </button>
+          )}
+        </div>
+      </div>
+      {evidenceList.length > 0 && (
+        <ul className="evidence-list">
+          {evidenceList.map(ev => (
+            <li key={ev.id}>
+              <button type="button" className="evidence-list-item" onClick={() => onOpenModal(pp, ev)}>
+                {ev.provision_name || 'Untitled entry'}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function ShowToggle({ expanded, total, onToggle }) {
+  if (total <= 3) return null
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', borderTop: '0.5px solid #f1f5f9' }}>
+      <button type="button" onClick={onToggle} style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4,
+        background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+        fontSize: 12, color: '#1D9E75', padding: '4px 8px',
+      }}>
+        {expanded
+          ? <>Show less <i className="ti ti-chevron-up" style={{ fontSize: '0.75rem' }} /></>
+          : <>Show all {total} points <i className="ti ti-chevron-down" style={{ fontSize: '0.75rem' }} /></>
+        }
+      </button>
     </div>
   )
 }
@@ -1530,7 +1601,6 @@ export default function App() {
           return
         }
         const role = data.role ?? 'contributor'
-        console.log('[Profile] raw role from Supabase:', data.role, '→ resolved as:', role)
         setUserRole(role)
         setUserMatId(data.mat_id ?? null)
         if (role === 'mat_admin') {
@@ -2144,62 +2214,18 @@ export default function App() {
 
                           {/* Provision point rows */}
                           <div style={{ position: 'relative' }}>
-                            {visiblePPs.map((pp, ppIdx) => {
-                              const status = allStatuses[pp.id]
-                              const evList = evidenceEntries[pp.id] ?? []
-                              const stripeColour = status === 'in_place' ? '#1D9E75' : status === 'in_progress' ? '#BA7517' : status === 'not_in_place' ? '#E24B4A' : '#e2e8f0'
-                              return (
-                                <div key={pp.id} className="pp-row"
-                                  style={{
-                                    borderLeft: `3px solid ${stripeColour}`,
-                                    borderTop: ppIdx > 0 ? '0.5px solid #f1f5f9' : 'none',
-                                    background: '#fff',
-                                  }}
-                                >
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', flexWrap: 'wrap' }}>
-                                    <span style={{ flex: 1, minWidth: 160, fontSize: 13, color: '#1e293b' }}>{pp.label}</span>
-                                    {evList.length > 0 && (
-                                      <span className="evidence-count-badge" title={`${evList.length} evidence ${evList.length === 1 ? 'entry' : 'entries'}`}>
-                                        {evList.length}
-                                      </span>
-                                    )}
-                                    <div className="provision-actions">
-                                      <div className="status-group">
-                                        {STATUSES.map(s => (
-                                          <button
-                                            key={s}
-                                            type="button"
-                                            className={`status-btn status-btn--${s.replace(/_/g, '-')}${status === s ? ' active' : ''}`}
-                                            onClick={readOnly ? undefined : () => handleStatusChange(pp.id, s)}
-                                            disabled={readOnly}
-                                            title={readOnly ? 'You do not have edit access to this school' : undefined}
-                                            style={readOnly ? { cursor: 'default', opacity: 0.65 } : undefined}
-                                          >
-                                            {STATUS_LABELS[s]}
-                                          </button>
-                                        ))}
-                                      </div>
-                                      {!readOnly && (
-                                        <button type="button" className="evidence-btn" onClick={() => openModal(pp)}>
-                                          Add Evidence
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-                                  {evList.length > 0 && (
-                                    <ul className="evidence-list">
-                                      {evList.map(ev => (
-                                        <li key={ev.id}>
-                                          <button type="button" className="evidence-list-item" onClick={() => openModal(pp, ev)}>
-                                            {ev.provision_name || 'Untitled entry'}
-                                          </button>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  )}
-                                </div>
-                              )
-                            })}
+                            {visiblePPs.map((pp, ppIdx) => (
+                              <ProvisionPointRow
+                                key={pp.id}
+                                pp={pp}
+                                ppIdx={ppIdx}
+                                status={allStatuses[pp.id]}
+                                evidenceList={evidenceEntries[pp.id] ?? []}
+                                onStatusChange={handleStatusChange}
+                                onOpenModal={openModal}
+                                readOnly={readOnly}
+                              />
+                            ))}
 
                             {/* Fade mask when truncated */}
                             {needsTrunc && (
@@ -2211,29 +2237,7 @@ export default function App() {
                             )}
                           </div>
 
-                          {/* Show all / Show less */}
-                          {needsTrunc && (
-                            <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', borderTop: '0.5px solid #f1f5f9' }}>
-                              <button type="button" onClick={() => toggleCatDomain(group.domainId)} style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 4,
-                                background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                                fontSize: 12, color: '#1D9E75', padding: '4px 8px',
-                              }}>
-                                Show all {ppCount} points <i className="ti ti-chevron-down" style={{ fontSize: '0.75rem' }} />
-                              </button>
-                            </div>
-                          )}
-                          {isExpanded && ppCount > 3 && (
-                            <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', borderTop: '0.5px solid #f1f5f9' }}>
-                              <button type="button" onClick={() => toggleCatDomain(group.domainId)} style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 4,
-                                background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                                fontSize: 12, color: '#1D9E75', padding: '4px 8px',
-                              }}>
-                                Show less <i className="ti ti-chevron-up" style={{ fontSize: '0.75rem' }} />
-                              </button>
-                            </div>
-                          )}
+                          <ShowToggle expanded={isExpanded} total={ppCount} onToggle={() => toggleCatDomain(group.domainId)} />
                         </div>
                       )
                     })}
@@ -2330,67 +2334,18 @@ export default function App() {
 
                       {/* Provision point rows */}
                       <div style={{ position: 'relative' }}>
-                        {visiblePPs.map((pp, ppIdx) => {
-                          const entry = entries[pp.id] ?? {}
-                          const evList = evidenceEntries[pp.id] ?? []
-                          const status = entry.status
-                          const stripeColour = status === 'in_place' ? '#1D9E75' : status === 'in_progress' ? '#BA7517' : status === 'not_in_place' ? '#E24B4A' : '#e2e8f0'
-                          return (
-                            <div key={pp.id} className="pp-row"
-                              style={{
-                                borderLeft: `3px solid ${stripeColour}`,
-                                borderTop: ppIdx > 0 ? '0.5px solid #f1f5f9' : 'none',
-                                background: '#fff',
-                              }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', flexWrap: 'wrap' }}>
-                                <span style={{ flex: 1, minWidth: 160, fontSize: 13, color: '#1e293b' }}>{pp.label}</span>
-                                {evList.length > 0 && (
-                                  <span className="evidence-count-badge" title={`${evList.length} evidence ${evList.length === 1 ? 'entry' : 'entries'}`}>
-                                    {evList.length}
-                                  </span>
-                                )}
-                                <div className="provision-actions">
-                                  <div className="status-group">
-                                    {STATUSES.map(s => (
-                                      <button
-                                        key={s}
-                                        type="button"
-                                        className={`status-btn status-btn--${s.replace(/_/g, '-')}${entry.status === s ? ' active' : ''}`}
-                                        onClick={readOnly ? undefined : () => handleStatusChange(pp.id, s)}
-                                        disabled={readOnly}
-                                        title={readOnly ? 'You do not have edit access to this school' : undefined}
-                                        style={readOnly ? { cursor: 'default', opacity: 0.65 } : undefined}
-                                      >
-                                        {STATUS_LABELS[s]}
-                                      </button>
-                                    ))}
-                                  </div>
-                                  {!readOnly && (
-                                    <button type="button" className="evidence-btn" onClick={() => openModal(pp)}>
-                                      Add Evidence
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                              {evList.length > 0 && (
-                                <ul className="evidence-list">
-                                  {evList.map(ev => (
-                                    <li key={ev.id}>
-                                      <button
-                                        type="button"
-                                        className="evidence-list-item"
-                                        onClick={() => openModal(pp, ev)}
-                                      >
-                                        {ev.provision_name || 'Untitled entry'}
-                                      </button>
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                            </div>
-                          )
-                        })}
+                        {visiblePPs.map((pp, ppIdx) => (
+                          <ProvisionPointRow
+                            key={pp.id}
+                            pp={pp}
+                            ppIdx={ppIdx}
+                            status={entries[pp.id]?.status}
+                            evidenceList={evidenceEntries[pp.id] ?? []}
+                            onStatusChange={handleStatusChange}
+                            onOpenModal={openModal}
+                            readOnly={readOnly}
+                          />
+                        ))}
 
                         {/* Fade mask when truncated */}
                         {needsTrunc && (
@@ -2402,29 +2357,7 @@ export default function App() {
                         )}
                       </div>
 
-                      {/* Show all / Show less controls */}
-                      {needsTrunc && (
-                        <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', borderTop: '0.5px solid #f1f5f9' }}>
-                          <button type="button" onClick={() => toggleSD(sd.id)} style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                            background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                            fontSize: 12, color: '#1D9E75', padding: '4px 8px',
-                          }}>
-                            Show all {ppCount} points <i className="ti ti-chevron-down" style={{ fontSize: '0.75rem' }} />
-                          </button>
-                        </div>
-                      )}
-                      {isExpanded && ppCount > 3 && (
-                        <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', borderTop: '0.5px solid #f1f5f9' }}>
-                          <button type="button" onClick={() => toggleSD(sd.id)} style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                            background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                            fontSize: 12, color: '#1D9E75', padding: '4px 8px',
-                          }}>
-                            Show less <i className="ti ti-chevron-up" style={{ fontSize: '0.75rem' }} />
-                          </button>
-                        </div>
-                      )}
+                      <ShowToggle expanded={isExpanded} total={ppCount} onToggle={() => toggleSD(sd.id)} />
                     </div>
                   )
                 })}

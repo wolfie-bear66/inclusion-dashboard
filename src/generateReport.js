@@ -537,7 +537,6 @@ export function generateReport({
   schoolName = '',
   options = {},
 }) {
-  console.log('Report options:', options)
   const doc     = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
   const dateStr = fmt()
   const ay      = academicYear()
