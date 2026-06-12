@@ -1396,8 +1396,27 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
   )
 }
 
-function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, onOpenModal, readOnly }) {
+function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, onOpenModal, readOnly, isFlagged, onFlag }) {
+  const [flagOpen, setFlagOpen] = useState(false)
+  const [flagNote, setFlagNote] = useState('')
+  const [flagSaving, setFlagSaving] = useState(false)
+  const [flagError, setFlagError] = useState(false)
+
   const stripeColour = status === 'in_place' ? '#1D9E75' : status === 'in_progress' ? '#BA7517' : status === 'not_in_place' ? '#E24B4A' : '#e2e8f0'
+
+  async function submitFlag() {
+    setFlagSaving(true)
+    setFlagError(false)
+    const ok = await onFlag(pp.id, flagNote)
+    setFlagSaving(false)
+    if (ok) {
+      setFlagOpen(false)
+      setFlagNote('')
+    } else {
+      setFlagError(true)
+    }
+  }
+
   return (
     <div className="pp-row"
       style={{
@@ -1434,6 +1453,25 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, on
               Add Evidence
             </button>
           )}
+          <button
+            type="button"
+            aria-label="Flag an issue with this provision point"
+            onClick={() => setFlagOpen(v => !v)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              padding: '4px 6px',
+              border: `0.5px solid ${isFlagged ? '#E24B4A' : '#e2e8f0'}`,
+              borderRadius: 6,
+              background: isFlagged ? '#FCEBEB' : '#fff',
+              color: isFlagged ? '#E24B4A' : '#94a3b8',
+              cursor: 'pointer', lineHeight: 1,
+              transition: 'color 0.15s, border-color 0.15s, background 0.15s',
+            }}
+            onMouseEnter={e => { if (!isFlagged) { e.currentTarget.style.borderColor = '#E24B4A'; e.currentTarget.style.color = '#E24B4A' } }}
+            onMouseLeave={e => { if (!isFlagged) { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = '#94a3b8' } }}
+          >
+            <i className={`ti ${isFlagged ? 'ti-flag-filled' : 'ti-flag'}`} style={{ fontSize: 14 }} />
+          </button>
         </div>
       </div>
       {evidenceList.length > 0 && (
@@ -1446,6 +1484,48 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, on
             </li>
           ))}
         </ul>
+      )}
+      {flagOpen && (
+        <div style={{ padding: '10px 16px 12px', borderTop: '0.5px solid #f1f5f9', background: '#fafafa' }}>
+          <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>What's the issue?</p>
+          <textarea
+            rows={3}
+            placeholder="Describe the friction or confusion (optional)"
+            value={flagNote}
+            onChange={e => { setFlagNote(e.target.value); setFlagError(false) }}
+            style={{
+              width: '100%', fontSize: 12, padding: '7px 10px',
+              border: '1px solid #e2e8f0', borderRadius: 6,
+              resize: 'vertical', fontFamily: 'inherit', color: '#1e293b',
+              boxSizing: 'border-box',
+            }}
+          />
+          {flagError && (
+            <p style={{ fontSize: 12, color: '#E24B4A', marginTop: 4 }}>Could not save — please try again</p>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+            <button
+              type="button"
+              onClick={submitFlag}
+              disabled={flagSaving}
+              style={{
+                padding: '5px 14px', background: '#E24B4A', color: '#fff',
+                border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                cursor: flagSaving ? 'default' : 'pointer', fontFamily: 'inherit',
+                opacity: flagSaving ? 0.7 : 1,
+              }}
+            >
+              {flagSaving ? 'Saving…' : 'Submit flag'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setFlagOpen(false); setFlagNote(''); setFlagError(false) }}
+              style={{ background: 'none', border: 'none', fontSize: 12, color: '#1D9E75', cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -1507,6 +1587,8 @@ export default function App() {
   const [analyticsTabRequest, setAnalyticsTabRequest] = useState(null)
   const [expandedSDs, setExpandedSDs] = useState(new Set())
   const [expandedCatDomains, setExpandedCatDomains] = useState(new Set())
+
+  const [flaggedPoints, setFlaggedPoints] = useState(new Set())
 
   // Mobile sidebar
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
@@ -1649,9 +1731,9 @@ export default function App() {
       })
   }, [selectedSchool])
 
-  // Lightweight load: statuses + evidence counts for all domains, current school
+  // Lightweight load: statuses + evidence counts + friction flags for all domains, current school
   useEffect(() => {
-    if (!selectedSchool) { setAllStatuses({}); setAllEvidenceCounts({}); return }
+    if (!selectedSchool) { setAllStatuses({}); setAllEvidenceCounts({}); setFlaggedPoints(new Set()); return }
     supabase
       .from('entries')
       .select('provision_point_id, status, evidence_entries(id)')
@@ -1666,6 +1748,13 @@ export default function App() {
         }
         setAllStatuses(statusMap)
         setAllEvidenceCounts(evidenceMap)
+      })
+    supabase
+      .from('friction_logs')
+      .select('provision_point_id')
+      .eq('school_id', selectedSchool)
+      .then(({ data }) => {
+        if (data) setFlaggedPoints(new Set(data.map(r => r.provision_point_id)))
       })
   }, [selectedSchool])
 
@@ -1796,6 +1885,24 @@ export default function App() {
       wwc_count:    updated.wwcCount,
       updated_at:   new Date().toISOString(),
     }, { onConflict: 'school_id' })
+  }
+
+  async function handleFlag(ppId, note) {
+    const info = ppInfoMap[ppId]
+    const { error } = await supabase.from('friction_logs').insert([{
+      school_id:          selectedSchool,
+      provision_point_id: ppId,
+      provision_label:    info?.label ?? '',
+      domain_name:        info?.domainName ?? '',
+      sub_domain_name:    info?.subDomainName ?? '',
+      note:               note ?? '',
+    }])
+    if (!error) {
+      setFlaggedPoints(prev => new Set([...prev, ppId]))
+      return true
+    }
+    console.error('Error saving friction log:', error)
+    return false
   }
 
   async function handleStatusChange(ppId, status) {
@@ -2265,6 +2372,8 @@ export default function App() {
                                 onStatusChange={handleStatusChange}
                                 onOpenModal={openModal}
                                 readOnly={readOnly}
+                                isFlagged={flaggedPoints.has(pp.id)}
+                                onFlag={handleFlag}
                               />
                             ))}
 
@@ -2385,6 +2494,8 @@ export default function App() {
                             onStatusChange={handleStatusChange}
                             onOpenModal={openModal}
                             readOnly={readOnly}
+                            isFlagged={flaggedPoints.has(pp.id)}
+                            onFlag={handleFlag}
                           />
                         ))}
 

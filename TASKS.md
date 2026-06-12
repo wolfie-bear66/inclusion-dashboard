@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 11 June 2026 (Session 8)
+Last updated: 12 June 2026 (Session 9)
 
 ---
 
@@ -51,7 +51,7 @@ Last updated: 11 June 2026 (Session 8)
 
 - [ ] **Additional staff logins — St Augustine** — offer logins to SENCO and assistant head alongside headteacher. Introduce naturally in follow-up meeting.
 
-- [ ] **"Flag this" friction logger** — small flag icon on each provision point row, lets users log friction visible to Stuart as admin in Supabase. Add before pilot expands beyond headteacher.
+- [x] **"Flag this" friction logger** — flag button on every provision point row (both domain and category views); inline panel with optional note; saves to `friction_logs` table in Supabase; flag button highlights red when flagged; existing flags loaded on school login. (Session 9)
 
 - [ ] **Rydell High seed data** — populate Rydell High from publicly available school documents for MAT demo.
 
