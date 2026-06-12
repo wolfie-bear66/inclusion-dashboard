@@ -898,6 +898,9 @@ function FundingCost({ fundingDomainData, fundingSourceData, totalCost, schoolCt
 }
 
 function OutcomesImpact({ allEvidence, domains }) {
+  const [filterMode, setFilterMode] = useState('all')
+  const [activeFilters, setActiveFilters] = useState([])
+
   const allItems = allEvidence
     .filter(ev => ev.intended_outcomes || ev.impact_on_outcomes || ev.evidence_notes)
     .map(ev => {
@@ -915,6 +918,45 @@ function OutcomesImpact({ allEvidence, domains }) {
       }
     })
 
+  const domainOptions   = [...new Set(allItems.map(i => i.domain).filter(Boolean))]
+  const groupOptions    = [...new Set(allItems.flatMap(i => i.groups).filter(Boolean))]
+  const subDomainOptions = [...new Set(allItems.map(i => i.subDomain).filter(Boolean))]
+
+  const filteredItems = filterMode === 'all' || activeFilters.length === 0
+    ? allItems
+    : filterMode === 'domain'
+      ? allItems.filter(i => activeFilters.includes(i.domain))
+      : filterMode === 'group'
+        ? allItems.filter(i => i.groups.some(g => activeFilters.includes(g)))
+        : allItems.filter(i => activeFilters.includes(i.subDomain))
+
+  const pillOptions = filterMode === 'domain' ? domainOptions : filterMode === 'group' ? groupOptions : subDomainOptions
+
+  function setMode(mode) { setFilterMode(mode); setActiveFilters([]) }
+  function toggleFilter(val) {
+    setActiveFilters(prev => prev.includes(val) ? prev.filter(x => x !== val) : [...prev, val])
+  }
+
+  const modePills = [
+    { id: 'all',       label: 'All' },
+    { id: 'domain',    label: 'By Domain' },
+    { id: 'group',     label: 'By Group' },
+    { id: 'subdomain', label: 'By Sub-domain' },
+  ]
+
+  const pillBase = {
+    fontSize: 12, padding: '5px 12px', borderRadius: 99, cursor: 'pointer',
+    border: '0.5px solid #e2e8f0', fontFamily: 'inherit',
+  }
+  const pillInactive = { background: '#f8fafc', color: '#64748b' }
+  const pillActive   = { background: '#E1F5EE', color: '#0F6E56', border: '0.5px solid #1D9E75' }
+
+  const countLine = filterMode === 'all'
+    ? `${allItems.length} outcome${allItems.length !== 1 ? 's' : ''}`
+    : activeFilters.length === 0
+      ? 'Select one or more filters above'
+      : `${filteredItems.length} of ${allItems.length} outcome${allItems.length !== 1 ? 's' : ''}`
+
   if (allItems.length === 0) return (
     <ACard>
       <ASectionTitle sub="Intended outcomes and evidence of impact">Outcomes & Impact</ASectionTitle>
@@ -924,7 +966,41 @@ function OutcomesImpact({ allEvidence, domains }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {allItems.map((item, i) => (
+      {/* Filter controls */}
+      <div>
+        {/* Mode toggle pills */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+          {modePills.map(m => (
+            <button key={m.id} type="button" onClick={() => setMode(m.id)}
+              style={{ ...pillBase, ...(filterMode === m.id ? pillActive : pillInactive) }}>
+              {m.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Filter option pills */}
+        {filterMode !== 'all' && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6, alignItems: 'center' }}>
+            {pillOptions.map(opt => (
+              <button key={opt} type="button" onClick={() => toggleFilter(opt)}
+                style={{ ...pillBase, ...(activeFilters.includes(opt) ? pillActive : pillInactive) }}>
+                {opt}
+              </button>
+            ))}
+            {activeFilters.length > 0 && (
+              <button type="button" onClick={() => setActiveFilters([])}
+                style={{ background: 'none', border: 'none', fontSize: 12, color: '#1D9E75', cursor: 'pointer', fontFamily: 'inherit', padding: '5px 4px' }}>
+                Clear
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Result count */}
+        <p style={{ fontSize: 12, color: '#94a3b8' }}>{countLine}</p>
+      </div>
+
+      {filteredItems.map((item, i) => (
               <ACard key={i}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: item.intended || item.impact ? 12 : 0 }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, flex: 1, minWidth: 0 }}>

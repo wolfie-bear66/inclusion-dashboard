@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 12 June 2026 (Session 9)
+Last updated: 12 June 2026 (Session 9 + filter pills)
 
 ---
 
@@ -59,7 +59,7 @@ Last updated: 12 June 2026 (Session 9)
 
 ### Analytics
 
-- [ ] **Outcomes & Impact tab search** — now filter UI is removed, consider a simple search box to help users navigate long outcome card lists.
+- [x] **Outcomes & Impact filter pills reinstated** — All / By Domain / By Group / By Sub-domain mode toggle with multi-select pills, Clear button, and result count line. Separate from Report Builder filter. (Session 9)
 
 ### Commercial preparation
 
