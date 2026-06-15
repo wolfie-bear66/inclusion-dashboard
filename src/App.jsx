@@ -358,7 +358,7 @@ function Sidebar({
             {answered} of {totalPP} recorded
           </span>
         </div>
-        {userRole === 'Approver' && (
+        {userRole === 'approver' && (
           <button
             type="button"
             onClick={onInviteUser}
@@ -1710,7 +1710,7 @@ export default function App() {
   // Invite user modal state
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState('Contributor')
+  const [inviteRole, setInviteRole] = useState('contributor')
   const [inviteSending, setInviteSending] = useState(false)
   const [inviteMsg, setInviteMsg] = useState(null)  // { type: 'success'|'error', text: string }
   const inviteModalRef = useRef(null)
@@ -1994,7 +1994,7 @@ export default function App() {
 
   function openInviteModal() {
     setInviteEmail('')
-    setInviteRole('Contributor')
+    setInviteRole('contributor')
     setInviteMsg(null)
     setInviteOpen(true)
   }
@@ -2928,8 +2928,8 @@ export default function App() {
                     value={inviteRole}
                     onChange={e => setInviteRole(e.target.value)}
                   >
-                    <option value="Contributor">Contributor</option>
-                    <option value="Approver">Approver</option>
+                    <option value="contributor">Contributor</option>
+                    <option value="approver">Approver</option>
                   </select>
                 </div>
               </div>
