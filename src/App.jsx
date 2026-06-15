@@ -2009,17 +2009,27 @@ export default function App() {
     setInviteSending(true)
     setInviteMsg(null)
     try {
+      const requestBody = {
+        email:     inviteEmail,
+        role:      inviteRole,
+        school_id: selectedSchool,
+        mat_id:    userMatId,
+      }
+      const { data: { session } } = await supabase.auth.getSession()
+      console.log('[invite] Sending request to:', 'https://zgolrthcrupvrrvfokvz.supabase.co/functions/v1/invite-user')
+      console.log('[invite] Request body:', requestBody)
       const res = await fetch('https://zgolrthcrupvrrvfokvz.supabase.co/functions/v1/invite-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email:     inviteEmail,
-          role:      inviteRole,
-          school_id: selectedSchool,
-          mat_id:    userMatId,
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': 'sb_publishable_zjiIMtJYOTWCOpx5s1ABVw_yt6VKiEb',
+        },
+        body: JSON.stringify(requestBody),
       })
       const json = await res.json()
+      console.log('[invite] Response status:', res.status)
+      console.log('[invite] Response body:', json)
       if (!res.ok || json.error) {
         setInviteMsg({ type: 'error', text: json.error ?? 'Something went wrong. Please try again.' })
       } else {
