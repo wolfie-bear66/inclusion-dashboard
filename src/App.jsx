@@ -156,6 +156,7 @@ function Sidebar({
   overviewMode, selectedCategory,
   setOverviewMode, setSelectedCategory,
   onClose,
+  userRole, onInviteUser,
 }) {
   const totalPP   = Object.keys(ppDomainMap).length
   const answered  = Object.values(allStatuses).filter(Boolean).length
@@ -357,6 +358,21 @@ function Sidebar({
             {answered} of {totalPP} recorded
           </span>
         </div>
+        {userRole === 'Approver' && (
+          <button
+            type="button"
+            onClick={onInviteUser}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              width: '100%', marginTop: 8, padding: '6px 0',
+              background: 'none', border: 'none', cursor: 'pointer',
+              fontFamily: 'inherit', textAlign: 'left',
+            }}
+          >
+            <i className="ti ti-user-plus" style={{ fontSize: '0.82rem', color: '#94a3b8' }} />
+            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Add user</span>
+          </button>
+        )}
       </div>
     </aside>
   )
@@ -1682,7 +1698,7 @@ export default function App() {
   const [view, setView] = useState('school')
   const [browsingSchoolName, setBrowsingSchoolName] = useState('')
 
-  // Modal state
+  // Evidence modal state
   const [modalPoint, setModalPoint] = useState(null)
   const [draft, setDraft] = useState({})
   const [draftId, setDraftId] = useState(null)
@@ -1690,6 +1706,14 @@ export default function App() {
   const [modalSaveMsg, setModalSaveMsg] = useState(null)
   const [modalSaveError, setModalSaveError] = useState(false)
   const modalRef = useRef(null)
+
+  // Invite user modal state
+  const [inviteOpen, setInviteOpen] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState('Contributor')
+  const [inviteSending, setInviteSending] = useState(false)
+  const [inviteMsg, setInviteMsg] = useState(null)  // { type: 'success'|'error', text: string }
+  const inviteModalRef = useRef(null)
 
   // Initialise auth: restore session and subscribe to changes.
   // Do NOT clear authLoading here — we wait until the profile fetch resolves
@@ -1968,6 +1992,46 @@ export default function App() {
     setSelectedDomain('')
   }
 
+  function openInviteModal() {
+    setInviteEmail('')
+    setInviteRole('Contributor')
+    setInviteMsg(null)
+    setInviteOpen(true)
+  }
+
+  function closeInviteModal() {
+    setInviteOpen(false)
+    setInviteMsg(null)
+  }
+
+  async function handleInviteSubmit(e) {
+    e.preventDefault()
+    setInviteSending(true)
+    setInviteMsg(null)
+    try {
+      const res = await fetch('https://zgolrthcrupvrrvfokvz.supabase.co/functions/v1/invite-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email:     inviteEmail,
+          role:      inviteRole,
+          school_id: selectedSchool,
+          mat_id:    userMatId,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok || json.error) {
+        setInviteMsg({ type: 'error', text: json.error ?? 'Something went wrong. Please try again.' })
+      } else {
+        setInviteMsg({ type: 'success', text: `Invite sent to ${inviteEmail}.` })
+        setInviteEmail('')
+      }
+    } catch {
+      setInviteMsg({ type: 'error', text: 'Could not reach the server. Check your connection and try again.' })
+    }
+    setInviteSending(false)
+  }
+
   function handleMatSchoolClick(schoolId, sName, domainId) {
     setSelectedSchool(schoolId)
     setBrowsingSchoolName(sName)
@@ -2235,6 +2299,8 @@ export default function App() {
               overviewMode={overviewMode}
               selectedCategory={selectedCategory}
               setOverviewMode={setOverviewMode}
+              userRole={userRole}
+              onInviteUser={() => { openInviteModal(); setSidebarOpen(false) }}
               setSelectedCategory={setSelectedCategory}
               onClose={() => setSidebarOpen(false)}
             />
@@ -2825,6 +2891,72 @@ export default function App() {
               </div>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* Invite user modal */}
+      {inviteOpen && (
+        <div
+          className="modal-overlay"
+          onClick={e => { if (inviteModalRef.current && !inviteModalRef.current.contains(e.target)) closeInviteModal() }}
+        >
+          <div className="modal" ref={inviteModalRef} role="dialog" aria-modal="true" style={{ maxWidth: 420 }}>
+            <div className="modal-header">
+              <h2 className="modal-title">Invite a colleague</h2>
+              <button type="button" className="modal-close" onClick={closeInviteModal} aria-label="Close">✕</button>
+            </div>
+
+            <form className="modal-body" onSubmit={handleInviteSubmit}>
+              <div className="detail-grid">
+                <div className="df df--full">
+                  <label htmlFor="invite-email">Email address</label>
+                  <input
+                    id="invite-email"
+                    type="email"
+                    required
+                    autoComplete="off"
+                    placeholder="colleague@school.org"
+                    value={inviteEmail}
+                    onChange={e => { setInviteEmail(e.target.value); setInviteMsg(null) }}
+                  />
+                </div>
+                <div className="df df--half">
+                  <label htmlFor="invite-role">Role</label>
+                  <select
+                    id="invite-role"
+                    value={inviteRole}
+                    onChange={e => setInviteRole(e.target.value)}
+                  >
+                    <option value="Contributor">Contributor</option>
+                    <option value="Approver">Approver</option>
+                  </select>
+                </div>
+              </div>
+
+              {inviteMsg && (
+                <p style={{
+                  marginTop: 12, fontSize: '0.82rem', lineHeight: 1.5,
+                  color: inviteMsg.type === 'success' ? '#166534' : '#991b1b',
+                  background: inviteMsg.type === 'success' ? '#f0fdf4' : '#fef2f2',
+                  border: `1px solid ${inviteMsg.type === 'success' ? '#bbf7d0' : '#fecdd3'}`,
+                  borderRadius: 8, padding: '8px 12px',
+                }}>
+                  {inviteMsg.text}
+                </p>
+              )}
+
+              <div className="modal-footer" style={{ marginTop: 20 }}>
+                <div className="modal-footer-right">
+                  <button type="button" className="modal-cancel-btn" onClick={closeInviteModal}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="save-btn" disabled={inviteSending}>
+                    {inviteSending ? 'Sending…' : 'Send invite'}
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
         </div>
       )}

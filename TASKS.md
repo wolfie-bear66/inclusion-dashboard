@@ -85,6 +85,7 @@ Last updated: 12 June 2026 (Session 9 + filter pills)
 
 - [ ] Sub-domains RLS errors appearing in console — pre-existing, not blocking, needs investigation.
 - [ ] `evidenceEntries` is empty on category view (domain-specific fetch only) — existing behaviour, not broken, but worth revisiting if evidence needs to show in category view.
+- [ ] Customise Supabase invite email to mention the Inclusion Dashboard by name and give the user context about what they're signing up for.
 
 ---
 
