@@ -2357,6 +2357,148 @@ export default function App() {
         )}
 
         {view !== 'mat' && selectedSchool && !selectedDomain && (() => {
+
+          // ── Category view ─────────────────────────────────────────────
+          if (overviewMode === 'category') {
+            if (!selectedCategory) {
+              return (
+                <div className="dash-grid">
+                  {PROVISION_POINT_CATEGORIES.map(cat => {
+                    const ppIds   = Object.entries(ppCategoryMap).filter(([, c]) => c === cat).map(([id]) => id)
+                    const total   = ppIds.length
+                    const inPlace = ppIds.filter(id => allStatuses[id] === 'in_place').length
+                    const inProg  = ppIds.filter(id => allStatuses[id] === 'in_progress').length
+                    const notIn   = ppIds.filter(id => allStatuses[id] === 'not_in_place').length
+                    const answered = inPlace + inProg + notIn
+                    const pct     = total ? Math.round((answered / total) * 100) : 0
+                    return (
+                      <button key={cat} type="button" className="dash-card" onClick={() => setSelectedCategory(cat)}>
+                        <h3 className="dash-card-name">{cat}</h3>
+                        <div className="dash-progress">
+                          <div className="dash-progress-track">
+                            <div className="dash-progress-fill" style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="dash-progress-label">{answered}/{total}</span>
+                        </div>
+                        <div className="dash-counts">
+                          <span className="dash-count dash-count--green">{inPlace} in place</span>
+                          <span className="dash-count dash-count--amber">{inProg} in progress</span>
+                          <span className="dash-count dash-count--red">{notIn} not in place</span>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )
+            }
+
+            // Category detail — provision points grouped by domain
+            const catPpIds   = Object.entries(ppCategoryMap).filter(([, c]) => c === selectedCategory).map(([id]) => id)
+            const catTotal   = catPpIds.length
+            const catInPlace = catPpIds.filter(id => allStatuses[id] === 'in_place').length
+
+            const domainGroupMap = {}
+            for (const ppId of catPpIds) {
+              const info = ppInfoMap[ppId]
+              if (!info) continue
+              if (!domainGroupMap[info.domainId]) {
+                domainGroupMap[info.domainId] = { domainId: info.domainId, domainName: info.domainName, pps: [] }
+              }
+              domainGroupMap[info.domainId].pps.push({ id: ppId, label: info.label })
+            }
+            const domainGroupList = domains.filter(d => domainGroupMap[d.id]).map(d => domainGroupMap[d.id])
+
+            function toggleCatDomain(domainId) {
+              setExpandedCatDomains(prev => {
+                const next = new Set(prev)
+                if (next.has(domainId)) next.delete(domainId)
+                else next.add(domainId)
+                return next
+              })
+            }
+
+            return (
+              <div>
+                <button type="button" onClick={() => setSelectedCategory(null)} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 16, padding: '6px 14px',
+                  border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#475569',
+                  fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+                }}>← Back</button>
+
+                <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b' }}>{selectedCategory}</span>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{catTotal} point{catTotal !== 1 ? 's' : ''} · {catInPlace} in place</span>
+                </div>
+
+                {domainGroupList.map(group => {
+                  const isExpanded  = expandedCatDomains.has(group.domainId)
+                  const pps         = group.pps
+                  const ppCount     = pps.length
+                  const domColour   = sidebarDomainColour(group.domainName)
+                  const grpInPlace  = pps.filter(p => allStatuses[p.id] === 'in_place').length
+                  const grpInProg   = pps.filter(p => allStatuses[p.id] === 'in_progress').length
+                  const grpUntouched = pps.filter(p => !allStatuses[p.id]).length
+                  const needsTrunc  = ppCount > 3 && !isExpanded
+                  const visiblePPs  = needsTrunc ? pps.slice(0, 3) : pps
+
+                  return (
+                    <div key={group.domainId} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, marginBottom: 8, overflow: 'hidden' }}>
+                      <button type="button" onClick={() => toggleCatDomain(group.domainId)}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                          padding: '11px 16px', background: 'none', border: 'none', cursor: 'pointer',
+                          borderBottom: '0.5px solid #e2e8f0', fontFamily: 'inherit', textAlign: 'left',
+                        }}>
+                        <i className="ti ti-chevron-down" style={{ fontSize: '0.8rem', color: '#94a3b8', flexShrink: 0, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: domColour, flexShrink: 0 }} />
+                        <span style={{ fontSize: 13, fontWeight: 500, color: '#1e293b' }}>{group.domainName}</span>
+                        <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 2 }}>({ppCount})</span>
+                        <div style={{ flex: 1 }} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#334155' }}>
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#1D9E75', display: 'inline-block', flexShrink: 0 }} />
+                            {grpInPlace}
+                          </span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#334155' }}>
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#BA7517', display: 'inline-block', flexShrink: 0 }} />
+                            {grpInProg}
+                          </span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#94a3b8' }}>
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#cbd5e1', display: 'inline-block', flexShrink: 0 }} />
+                            {grpUntouched}
+                          </span>
+                        </div>
+                      </button>
+
+                      <div style={{ position: 'relative' }}>
+                        {visiblePPs.map((pp, ppIdx) => (
+                          <ProvisionPointRow
+                            key={pp.id}
+                            pp={pp}
+                            ppIdx={ppIdx}
+                            status={allStatuses[pp.id]}
+                            evidenceList={evidenceEntries[pp.id] ?? []}
+                            onStatusChange={handleStatusChange}
+                            onOpenModal={openModal}
+                            readOnly={readOnly}
+                            isFlagged={flaggedPoints.has(pp.id)}
+                            onFlag={handleFlag}
+                          />
+                        ))}
+                        {needsTrunc && (
+                          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 40, background: 'linear-gradient(to bottom, rgba(255,255,255,0), #fff)', pointerEvents: 'none' }} />
+                        )}
+                      </div>
+
+                      <ShowToggle expanded={isExpanded} total={ppCount} onToggle={() => toggleCatDomain(group.domainId)} />
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          }
+
+          // ── Home screen ───────────────────────────────────────────────
           const allPpIds   = Object.keys(ppDomainMap)
           const totTotal   = allPpIds.length
           const totInPlace = allPpIds.filter(id => allStatuses[id] === 'in_place').length
