@@ -147,9 +147,7 @@ function sidebarDomainColour(name) {
 function Sidebar({
   domains, allSubDomains, ppDomainMap, allStatuses, schoolName,
   selectedDomain, setSelectedDomain,
-  sidebarDomainsOpen, setSidebarDomainsOpen,
-  sidebarCatsOpen, setSidebarCatsOpen,
-  sidebarAnalyticsOpen, setSidebarAnalyticsOpen,
+  activeSidebarSection, setActiveSidebarSection,
   setAnalyticsTabRequest,
   onGenerateReport,
   analyticsTabRequest,
@@ -252,10 +250,10 @@ function Sidebar({
         {/* Domains */}
         {expanderBtn({
           id: 'domains-expander', icon: 'ti-layout-grid', label: 'Domains',
-          open: sidebarDomainsOpen, onToggle: () => setSidebarDomainsOpen(v => !v),
-          active: !!(selectedDomain && selectedDomain !== 'analytics' && selectedDomain !== '__report__' && !sidebarDomainsOpen),
+          open: activeSidebarSection === 'domains', onToggle: () => setActiveSidebarSection(prev => prev === 'domains' ? null : 'domains'),
+          active: !!(selectedDomain && selectedDomain !== 'analytics' && selectedDomain !== '__report__' && activeSidebarSection !== 'domains'),
         })}
-        {sidebarDomainsOpen && domains.map(d => {
+        {activeSidebarSection === 'domains' && domains.map(d => {
           const colour = sidebarDomainColour(d.name)
           const active = isDomain(d.id)
           const isH = hovered === `domain-${d.id}`
@@ -283,10 +281,10 @@ function Sidebar({
         {/* Categories */}
         {expanderBtn({
           id: 'cats-expander', icon: 'ti-tag', label: 'Categories',
-          open: sidebarCatsOpen, onToggle: () => setSidebarCatsOpen(v => !v),
+          open: activeSidebarSection === 'categories', onToggle: () => setActiveSidebarSection(prev => prev === 'categories' ? null : 'categories'),
           active: !selectedDomain && overviewMode === 'category',
         })}
-        {sidebarCatsOpen && PROVISION_POINT_CATEGORIES.map(cat => {
+        {activeSidebarSection === 'categories' && PROVISION_POINT_CATEGORIES.map(cat => {
           const active = !selectedDomain && overviewMode === 'category' && selectedCategory === cat
           const isH = hovered === `cat-${cat}`
           return (
@@ -312,10 +310,10 @@ function Sidebar({
         {/* Analytics */}
         {expanderBtn({
           id: 'analytics-expander', icon: 'ti-chart-bar', label: 'Analytics',
-          open: sidebarAnalyticsOpen, onToggle: () => setSidebarAnalyticsOpen(v => !v),
+          open: activeSidebarSection === 'analytics', onToggle: () => setActiveSidebarSection(prev => prev === 'analytics' ? null : 'analytics'),
           active: isAnalytics,
         })}
-        {sidebarAnalyticsOpen && ANALYTICS_TABS.map(t => {
+        {activeSidebarSection === 'analytics' && ANALYTICS_TABS.map(t => {
           const active = isAnalyticsTab(t.id)
           const isH = hovered === `atab-${t.id}`
           return (
@@ -1678,9 +1676,7 @@ export default function App() {
   const [reviewsExpanded, setReviewsExpanded] = useState(false)
 
   // Sidebar state
-  const [sidebarDomainsOpen, setSidebarDomainsOpen] = useState(false)
-  const [sidebarCatsOpen, setSidebarCatsOpen] = useState(false)
-  const [sidebarAnalyticsOpen, setSidebarAnalyticsOpen] = useState(false)
+  const [activeSidebarSection, setActiveSidebarSection] = useState(null)
   const [analyticsTabRequest, setAnalyticsTabRequest] = useState(null)
   const [expandedSDs, setExpandedSDs] = useState(new Set())
   const [expandedCatDomains, setExpandedCatDomains] = useState(new Set())
@@ -2297,12 +2293,8 @@ export default function App() {
               schoolName={schoolName}
               selectedDomain={selectedDomain}
               setSelectedDomain={setSelectedDomain}
-              sidebarDomainsOpen={sidebarDomainsOpen}
-              setSidebarDomainsOpen={setSidebarDomainsOpen}
-              sidebarCatsOpen={sidebarCatsOpen}
-              setSidebarCatsOpen={setSidebarCatsOpen}
-              sidebarAnalyticsOpen={sidebarAnalyticsOpen}
-              setSidebarAnalyticsOpen={setSidebarAnalyticsOpen}
+              activeSidebarSection={activeSidebarSection}
+              setActiveSidebarSection={setActiveSidebarSection}
               analyticsTabRequest={analyticsTabRequest}
               setAnalyticsTabRequest={setAnalyticsTabRequest}
               onGenerateReport={() => setSelectedDomain('report-builder')}
