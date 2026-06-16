@@ -2700,10 +2700,8 @@ export default function App() {
             const domPct = domTotal ? Math.round((domInPlace / domTotal) * 100) : 0
             function toggleSD(sdId) {
               setExpandedSDs(prev => {
-                const next = new Set(prev)
-                if (next.has(sdId)) next.delete(sdId)
-                else next.add(sdId)
-                return next
+                if (prev.has(sdId)) return new Set()
+                return new Set([sdId])
               })
             }
             return (
