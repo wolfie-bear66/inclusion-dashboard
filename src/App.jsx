@@ -77,27 +77,27 @@ const ENTRY_SELECT = [
 
 // ── Analytics sub-components ─────────────────────────────────────
 const ACard = ({ children, className = '' }) => (
-  <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #f1f5f9', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', padding: 24 }} className={className}>{children}</div>
+  <div style={{ background: '#FFFFFF', borderRadius: 16, border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)', padding: 24 }} className={className}>{children}</div>
 )
 const ASectionTitle = ({ children, sub }) => (
   <div style={{ marginBottom: 20 }}>
-    <h2 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1e293b', letterSpacing: '-0.2px' }}>{children}</h2>
+    <h2 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1A202C', letterSpacing: '-0.2px' }}>{children}</h2>
     {sub && <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2, lineHeight: 1.5 }}>{sub}</p>}
   </div>
 )
 const AGroupPill = ({ label }) => (
-  <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: 999, background: '#f1f5f9', color: '#64748b', fontWeight: 500, display: 'inline-block' }}>{label}</span>
+  <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: 999, background: '#E2E8F0', color: '#64748b', fontWeight: 500, display: 'inline-block' }}>{label}</span>
 )
 
 const DOMAIN_COLOUR_MAP = [
-  { key: 'SEND',       colour: '#6366f1' },
-  { key: 'Equity',     colour: '#f59e0b' },
-  { key: 'Attendance', colour: '#ec4899' },
-  { key: 'Enrichment', colour: '#14b8a6' },
-  { key: 'Belonging',  colour: '#f97316' },
-  { key: 'Wellbeing',  colour: '#84cc16' },
+  { key: 'SEND',       colour: '#4338CA' },
+  { key: 'Equity',     colour: '#7A5C13' },
+  { key: 'Attendance', colour: '#0E6251' },
+  { key: 'Enrichment', colour: '#6B21A8' },
+  { key: 'Belonging',  colour: '#334E68' },
+  { key: 'Wellbeing',  colour: '#5B3A9C' },
 ]
-const A_FALLBACK_COLOURS = ['#6366f1', '#f59e0b', '#ec4899', '#14b8a6', '#f97316', '#84cc16']
+const A_FALLBACK_COLOURS = ['#4338CA', '#7A5C13', '#0E6251', '#6B21A8', '#334E68', '#5B3A9C']
 function aDomainColour(name = '', idx = 0) {
   const m = DOMAIN_COLOUR_MAP.find(d => name.includes(d.key))
   return m ? m.colour : A_FALLBACK_COLOURS[idx % A_FALLBACK_COLOURS.length]
@@ -130,12 +130,12 @@ const ANALYTICS_TABS = [
 
 // ── Sidebar domain colours (spec-provided) ────────────────────────────
 const SIDEBAR_DOMAIN_COLOURS = {
-  SEND:       '#7F77DD',
-  Equity:     '#BA7517',
-  Attendance: '#D4537E',
-  Enrichment: '#1D9E75',
-  Belonging:  '#D85A30',
-  Wellbeing:  '#639922',
+  SEND:       '#4338CA',
+  Equity:     '#7A5C13',
+  Attendance: '#0E6251',
+  Enrichment: '#6B21A8',
+  Belonging:  '#334E68',
+  Wellbeing:  '#5B3A9C',
 }
 function sidebarDomainColour(name) {
   for (const [key, colour] of Object.entries(SIDEBAR_DOMAIN_COLOURS)) {
@@ -181,18 +181,18 @@ function Sidebar({
         style={{
           display: 'flex', alignItems: 'center', gap: 9,
           width: '100%', padding: indent ? '7px 14px 7px 34px' : '8px 14px',
-          border: 'none', borderLeft: `3px solid ${active ? '#1D9E75' : 'transparent'}`,
+          border: 'none', borderLeft: `3px solid ${active ? '#1B365D' : 'transparent'}`,
           background: teal
-            ? (active || isHovered) ? '#E1F5EE' : '#f6fefb'
-            : active ? '#f0fdf4' : isHovered ? '#f8fafc' : 'transparent',
-          color: teal ? '#0F6E56' : active ? '#1e293b' : '#334155',
+            ? (active || isHovered) ? 'rgba(27,54,93,0.08)' : 'rgba(27,54,93,0.04)'
+            : active ? 'rgba(27,54,93,0.10)' : isHovered ? '#F0F2F5' : 'transparent',
+          color: teal ? '#1B365D' : active ? '#1B365D' : '#334155',
           fontSize: indent ? '0.78rem' : '0.83rem',
           fontWeight: active ? 600 : teal ? 600 : 400,
           cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
           transition: 'background 0.12s',
         }}
       >
-        {!indent && <i className={`ti ${icon}`} style={{ fontSize: '1rem', flexShrink: 0, color: teal ? '#0F6E56' : active ? '#1D9E75' : '#94a3b8', lineHeight: 1 }} />}
+        {!indent && <i className={`ti ${icon}`} style={{ fontSize: '1rem', flexShrink: 0, color: teal ? '#1B365D' : active ? '#1B365D' : '#94a3b8', lineHeight: 1 }} />}
         <span style={{ flex: 1 }}>{label}</span>
       </button>
     )
@@ -209,15 +209,15 @@ function Sidebar({
         style={{
           display: 'flex', alignItems: 'center', gap: 9,
           width: '100%', padding: '8px 14px',
-          border: 'none', borderLeft: `3px solid ${active ? '#1D9E75' : 'transparent'}`,
-          background: active ? '#f0fdf4' : isHovered ? '#f8fafc' : 'transparent',
-          color: active ? '#1e293b' : '#334155',
+          border: 'none', borderLeft: `3px solid ${active ? '#1B365D' : 'transparent'}`,
+          background: active ? 'rgba(27,54,93,0.10)' : isHovered ? '#F0F2F5' : 'transparent',
+          color: active ? '#1B365D' : '#334155',
           fontSize: '0.83rem', fontWeight: active ? 600 : 400,
           cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
           transition: 'background 0.12s',
         }}
       >
-        <i className={`ti ${icon}`} style={{ fontSize: '1rem', flexShrink: 0, color: active ? '#1D9E75' : '#94a3b8', lineHeight: 1 }} />
+        <i className={`ti ${icon}`} style={{ fontSize: '1rem', flexShrink: 0, color: active ? '#1B365D' : '#94a3b8', lineHeight: 1 }} />
         <span style={{ flex: 1 }}>{label}</span>
         <i className={`ti ${open ? 'ti-chevron-up' : 'ti-chevron-down'}`}
            style={{ fontSize: '0.7rem', color: '#b0bec5', lineHeight: 1 }} />
@@ -228,14 +228,14 @@ function Sidebar({
   return (
     <aside style={{
       width: 220, flexShrink: 0,
-      borderRight: '0.5px solid #e2e8f0',
-      background: '#fff',
+      borderRight: '1px solid #E2E8F0',
+      background: '#F0F2F5',
       display: 'flex', flexDirection: 'column',
       overflowY: 'auto',
     }}>
       {/* Logo area */}
       <div style={{ padding: '16px 16px 14px', borderBottom: '0.5px solid #e2e8f0', flexShrink: 0 }}>
-        <p style={{ fontSize: 13, fontWeight: 500, color: '#1e293b', lineHeight: 1.3 }}>
+        <p style={{ fontSize: 13, fontWeight: 500, color: '#1A202C', lineHeight: 1.3 }}>
           {schoolName || 'Inclusion Dashboard'}
         </p>
         {schoolName && (
@@ -267,9 +267,9 @@ function Sidebar({
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 width: '100%', padding: '7px 14px 7px 34px',
-                border: 'none', borderLeft: `3px solid ${active ? '#1D9E75' : 'transparent'}`,
-                background: active ? '#f0fdf4' : isH ? '#f8fafc' : 'transparent',
-                color: active ? '#1e293b' : '#334155',
+                border: 'none', borderLeft: `3px solid ${active ? '#1B365D' : 'transparent'}`,
+                background: active ? 'rgba(27,54,93,0.10)' : isH ? '#F0F2F5' : 'transparent',
+                color: active ? '#1B365D' : '#334155',
                 fontSize: '0.78rem', fontWeight: active ? 600 : 400,
                 cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
                 transition: 'background 0.12s',
@@ -297,9 +297,9 @@ function Sidebar({
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 width: '100%', padding: '7px 14px 7px 34px',
-                border: 'none', borderLeft: `3px solid ${active ? '#1D9E75' : 'transparent'}`,
-                background: active ? '#f0fdf4' : isH ? '#f8fafc' : 'transparent',
-                color: active ? '#1e293b' : '#334155',
+                border: 'none', borderLeft: `3px solid ${active ? '#1B365D' : 'transparent'}`,
+                background: active ? 'rgba(27,54,93,0.10)' : isH ? '#F0F2F5' : 'transparent',
+                color: active ? '#1B365D' : '#334155',
                 fontSize: '0.78rem', fontWeight: active ? 600 : 400,
                 cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
                 transition: 'background 0.12s',
@@ -326,9 +326,9 @@ function Sidebar({
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 width: '100%', padding: '7px 14px 7px 34px',
-                border: 'none', borderLeft: `3px solid ${active ? '#1D9E75' : 'transparent'}`,
-                background: active ? '#f0fdf4' : isH ? '#f8fafc' : 'transparent',
-                color: active ? '#1e293b' : '#334155',
+                border: 'none', borderLeft: `3px solid ${active ? '#1B365D' : 'transparent'}`,
+                background: active ? 'rgba(27,54,93,0.10)' : isH ? '#F0F2F5' : 'transparent',
+                color: active ? '#1B365D' : '#334155',
                 fontSize: '0.78rem', fontWeight: active ? 600 : 400,
                 cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
                 transition: 'background 0.12s',
@@ -353,7 +353,7 @@ function Sidebar({
       {/* Footer */}
       <div style={{ borderTop: '0.5px solid #e2e8f0', padding: '10px 16px', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <i className="ti ti-circle-check" style={{ fontSize: '0.8rem', color: '#1D9E75' }} />
+          <i className="ti ti-circle-check" style={{ fontSize: '0.8rem', color: '#257A3B' }} />
           <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
             {answered} of {totalPP} recorded
           </span>
@@ -391,8 +391,8 @@ function RBBadge({ text, included }) {
   return (
     <span style={{
       fontSize: '0.7rem', fontWeight: 600, padding: '3px 9px', borderRadius: 20, flexShrink: 0, whiteSpace: 'nowrap',
-      background: always || included ? '#E1F5EE' : '#f1f5f9',
-      color:      always || included ? '#0F6E56' : '#64748b',
+      background: always || included ? 'rgba(27,54,93,0.10)' : '#f1f5f9',
+      color:      always || included ? '#1B365D' : '#64748b',
     }}>{text}</span>
   )
 }
@@ -400,7 +400,7 @@ function RBToggle({ value, onChange }) {
   return (
     <button type="button" onClick={() => onChange(!value)} style={{
       width: 36, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer',
-      background: value ? '#1D9E75' : '#cbd5e1', position: 'relative',
+      background: value ? '#1B365D' : '#cbd5e1', position: 'relative',
       transition: 'background 0.2s', flexShrink: 0,
     }}>
       <span style={{
@@ -413,12 +413,12 @@ function RBToggle({ value, onChange }) {
 }
 function RBChartToggle({ options, value, onChange }) {
   return (
-    <div style={{ display: 'flex', gap: 3, background: '#f1f5f9', borderRadius: 6, padding: 3, alignSelf: 'flex-start' }}>
+    <div style={{ display: 'flex', gap: 3, background: '#E2E8F0', borderRadius: 6, padding: 3, alignSelf: 'flex-start' }}>
       {options.map(opt => (
         <button key={opt.value} type="button" onClick={() => onChange(opt.value)} style={{
           padding: '4px 11px', border: 'none', borderRadius: 4, fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit',
           background: value === opt.value ? '#fff' : 'transparent',
-          color:      value === opt.value ? '#1e293b' : '#64748b',
+          color:      value === opt.value ? '#1A202C' : '#64748b',
           fontWeight: value === opt.value ? 600 : 400,
           boxShadow:  value === opt.value ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
         }}>{opt.label}</button>
@@ -480,7 +480,7 @@ function ReportBuilder({ schoolName = '', allSubDomains = [] }) {
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
       {/* Header */}
       <div style={{ paddingBottom: 16, borderBottom: '1px solid #e2e8f0', marginBottom: 20 }}>
-        <h1 style={{ fontSize: 15, fontWeight: 500, color: '#1e293b', marginBottom: 4 }}>Report builder</h1>
+        <h1 style={{ fontSize: 15, fontWeight: 500, color: '#1A202C', marginBottom: 4 }}>Report builder</h1>
         <p style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5 }}>Choose what to include and how to present it. School context and domain readiness are always included.</p>
       </div>
 
@@ -490,9 +490,9 @@ function ReportBuilder({ schoolName = '', allSubDomains = [] }) {
         {/* 1. Domain Readiness */}
         <div style={card}>
           <div style={row}>
-            <RBIconBox bg="#E1F5EE" color="#0F6E56" icon="ti-circle-check" />
+            <RBIconBox bg="rgba(27,54,93,0.10)" color="#1B365D" icon="ti-circle-check" />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>Domain Readiness</p>
+              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1A202C' }}>Domain Readiness</p>
               <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Overall % readiness, by-domain breakdown, upcoming reviews</p>
             </div>
             <RBBadge text="Always included" />
@@ -502,9 +502,9 @@ function ReportBuilder({ schoolName = '', allSubDomains = [] }) {
         {/* 2. Enrichment Equity */}
         <div style={card}>
           <div style={row}>
-            <RBIconBox bg="#E1F5EE" color="#0F6E56" icon="ti-scale" />
+            <RBIconBox bg="rgba(27,54,93,0.10)" color="#1B365D" icon="ti-scale" />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>Enrichment Equity</p>
+              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1A202C' }}>Enrichment Equity</p>
               <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Group coverage across enrichment sub-domains</p>
             </div>
             <RBBadge text={includeEquity ? 'Included' : 'Not included'} included={includeEquity} />
@@ -523,7 +523,7 @@ function ReportBuilder({ schoolName = '', allSubDomains = [] }) {
           <div style={row}>
             <RBIconBox bg="#E6F1FB" color="#185FA5" icon="ti-currency-pound" />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>Funding & Cost</p>
+              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1A202C' }}>Funding & Cost</p>
               <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Total spend, per-pupil costs, by domain and funding stream</p>
             </div>
             <RBBadge text={includeFunding ? 'Included' : 'Not included'} included={includeFunding} />
@@ -542,7 +542,7 @@ function ReportBuilder({ schoolName = '', allSubDomains = [] }) {
           <div style={row}>
             <RBIconBox bg="#FAEEDA" color="#854F0B" icon="ti-target" />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>Outcomes & Impact</p>
+              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1A202C' }}>Outcomes & Impact</p>
               <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Intended outcomes and evidence of impact</p>
             </div>
             <RBBadge text={includeOutcomes ? 'Included' : 'Not included'} included={includeOutcomes} />
@@ -558,9 +558,9 @@ function ReportBuilder({ schoolName = '', allSubDomains = [] }) {
                     return (
                       <button key={mode} type="button" onClick={() => changeMode(mode)} style={{
                         padding: '5px 12px', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit',
-                        border: `1.5px solid ${active ? '#1D9E75' : '#e2e8f0'}`,
-                        background: active ? '#E1F5EE' : '#fff',
-                        color:      active ? '#0F6E56' : '#64748b',
+                        border: `1.5px solid ${active ? '#1B365D' : '#e2e8f0'}`,
+                        background: active ? 'rgba(27,54,93,0.10)' : '#fff',
+                        color:      active ? '#1B365D' : '#64748b',
                         fontSize: '0.78rem', fontWeight: active ? 600 : 400,
                       }}>{label}</button>
                     )
@@ -576,9 +576,9 @@ function ReportBuilder({ schoolName = '', allSubDomains = [] }) {
                       return (
                         <button key={opt} type="button" onClick={() => togglePill(opt)} style={{
                           padding: '4px 11px', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit',
-                          border: `1.5px solid ${sel ? '#1D9E75' : '#e2e8f0'}`,
-                          background: sel ? '#E1F5EE' : '#fff',
-                          color:      sel ? '#0F6E56' : '#475569',
+                          border: `1.5px solid ${sel ? '#1B365D' : '#e2e8f0'}`,
+                          background: sel ? 'rgba(27,54,93,0.10)' : '#fff',
+                          color:      sel ? '#1B365D' : '#475569',
                           fontSize: '0.75rem', fontWeight: sel ? 600 : 400,
                         }}>{opt}</button>
                       )
@@ -586,13 +586,13 @@ function ReportBuilder({ schoolName = '', allSubDomains = [] }) {
                   </div>
                   <button type="button" onClick={() => setOutcomeSelected([])} style={{
                     background: 'none', border: 'none', cursor: 'pointer',
-                    fontSize: '0.75rem', color: '#1D9E75', padding: 0, fontFamily: 'inherit',
+                    fontSize: '0.75rem', color: '#1B365D', padding: 0, fontFamily: 'inherit',
                   }}>Clear selection</button>
                 </div>
               )}
 
-              <div style={{ background: '#f8fafc', borderRadius: 8, padding: '9px 12px', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                <i className="ti ti-info-circle" style={{ color: '#1D9E75', fontSize: '0.9rem', flexShrink: 0, marginTop: 1 }} />
+              <div style={{ background: '#F0F2F5', borderRadius: 8, padding: '9px 12px', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <i className="ti ti-info-circle" style={{ color: '#1B365D', fontSize: '0.9rem', flexShrink: 0, marginTop: 1 }} />
                 <p style={{ fontSize: '0.78rem', color: '#475569', lineHeight: 1.5 }}>{outcomesPreview}</p>
               </div>
             </div>
@@ -604,7 +604,7 @@ function ReportBuilder({ schoolName = '', allSubDomains = [] }) {
           <div style={row}>
             <RBIconBox bg="#FBEAF0" color="#993556" icon="ti-users" />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>Group Reach</p>
+              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1A202C' }}>Group Reach</p>
               <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Student numbers reached per group across all domains</p>
             </div>
             <RBBadge text={includeReach ? 'Included' : 'Not included'} included={includeReach} />
@@ -632,7 +632,7 @@ function ReportBuilder({ schoolName = '', allSubDomains = [] }) {
         <button type="button" onClick={handleGeneratePdf} style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
           padding: '9px 18px', borderRadius: 8, border: 'none',
-          background: '#1D9E75', color: '#fff',
+          background: '#1B365D', color: '#fff',
           fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0, fontFamily: 'inherit',
         }}>
           <i className="ti ti-download" style={{ fontSize: '0.9rem', lineHeight: 1 }} />
@@ -651,14 +651,14 @@ function DomainReadiness({ readinessData, upcomingReviews }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <ACard>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, marginBottom: 16 }}>
-          <span style={{ fontSize: '3.5rem', fontWeight: 800, color: '#10b981', lineHeight: 1 }}>{overallPct}%</span>
+          <span style={{ fontSize: '3.5rem', fontWeight: 800, color: '#1B365D', lineHeight: 1 }}>{overallPct}%</span>
           <div style={{ paddingBottom: 6 }}>
-            <p style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1e293b' }}>Overall readiness</p>
+            <p style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1A202C' }}>Overall readiness</p>
             <p style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>{grandInPlace} of {grandTotal} indicators In Place</p>
           </div>
         </div>
-        <div style={{ height: 10, borderRadius: 6, background: '#f1f5f9', overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${overallPct}%`, borderRadius: 6, background: '#10b981', transition: 'width 0.5s' }} />
+        <div style={{ height: 10, borderRadius: 6, background: '#E2E8F0', overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${overallPct}%`, borderRadius: 6, background: '#1B365D', transition: 'width 0.5s' }} />
         </div>
       </ACard>
 
@@ -672,12 +672,12 @@ function DomainReadiness({ readinessData, upcomingReviews }) {
               return (
                 <div key={i}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b' }}>{d.fullName}</span>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1A202C' }}>{d.fullName}</span>
                     <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
                       {d.inPlace} in place · {d.inProgress} in progress · {d.notInPlace} not started
                     </span>
                   </div>
-                  <div style={{ height: 8, borderRadius: 4, background: '#f1f5f9', overflow: 'hidden', position: 'relative' }}>
+                  <div style={{ height: 8, borderRadius: 4, background: '#E2E8F0', overflow: 'hidden', position: 'relative' }}>
                     <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${pctIn + pctProg}%`, background: d.colour, opacity: 0.2, borderRadius: 4 }} />
                     <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${pctIn}%`, background: d.colour, borderRadius: 4, transition: 'width 0.4s' }} />
                   </div>
@@ -693,12 +693,12 @@ function DomainReadiness({ readinessData, upcomingReviews }) {
           <ASectionTitle sub="Evidence entries with a review due within the next 60 days">Compliance Forecast</ASectionTitle>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {upcomingReviews.map((ev, i) => {
-              const bg  = ev.urgency === 'urgent' ? '#fef2f2' : ev.urgency === 'soon' ? '#fffbeb' : '#f8fafc'
+              const bg  = ev.urgency === 'urgent' ? 'rgba(234,67,53,0.08)' : ev.urgency === 'soon' ? 'rgba(212,117,26,0.10)' : '#F7F8FA'
               const col = ev.urgency === 'urgent' ? '#dc2626' : ev.urgency === 'soon' ? '#d97706' : '#475569'
               return (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 12px', borderRadius: 8, background: bg }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: '0.8rem', fontWeight: 600, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <p style={{ fontSize: '0.8rem', fontWeight: 600, color: '#1A202C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {ev.provision_name || ev.entryLabel}
                     </p>
                     <p style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 1 }}>{ev.domainName}</p>
@@ -750,9 +750,9 @@ function EnrichmentEquity({ equityData, schoolCtx }) {
           <button key={g.label} type="button" onClick={() => setSelectedGroup(g.label)}
             style={{
               padding: '6px 14px', borderRadius: 20, border: '1.5px solid', cursor: 'pointer', fontSize: '0.8rem',
-              borderColor: selectedGroup === g.label ? '#14b8a6' : '#e2e8f0',
-              background:  selectedGroup === g.label ? '#f0fdfa' : '#fff',
-              color:       selectedGroup === g.label ? '#0d9488' : '#475569',
+              borderColor: selectedGroup === g.label ? '#1B365D' : '#e2e8f0',
+              background:  selectedGroup === g.label ? 'rgba(27,54,93,0.10)' : '#fff',
+              color:       selectedGroup === g.label ? '#1B365D' : '#475569',
               fontWeight:  selectedGroup === g.label ? 600 : 400,
             }}>
             {g.label} ({schoolCtx[g.ctxKey] || '—'})
@@ -768,7 +768,7 @@ function EnrichmentEquity({ equityData, schoolCtx }) {
               <PolarGrid />
               <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10 }} />
               <Radar name="All Pupils" dataKey="All Pupils" stroke="#e2e8f0" fill="#e2e8f0" fillOpacity={0.3} />
-              <Radar name={selectedGroup} dataKey={selectedGroup} stroke="#14b8a6" fill="#14b8a6" fillOpacity={0.5} />
+              <Radar name={selectedGroup} dataKey={selectedGroup} stroke="#4A90D9" fill="#4A90D9" fillOpacity={0.5} />
               <Tooltip formatter={v => `${v}%`} />
             </RadarChart>
           </ResponsiveContainer>
@@ -791,11 +791,11 @@ function EnrichmentEquity({ equityData, schoolCtx }) {
                           ⚠ {gap}pt gap
                         </span>
                       )}
-                      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1e293b' }}>{pct}%</span>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1A202C' }}>{pct}%</span>
                     </div>
                   </div>
-                  <div style={{ height: 7, borderRadius: 4, background: '#f1f5f9', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${pct}%`, borderRadius: 4, background: '#14b8a6', transition: 'width 0.4s' }} />
+                  <div style={{ height: 7, borderRadius: 4, background: '#E2E8F0', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${pct}%`, borderRadius: 4, background: '#4A90D9', transition: 'width 0.4s' }} />
                   </div>
                   <p style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 3 }}>{grp?.count ?? 0} of {sd.total} provision points</p>
                 </div>
@@ -835,7 +835,7 @@ function FundingCost({ fundingDomainData, fundingSourceData, totalCost, schoolCt
           { label: 'Per SEND pupil', value: perSEND   ? `£${perSEND.toLocaleString()}`   : '—' },
         ].map((s, i) => (
           <ACard key={i}>
-            <p style={{ fontSize: '1.5rem', fontWeight: 700, color: '#1e293b' }}>{s.value}</p>
+            <p style={{ fontSize: '1.5rem', fontWeight: 700, color: '#1A202C' }}>{s.value}</p>
             <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 4 }}>{s.label}</p>
           </ACard>
         ))}
@@ -864,11 +864,11 @@ function FundingCost({ fundingDomainData, fundingSourceData, totalCost, schoolCt
         <ACard>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div>
-              <p style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1e293b' }}>Funding Streams</p>
+              <p style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1A202C' }}>Funding Streams</p>
               <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Spend proportion by source</p>
             </div>
             <button type="button" onClick={() => setShowFundingInputs(v => !v)}
-              style={{ fontSize: '0.75rem', color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+              style={{ fontSize: '0.75rem', color: '#1B365D', background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
               {showFundingInputs ? 'Hide' : 'Add funding received'}
             </button>
           </div>
@@ -887,11 +887,11 @@ function FundingCost({ fundingDomainData, fundingSourceData, totalCost, schoolCt
                           {diff >= 0 ? `+£${diff.toLocaleString()}` : `-£${Math.abs(diff).toLocaleString()}`}
                         </span>
                       )}
-                      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1e293b' }}>£{fs.value.toLocaleString()}</span>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1A202C' }}>£{fs.value.toLocaleString()}</span>
                     </div>
                   </div>
-                  <div style={{ height: 7, borderRadius: 4, background: '#f1f5f9', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${pct}%`, borderRadius: 4, background: '#6366f1', transition: 'width 0.4s' }} />
+                  <div style={{ height: 7, borderRadius: 4, background: '#E2E8F0', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${pct}%`, borderRadius: 4, background: '#1B365D', transition: 'width 0.4s' }} />
                   </div>
                   {showFundingInputs && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
@@ -964,8 +964,8 @@ function OutcomesImpact({ allEvidence, domains }) {
     fontSize: 12, padding: '5px 12px', borderRadius: 99, cursor: 'pointer',
     border: '0.5px solid #e2e8f0', fontFamily: 'inherit',
   }
-  const pillInactive = { background: '#f8fafc', color: '#64748b' }
-  const pillActive   = { background: '#E1F5EE', color: '#0F6E56', border: '0.5px solid #1D9E75' }
+  const pillInactive = { background: '#F0F2F5', color: '#64748B' }
+  const pillActive   = { background: 'rgba(27,54,93,0.10)', color: '#1B365D', border: '0.5px solid #1B365D' }
 
   const countLine = filterMode === 'all'
     ? `${allItems.length} outcome${allItems.length !== 1 ? 's' : ''}`
@@ -1005,7 +1005,7 @@ function OutcomesImpact({ allEvidence, domains }) {
             ))}
             {activeFilters.length > 0 && (
               <button type="button" onClick={() => setActiveFilters([])}
-                style={{ background: 'none', border: 'none', fontSize: 12, color: '#1D9E75', cursor: 'pointer', fontFamily: 'inherit', padding: '5px 4px' }}>
+                style={{ background: 'none', border: 'none', fontSize: 12, color: '#1B365D', cursor: 'pointer', fontFamily: 'inherit', padding: '5px 4px' }}>
                 Clear
               </button>
             )}
@@ -1022,7 +1022,7 @@ function OutcomesImpact({ allEvidence, domains }) {
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, flex: 1, minWidth: 0 }}>
                     <span style={{ width: 10, height: 10, borderRadius: '50%', background: item.colour, flexShrink: 0, marginTop: 4 }} />
                     <div style={{ minWidth: 0 }}>
-                      <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>{item.name}</p>
+                      <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1A202C' }}>{item.name}</p>
                       <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 2 }}>
                         {item.domain}{item.subDomain ? ` · ${item.subDomain}` : ''}
                       </p>
@@ -1133,11 +1133,11 @@ function GroupReach({ reachMatrix, schoolCtx }) {
               <tbody>
                 {reachMatrix.map((row, ri) => (
                   <tr key={ri} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '10px 12px', fontWeight: 600, color: '#1e293b' }}>
+                    <td style={{ padding: '10px 12px', fontWeight: 600, color: '#1A202C' }}>
                       <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: row.colour, marginRight: 8 }} />
                       {row.domain}
                     </td>
-                    <td style={{ textAlign: 'right', padding: '10px 8px', color: row.totalReach > 0 ? '#1e293b' : '#cbd5e1', fontWeight: row.totalReach > 0 ? 700 : 400 }}>
+                    <td style={{ textAlign: 'right', padding: '10px 8px', color: row.totalReach > 0 ? '#1A202C' : '#cbd5e1', fontWeight: row.totalReach > 0 ? 700 : 400 }}>
                       {row.totalReach || '—'}
                     </td>
                     {row.groups.map((g, gi) => {
@@ -1148,7 +1148,7 @@ function GroupReach({ reachMatrix, schoolCtx }) {
                         <td key={gi} style={{
                           textAlign: 'right', padding: '10px 8px',
                           background: isGap ? '#fef2f2' : 'transparent',
-                          color: g.total > 0 ? '#1e293b' : isGap ? '#ef4444' : '#cbd5e1',
+                          color: g.total > 0 ? '#1A202C' : isGap ? '#ef4444' : '#cbd5e1',
                           fontWeight: g.total > 0 ? 600 : 400,
                         }}>
                           {g.total > 0 ? (
@@ -1189,7 +1189,7 @@ function GroupReach({ reachMatrix, schoolCtx }) {
             return (
               <div key={g.field} style={{ marginBottom: 20 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b' }}>{g.label}</span>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1A202C' }}>{g.label}</span>
                   {cohort > 0 && <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Cohort: {cohort}</span>}
                 </div>
                 {rowsWithData.length === 0 ? (
@@ -1201,10 +1201,10 @@ function GroupReach({ reachMatrix, schoolCtx }) {
                     return (
                       <div key={ri} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                         <span style={{ fontSize: '0.72rem', color: '#64748b', width: 88, flexShrink: 0, textAlign: 'right' }}>{row.shortName}</span>
-                        <div style={{ flex: 1, height: 6, background: '#f1f5f9', borderRadius: 3, overflow: 'hidden' }}>
+                        <div style={{ flex: 1, height: 6, background: '#E2E8F0', borderRadius: 3, overflow: 'hidden' }}>
                           <div style={{ height: '100%', width: `${barPct}%`, background: row.colour, borderRadius: 3, transition: 'width 0.4s' }} />
                         </div>
-                        <span style={{ fontSize: '0.72rem', color: val > 0 ? '#1e293b' : '#cbd5e1', fontWeight: 600, width: 32, textAlign: 'right' }}>{val || '—'}</span>
+                        <span style={{ fontSize: '0.72rem', color: val > 0 ? '#1A202C' : '#cbd5e1', fontWeight: 600, width: 32, textAlign: 'right' }}>{val || '—'}</span>
                       </div>
                     )
                   })
@@ -1212,7 +1212,7 @@ function GroupReach({ reachMatrix, schoolCtx }) {
                 {cohort > 0 && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
                     <span style={{ fontSize: '0.68rem', color: '#94a3b8', width: 88, flexShrink: 0, textAlign: 'right' }}>Cohort</span>
-                    <div style={{ flex: 1, height: 6, background: '#f1f5f9', borderRadius: 3, position: 'relative' }}>
+                    <div style={{ flex: 1, height: 6, background: '#E2E8F0', borderRadius: 3, position: 'relative' }}>
                       <div style={{ position: 'absolute', left: `${Math.min(Math.round((cohort / max) * 100), 100)}%`, top: -1, width: 2, height: 8, background: '#94a3b8', borderRadius: 1 }} />
                     </div>
                     <span style={{ fontSize: '0.68rem', color: '#94a3b8', width: 32, textAlign: 'right' }}>{cohort}</span>
@@ -1247,7 +1247,7 @@ function SchoolContextPanel({ schoolCtx, onSave, ctxLoading }) {
               { label: 'WW Class',     value: schoolCtx.wwcCount },
             ].map((f, i) => (
               <div key={i} style={{ textAlign: 'center' }}>
-                <p style={{ fontSize: '1rem', fontWeight: 700, color: '#1e293b' }}>{ctxLoading ? '…' : (f.value || '—')}</p>
+                <p style={{ fontSize: '1rem', fontWeight: 700, color: '#1A202C' }}>{ctxLoading ? '…' : (f.value || '—')}</p>
                 <p style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{f.label}</p>
               </div>
             ))}
@@ -1265,7 +1265,7 @@ function SchoolContextPanel({ schoolCtx, onSave, ctxLoading }) {
               setEditingCtx(true)
             }
           }}
-          style={{ fontSize: '0.78rem', color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', flexShrink: 0 }}
+          style={{ fontSize: '0.78rem', color: '#1B365D', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', flexShrink: 0 }}
         >
           {editingCtx ? 'Done' : 'Edit'}
         </button>
@@ -1457,7 +1457,7 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
 
       {/* Inner tab bar + Generate Report button */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', borderRadius: 10, padding: 4, flex: 1 }}>
+        <div style={{ display: 'flex', gap: 4, background: '#E2E8F0', borderRadius: 10, padding: 4, flex: 1 }}>
           {ANALYTICS_TABS.map(t => (
             <button
               key={t.id}
@@ -1467,7 +1467,7 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
                 flex: 1, padding: '7px 12px', border: 'none', borderRadius: 7,
                 fontSize: '0.8rem',
                 fontWeight: activeTab === t.id ? 600 : 400,
-                color:      activeTab === t.id ? '#1e293b' : '#64748b',
+                color:      activeTab === t.id ? '#1A202C' : '#64748b',
                 background: activeTab === t.id ? '#fff' : 'transparent',
                 boxShadow:  activeTab === t.id ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
                 cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap',
@@ -1494,7 +1494,7 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, on
   const [flagSaving, setFlagSaving] = useState(false)
   const [flagError, setFlagError] = useState(false)
 
-  const stripeColour = status === 'in_place' ? '#1D9E75' : status === 'in_progress' ? '#BA7517' : status === 'not_in_place' ? '#E24B4A' : '#e2e8f0'
+  const stripeColour = status === 'in_place' ? '#257A3B' : status === 'in_progress' ? '#D4751A' : status === 'not_in_place' ? '#EA4335' : '#E2E8F0'
 
   async function submitFlag() {
     setFlagSaving(true)
@@ -1518,7 +1518,7 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, on
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', flexWrap: 'wrap' }}>
-        <span style={{ flex: 1, minWidth: 160, fontSize: 13, color: '#1e293b' }}>{pp.label}</span>
+        <span style={{ flex: 1, minWidth: 160, fontSize: 13, color: '#1A202C' }}>{pp.label}</span>
         {evidenceList.length > 0 && (
           <span className="evidence-count-badge" title={`${evidenceList.length} evidence ${evidenceList.length === 1 ? 'entry' : 'entries'}`}>
             {evidenceList.length}
@@ -1552,14 +1552,14 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, on
             style={{
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               padding: '4px 6px',
-              border: `0.5px solid ${isFlagged ? '#E24B4A' : '#e2e8f0'}`,
+              border: `0.5px solid ${isFlagged ? '#EA4335' : '#e2e8f0'}`,
               borderRadius: 6,
               background: isFlagged ? '#FCEBEB' : '#fff',
-              color: isFlagged ? '#E24B4A' : '#94a3b8',
+              color: isFlagged ? '#EA4335' : '#94a3b8',
               cursor: 'pointer', lineHeight: 1,
               transition: 'color 0.15s, border-color 0.15s, background 0.15s',
             }}
-            onMouseEnter={e => { if (!isFlagged) { e.currentTarget.style.borderColor = '#E24B4A'; e.currentTarget.style.color = '#E24B4A' } }}
+            onMouseEnter={e => { if (!isFlagged) { e.currentTarget.style.borderColor = '#EA4335'; e.currentTarget.style.color = '#EA4335' } }}
             onMouseLeave={e => { if (!isFlagged) { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = '#94a3b8' } }}
           >
             <i className={`ti ${isFlagged ? 'ti-flag-filled' : 'ti-flag'}`} style={{ fontSize: 14 }} />
@@ -1588,12 +1588,12 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, on
             style={{
               width: '100%', fontSize: 12, padding: '7px 10px',
               border: '1px solid #e2e8f0', borderRadius: 6,
-              resize: 'vertical', fontFamily: 'inherit', color: '#1e293b',
+              resize: 'vertical', fontFamily: 'inherit', color: '#1A202C',
               boxSizing: 'border-box',
             }}
           />
           {flagError && (
-            <p style={{ fontSize: 12, color: '#E24B4A', marginTop: 4 }}>Could not save — please try again</p>
+            <p style={{ fontSize: 12, color: '#EA4335', marginTop: 4 }}>Could not save — please try again</p>
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
             <button
@@ -1601,7 +1601,7 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, on
               onClick={submitFlag}
               disabled={flagSaving}
               style={{
-                padding: '5px 14px', background: '#E24B4A', color: '#fff',
+                padding: '5px 14px', background: '#EA4335', color: '#fff',
                 border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600,
                 cursor: flagSaving ? 'default' : 'pointer', fontFamily: 'inherit',
                 opacity: flagSaving ? 0.7 : 1,
@@ -1612,7 +1612,7 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, on
             <button
               type="button"
               onClick={() => { setFlagOpen(false); setFlagNote(''); setFlagError(false) }}
-              style={{ background: 'none', border: 'none', fontSize: 12, color: '#1D9E75', cursor: 'pointer', fontFamily: 'inherit' }}
+              style={{ background: 'none', border: 'none', fontSize: 12, color: '#1B365D', cursor: 'pointer', fontFamily: 'inherit' }}
             >
               Cancel
             </button>
@@ -1630,7 +1630,7 @@ function ShowToggle({ expanded, total, onToggle }) {
       <button type="button" onClick={onToggle} style={{
         display: 'inline-flex', alignItems: 'center', gap: 4,
         background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-        fontSize: 12, color: '#1D9E75', padding: '4px 8px',
+        fontSize: 12, color: '#1B365D', padding: '4px 8px',
       }}>
         {expanded
           ? <>Show less <i className="ti ti-chevron-up" style={{ fontSize: '0.75rem' }} /></>
@@ -2258,7 +2258,7 @@ export default function App() {
           {view === 'school_readonly' && (
             <p className="header-sub" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <button type="button" onClick={handleBackToMat}
-                style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: 'inherit', padding: 0, fontWeight: 500 }}>
+                style={{ background: 'none', border: 'none', color: '#1B365D', cursor: 'pointer', fontSize: 'inherit', padding: 0, fontWeight: 500 }}>
                 MAT Dashboard
               </button>
               <span style={{ color: '#94a3b8' }}>›</span>
@@ -2421,12 +2421,12 @@ export default function App() {
               <div>
                 <button type="button" onClick={() => setSelectedCategory(null)} style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 16, padding: '6px 14px',
-                  border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#475569',
+                  border: '1px solid #CBD5E0', borderRadius: 8, background: 'transparent', color: '#4A5568',
                   fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
                 }}>← Back</button>
 
                 <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b' }}>{selectedCategory}</span>
+                  <span style={{ fontSize: 14, fontWeight: 500, color: '#1A202C' }}>{selectedCategory}</span>
                   <span style={{ fontSize: 12, color: '#94a3b8' }}>{catTotal} point{catTotal !== 1 ? 's' : ''} · {catInPlace} in place</span>
                 </div>
 
@@ -2451,16 +2451,16 @@ export default function App() {
                         }}>
                         <i className="ti ti-chevron-down" style={{ fontSize: '0.8rem', color: '#94a3b8', flexShrink: 0, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }} />
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: domColour, flexShrink: 0 }} />
-                        <span style={{ fontSize: 13, fontWeight: 500, color: '#1e293b' }}>{group.domainName}</span>
+                        <span style={{ fontSize: 13, fontWeight: 500, color: '#1A202C' }}>{group.domainName}</span>
                         <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 2 }}>({ppCount})</span>
                         <div style={{ flex: 1 }} />
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#334155' }}>
-                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#1D9E75', display: 'inline-block', flexShrink: 0 }} />
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#257A3B', display: 'inline-block', flexShrink: 0 }} />
                             {grpInPlace}
                           </span>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#334155' }}>
-                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#BA7517', display: 'inline-block', flexShrink: 0 }} />
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#D4751A', display: 'inline-block', flexShrink: 0 }} />
                             {grpInProg}
                           </span>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#94a3b8' }}>
@@ -2529,8 +2529,8 @@ export default function App() {
           })
           const ragOrder    = { untouched: 0, red: 1, amber: 2, green: 3 }
           const sortedDomains = [...domainCards].sort((a, b) => ragOrder[a.rag] - ragOrder[b.rag])
-          const ragBg     = { untouched: '#f8fafc', red: '#FFF0F0', amber: '#FFF8E1', green: '#F1F8F1' }
-          const ragBorder = { untouched: '#e2e8f0', red: '#fecdd3', amber: '#fde68a', green: '#bbf7d0' }
+          const ragBg     = { untouched: '#F7F8FA', red: 'rgba(234,67,53,0.06)', amber: 'rgba(212,117,26,0.08)', green: 'rgba(37,122,59,0.06)' }
+          const ragBorder = { untouched: '#E2E8F0', red: 'rgba(234,67,53,0.25)', amber: 'rgba(212,117,26,0.25)', green: 'rgba(37,122,59,0.25)' }
 
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -2538,7 +2538,7 @@ export default function App() {
               {/* Greeting row */}
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                 <div>
-                  <h1 style={{ fontSize: '1.35rem', fontWeight: 600, color: '#1e293b', lineHeight: 1.25 }}>
+                  <h1 style={{ fontSize: '1.35rem', fontWeight: 600, color: '#1A202C', lineHeight: 1.25 }}>
                     {greeting}{firstName ? `, ${firstName}` : ''}.
                   </h1>
                   {schoolName && (
@@ -2565,14 +2565,14 @@ export default function App() {
                   display: 'flex', flexDirection: 'column', justifyContent: 'center',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, marginBottom: 10 }}>
-                    <span style={{ fontSize: '2.8rem', fontWeight: 700, color: '#1D9E75', lineHeight: 1 }}>{readPct}%</span>
+                    <span style={{ fontSize: '2.8rem', fontWeight: 700, color: '#1B365D', lineHeight: 1 }}>{readPct}%</span>
                     <div style={{ paddingBottom: 4 }}>
-                      <p style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1e293b' }}>Overall readiness</p>
+                      <p style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1A202C' }}>Overall readiness</p>
                       <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: 2 }}>{totInPlace} of {totTotal} indicators in place</p>
                     </div>
                   </div>
-                  <div style={{ height: 8, borderRadius: 99, background: '#f1f5f9', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${readPct}%`, background: '#1D9E75', borderRadius: 99, transition: 'width 0.4s' }} />
+                  <div style={{ height: 8, borderRadius: 99, background: '#E2E8F0', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${readPct}%`, background: '#1B365D', borderRadius: 99, transition: 'width 0.4s' }} />
                   </div>
                   {untouchedCount > 0 && (
                     <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: 10 }}>
@@ -2588,7 +2588,7 @@ export default function App() {
                     background: '#F0FDFA', border: '1px solid #99f6e4', borderRadius: 12, padding: '16px 18px',
                     display: 'flex', flexDirection: 'column', gap: 10,
                   }}>
-                    <p style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1e293b' }}>
+                    <p style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1A202C' }}>
                       {reviewsDueCount} review{reviewsDueCount !== 1 ? 's' : ''} due
                     </p>
                     <div style={{ overflowY: 'auto', maxHeight: 210, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -2638,7 +2638,7 @@ export default function App() {
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                         <span style={{ width: 9, height: 9, borderRadius: '50%', background: colour, flexShrink: 0 }} />
-                        <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1e293b' }}>{d.name}</span>
+                        <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1A202C' }}>{d.name}</span>
                       </div>
                       <div>
                         <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 5 }}>
@@ -2650,22 +2650,22 @@ export default function App() {
                       </div>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         {d.inPlace > 0 && (
-                          <span style={{ fontSize: '0.7rem', color: '#166534', background: 'rgba(21,128,61,0.1)', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
+                          <span style={{ fontSize: '0.7rem', color: '#257A3B', background: 'rgba(37,122,59,0.12)', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
                             {d.inPlace} in place
                           </span>
                         )}
                         {d.inProgress > 0 && (
-                          <span style={{ fontSize: '0.7rem', color: '#92400e', background: 'rgba(146,64,14,0.1)', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
+                          <span style={{ fontSize: '0.7rem', color: '#D4751A', background: 'rgba(212,117,26,0.15)', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
                             {d.inProgress} in progress
                           </span>
                         )}
                         {d.notInPlace > 0 && (
-                          <span style={{ fontSize: '0.7rem', color: '#991b1b', background: 'rgba(153,27,27,0.1)', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
+                          <span style={{ fontSize: '0.7rem', color: '#EA4335', background: 'rgba(234,67,53,0.12)', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
                             {d.notInPlace} not in place
                           </span>
                         )}
                         {d.untouched > 0 && (
-                          <span style={{ fontSize: '0.7rem', color: '#64748b', background: 'rgba(100,116,139,0.1)', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
+                          <span style={{ fontSize: '0.7rem', color: '#64748B', background: '#E2E8F0', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
                             {d.untouched} untouched
                           </span>
                         )}
@@ -2711,11 +2711,11 @@ export default function App() {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ width: 10, height: 10, borderRadius: '50%', background: domColour, flexShrink: 0 }} />
-                      <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b' }}>{currentDomain?.name}</span>
+                      <span style={{ fontSize: 14, fontWeight: 500, color: '#1A202C' }}>{currentDomain?.name}</span>
                     </div>
                     <span style={{ fontSize: 12, color: '#94a3b8' }}>{domInPlace} of {domTotal} in place</span>
                   </div>
-                  <div style={{ height: 4, borderRadius: 2, background: '#f1f5f9', overflow: 'hidden' }}>
+                  <div style={{ height: 4, borderRadius: 2, background: '#E2E8F0', overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: `${domPct}%`, background: domColour, borderRadius: 2, transition: 'width 0.4s' }} />
                   </div>
                 </div>
@@ -2742,16 +2742,16 @@ export default function App() {
                         }}>
                         <i className="ti ti-chevron-down"
                            style={{ fontSize: '0.8rem', color: '#94a3b8', flexShrink: 0, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }} />
-                        <span style={{ fontSize: 13, fontWeight: 500, color: '#1e293b' }}>{sd.name}</span>
+                        <span style={{ fontSize: 13, fontWeight: 500, color: '#1A202C' }}>{sd.name}</span>
                         <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 2 }}>({ppCount})</span>
                         <div style={{ flex: 1 }} />
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#334155' }}>
-                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#1D9E75', display: 'inline-block', flexShrink: 0 }} />
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#257A3B', display: 'inline-block', flexShrink: 0 }} />
                             {sdInPlace}
                           </span>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#334155' }}>
-                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#BA7517', display: 'inline-block', flexShrink: 0 }} />
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#D4751A', display: 'inline-block', flexShrink: 0 }} />
                             {sdInProg}
                           </span>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#94a3b8' }}>
@@ -3088,8 +3088,8 @@ export default function App() {
                 <p style={{
                   marginTop: 12, fontSize: '0.82rem', lineHeight: 1.5,
                   color: inviteMsg.type === 'success' ? '#166534' : '#991b1b',
-                  background: inviteMsg.type === 'success' ? '#f0fdf4' : '#fef2f2',
-                  border: `1px solid ${inviteMsg.type === 'success' ? '#bbf7d0' : '#fecdd3'}`,
+                  background: inviteMsg.type === 'success' ? 'rgba(37,122,59,0.08)' : 'rgba(234,67,53,0.08)',
+                  border: `1px solid ${inviteMsg.type === 'success' ? 'rgba(37,122,59,0.3)' : 'rgba(234,67,53,0.3)'}`,
                   borderRadius: 8, padding: '8px 12px',
                 }}>
                   {inviteMsg.text}
