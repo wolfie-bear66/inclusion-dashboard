@@ -1235,7 +1235,8 @@ function DemoAutoLogin() {
       password: 'DemoAccess2026!',
     }).then(({ error }) => {
       if (error) setError(error.message)
-      else window.location.replace('/dashboard')
+      // On success: onAuthStateChange fires, session state updates, and the
+      // routing block handles the replace('/dashboard') — no redirect here.
     })
   }, [])
 

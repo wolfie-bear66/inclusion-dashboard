@@ -158,7 +158,7 @@ export default function LandingPage() {
       <nav className="lp-nav">
         <a className="lp-nav__wordmark" href="/">Inclusion Dashboard</a>
         <div className="lp-nav__actions">
-          <a className="lp-btn-ghost" href={DEMO_URL} target="_blank" rel="noopener noreferrer">
+          <a className="lp-btn-ghost" href={DEMO_URL}>
             Try the demo
           </a>
           <a className="lp-btn-ghost" href="/login">Sign in</a>
@@ -283,12 +283,7 @@ export default function LandingPage() {
               {tabs[activeTab].imgLabel}
             </div>
             {tabs[activeTab].demoLink && (
-              <a
-                className="lp-how__demo-link"
-                href={DEMO_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+              <a className="lp-how__demo-link" href={DEMO_URL}>
                 See it live — explore the Springwell Academy demo →
               </a>
             )}
