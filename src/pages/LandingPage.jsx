@@ -3,9 +3,92 @@ import './LandingPage.css'
 
 const DEMO_URL = 'https://inclusion-dashboard.vercel.app/dashboard'
 const MAILTO = 'mailto:yatesstuart66@gmail.com?subject=Inclusion%20Dashboard%20Demo%20Request'
+const FORMSPREE = 'https://formspree.io/f/mdavvadd'
 
 function scrollTo(id) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
+}
+
+function ContactForm({ enquiryType, btnClass, btnLabel }) {
+  const [fields, setFields] = useState({ name: '', role: '', org: '', email: '', message: '' })
+  const [status, setStatus] = useState('idle') // idle | submitting | success | error
+
+  function set(key, val) { setFields(prev => ({ ...prev, [key]: val })) }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setStatus('submitting')
+    try {
+      const res = await fetch(FORMSPREE, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: fields.name,
+          role: fields.role,
+          organisation: fields.org,
+          email: fields.email,
+          message: fields.message,
+          enquiry_type: enquiryType,
+        }),
+      })
+      setStatus(res.ok ? 'success' : 'error')
+    } catch {
+      setStatus('error')
+    }
+  }
+
+  if (status === 'success') {
+    return (
+      <div className="lp-form__success">
+        <span className="lp-form__success-icon">✓</span>
+        <p>Thanks — we'll be in touch shortly.</p>
+      </div>
+    )
+  }
+
+  const isNavy = enquiryType === 'mat'
+
+  return (
+    <form className="lp-form" onSubmit={handleSubmit} noValidate>
+      <div className="lp-form__row">
+        <input
+          className={`lp-form__input${isNavy ? ' lp-form__input--navy' : ''}`}
+          type="text" placeholder="Your name" required
+          value={fields.name} onChange={e => set('name', e.target.value)}
+        />
+        <input
+          className={`lp-form__input${isNavy ? ' lp-form__input--navy' : ''}`}
+          type="text" placeholder="Your role" required
+          value={fields.role} onChange={e => set('role', e.target.value)}
+        />
+      </div>
+      <input
+        className={`lp-form__input${isNavy ? ' lp-form__input--navy' : ''}`}
+        type="text" placeholder="School or trust name" required
+        value={fields.org} onChange={e => set('org', e.target.value)}
+      />
+      <input
+        className={`lp-form__input${isNavy ? ' lp-form__input--navy' : ''}`}
+        type="email" placeholder="Email address" required
+        value={fields.email} onChange={e => set('email', e.target.value)}
+      />
+      <textarea
+        className={`lp-form__input lp-form__textarea${isNavy ? ' lp-form__input--navy' : ''}`}
+        placeholder="Anything you'd like us to know? (optional)"
+        value={fields.message} onChange={e => set('message', e.target.value)}
+      />
+      {status === 'error' && (
+        <p className="lp-form__error">Something went wrong — please try again or email us directly.</p>
+      )}
+      <button
+        type="submit"
+        className={`lp-cta-card__btn ${btnClass}`}
+        disabled={status === 'submitting'}
+      >
+        {status === 'submitting' ? 'Sending…' : btnLabel}
+      </button>
+    </form>
+  )
 }
 
 export default function LandingPage() {
@@ -285,9 +368,11 @@ export default function LandingPage() {
             <p className="lp-cta-card__sub">
               For headteachers who want clarity on the Inclusion vision
             </p>
-            <a className="lp-cta-card__btn lp-cta-card__btn--primary" href={MAILTO}>
-              Book a demo
-            </a>
+            <ContactForm
+              enquiryType="school"
+              btnClass="lp-cta-card__btn--primary"
+              btnLabel="Book a demo"
+            />
             <p className="lp-cta-card__note">
               Limited early adopter places available for the 2026–27 academic year
             </p>
@@ -297,9 +382,11 @@ export default function LandingPage() {
             <p className="lp-cta-card__sub">
               For trust leaders who want coverage across every school
             </p>
-            <a className="lp-cta-card__btn lp-cta-card__btn--white" href={MAILTO}>
-              Talk to us
-            </a>
+            <ContactForm
+              enquiryType="mat"
+              btnClass="lp-cta-card__btn--white"
+              btnLabel="Talk to us"
+            />
             <p className="lp-cta-card__note">
               One conversation. Every school in your trust onboarded.
             </p>
