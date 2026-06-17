@@ -2196,15 +2196,26 @@ export default function App() {
     return <div className="auth-loading">Loading…</div>
   }
 
-  // Route: / → landing page for unauthenticated visitors
-  // Route: /login → login form (explicit, also catches Vercel direct-nav to /login)
   const pathname = window.location.pathname
+
+  // Authenticated user at / → send to dashboard
+  if (pathname === '/' && session) {
+    window.location.replace('/dashboard')
+    return null
+  }
+
+  // Unauthenticated user at /dashboard → send to landing page
+  if (pathname === '/dashboard' && !session) {
+    window.location.replace('/')
+    return null
+  }
+
+  // Unauthenticated user at / → landing page
   if (pathname === '/' && !session) {
     return <LandingPage />
   }
-  // /login (and any unmatched path) with no session → login form below
-  // /login with session → fall through to dashboard
 
+  // No session on any other path → login form
   if (!session) {
     return (
       <div className="login-page">
