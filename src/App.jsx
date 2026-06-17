@@ -1230,13 +1230,19 @@ function DemoAutoLogin() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    supabase.auth.signInWithPassword({
-      email: 'demo@testschool.co.uk',
-      password: 'DemoAccess2026!',
-    }).then(({ error }) => {
-      if (error) setError(error.message)
-      // On success: onAuthStateChange fires, session state updates, and the
-      // routing block handles the replace('/dashboard') — no redirect here.
+    // Check for an existing valid session first so we never double-sign-in.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        window.location.replace('/dashboard')
+        return
+      }
+      supabase.auth.signInWithPassword({
+        email: 'demo@testschool.co.uk',
+        password: 'DemoAccess2026!',
+      }).then(({ error }) => {
+        if (error) setError(error.message)
+        else window.location.replace('/dashboard')
+      })
     })
   }, [])
 
@@ -2223,19 +2229,15 @@ export default function App() {
   const answeredCount = allPoints.filter(p => entries[p.id]?.status).length
   const progress = allPoints.length ? Math.round((answeredCount / allPoints.length) * 100) : 0
 
+  // /demo is exempt from all auth checks — must come before authLoading gate
+  // so the component always mounts and manages its own redirect.
+  const pathname = window.location.pathname
+  if (pathname === '/demo') {
+    return <DemoAutoLogin />
+  }
+
   if (authLoading) {
     return <div className="auth-loading">Loading…</div>
-  }
-
-  const pathname = window.location.pathname
-
-  // Public /demo route — auto-login with demo credentials, exempt from auth redirects
-  if (pathname === '/demo' && session) {
-    window.location.replace('/dashboard')
-    return null
-  }
-  if (pathname === '/demo' && !session) {
-    return <DemoAutoLogin />
   }
 
   // Authenticated user at / → send to dashboard
