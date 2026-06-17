@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import './LandingPage.css'
 
-const DEMO_URL = 'https://inclusion-dashboard.vercel.app/dashboard'
+const DEMO_URL = 'https://inclusion-dashboard.vercel.app/demo'
 const MAILTO = 'mailto:yatesstuart66@gmail.com?subject=Inclusion%20Dashboard%20Demo%20Request'
 const FORMSPREE = 'https://formspree.io/f/mdavvadd'
 

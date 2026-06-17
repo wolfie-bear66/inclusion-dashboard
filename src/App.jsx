@@ -1226,6 +1226,36 @@ function GroupReach({ reachMatrix, schoolCtx }) {
   )
 }
 
+function DemoAutoLogin() {
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    supabase.auth.signInWithPassword({
+      email: 'demo@testschool.co.uk',
+      password: 'DemoAccess2026!',
+    }).then(({ error }) => {
+      if (error) setError(error.message)
+      else window.location.replace('/dashboard')
+    })
+  }, [])
+
+  const centre = { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', fontFamily: 'var(--font-base)', gap: '0.75rem' }
+
+  if (error) return (
+    <div style={centre}>
+      <p style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Couldn't connect to the demo.</p>
+      <p style={{ color: 'var(--text-meta)', fontSize: '0.875rem' }}>{error}</p>
+      <a href="/" style={{ color: 'var(--brand-navy)', fontSize: '0.9rem' }}>← Back to home</a>
+    </div>
+  )
+
+  return (
+    <div style={centre}>
+      <p style={{ color: 'var(--text-meta)' }}>Connecting to demo…</p>
+    </div>
+  )
+}
+
 function SchoolContextPanel({ schoolCtx, onSave, ctxLoading }) {
   const [editingCtx, setEditingCtx] = useState(false)
   const [ctxDraft, setCtxDraft] = useState({})
@@ -2197,6 +2227,15 @@ export default function App() {
   }
 
   const pathname = window.location.pathname
+
+  // Public /demo route — auto-login with demo credentials, exempt from auth redirects
+  if (pathname === '/demo' && session) {
+    window.location.replace('/dashboard')
+    return null
+  }
+  if (pathname === '/demo' && !session) {
+    return <DemoAutoLogin />
+  }
 
   // Authenticated user at / → send to dashboard
   if (pathname === '/' && session) {
