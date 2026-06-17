@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabaseClient'
 import MATDashboard from './MATDashboard'
+import LandingPage from './pages/LandingPage'
 import './App.css'
 import { generateReport } from './generateReport'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts'
@@ -2193,6 +2194,12 @@ export default function App() {
 
   if (authLoading) {
     return <div className="auth-loading">Loading…</div>
+  }
+
+  // Route: / → landing page for unauthenticated visitors
+  const pathname = window.location.pathname
+  if (pathname === '/' && !session) {
+    return <LandingPage />
   }
 
   if (!session) {
