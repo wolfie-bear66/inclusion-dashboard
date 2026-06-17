@@ -398,7 +398,7 @@ export default function LandingPage() {
             <p className="lp-footer__tagline">Your inclusion provision, in one place.</p>
           </div>
           <nav className="lp-footer__nav">
-            <a href={DEMO_URL} target="_blank" rel="noopener noreferrer">Demo</a>
+            <a href={DEMO_URL}>Demo</a>
             <a href="/">About</a>
             <a href="/">Privacy</a>
             <a href={MAILTO}>Contact</a>
