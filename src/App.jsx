@@ -2197,10 +2197,13 @@ export default function App() {
   }
 
   // Route: / → landing page for unauthenticated visitors
+  // Route: /login → login form (explicit, also catches Vercel direct-nav to /login)
   const pathname = window.location.pathname
   if (pathname === '/' && !session) {
     return <LandingPage />
   }
+  // /login (and any unmatched path) with no session → login form below
+  // /login with session → fall through to dashboard
 
   if (!session) {
     return (
