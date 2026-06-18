@@ -117,6 +117,16 @@ At least one school has agreed a trial period with multiple staff users identifi
 - This is the activation mechanism that gets beyond the single power user ceiling
 - Strong sales story for MATs: accountability gaps visible at trust level
 
+**Build estimate**
+Approximately 4–6 Claude Code sessions. Longest pole is the invite and school-scoped user profile layer (1–2 sessions). Assignment UI (1 session), My provision toggle (1 session), onboarding prompt + unassigned flagging (1 session), RLS testing and edge cases (1 session).
+
+**Risk level: Moderate**
+- Add `owner_id` as nullable column only — existing provision point data unaffected
+- RLS policies are the highest-risk touch point — read current policies before any migration runs
+- MAT dashboard queries must explicitly exclude ownership filtering or they will break
+- Build invite/profile layer first in isolation, test, then add assignment UI in a separate session
+- Never rewrite existing query logic in the same session as the migration
+
 ---
 
 ## Post-validation / future
