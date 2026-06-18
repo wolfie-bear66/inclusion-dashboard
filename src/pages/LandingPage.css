@@ -134,8 +134,8 @@
 }
 .lp-hero__img {
   width: 100%;
+  height: auto;
   max-width: 1100px;
-  height: 560px;
   margin: 3rem auto 0;
 }
 
@@ -243,7 +243,7 @@
 }
 .lp-solution__img {
   width: 100%;
-  height: 440px;
+  height: auto;
 }
 
 /* ── SECTION 5 — How It Works ── */
@@ -306,7 +306,7 @@
 }
 .lp-how__tab-img {
   width: 100%;
-  height: 280px;
+  height: auto;
 }
 .lp-how__demo-link {
   display: inline-block;
@@ -660,7 +660,6 @@
   .lp-nav__actions .lp-btn-ghost:first-child { display: none; }
 
   .lp-hero { padding: 80px 16px 60px; min-height: auto; }
-  .lp-hero__img { height: 240px; }
 
   .lp-problem__quotes {
     grid-template-columns: 1fr;
@@ -668,8 +667,6 @@
   .lp-solution__inner {
     grid-template-columns: 1fr;
   }
-  .lp-solution__img { height: 240px; }
-
   .lp-how__tabs {
     grid-template-columns: 1fr;
   }

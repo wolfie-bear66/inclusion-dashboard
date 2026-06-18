@@ -98,7 +98,7 @@ export default function LandingPage() {
     {
       label: '1. Record',
       body: 'Log everything your school does for inclusion — with the evidence behind it, the costs, and the outcomes. Your team can contribute across their areas of responsibility, with an approval layer to ensure accuracy. Review dates are tracked and you\'ll be reminded when they\'re due.',
-      img: '/images/landing/howitworks-evidence.png.png',
+      img: '/images/landing/howitworks-evidence.png',
       imgAlt: 'Evidence modal showing data entry fields for evidence, cost, outcomes, and document links',
     },
     {
@@ -110,7 +110,7 @@ export default function LandingPage() {
     {
       label: '3. Report',
       body: 'Generate a formatted PDF export ready to use as the foundation of your statutory Inclusion Strategy. Scope your report for different audiences — a full compliance document for governors, a focused summary for a specific domain, or a funding breakdown for your trust.',
-      img: '/images/landing/howitworks-report.png.png',
+      img: '/images/landing/howitworks-report.png',
       imgAlt: 'PDF export preview showing landscape layout with school context and domain readiness',
     },
   ]
@@ -188,10 +188,10 @@ export default function LandingPage() {
           Built for the Every Child Achieving and Thriving white paper (February 2026)
         </p>
         <img
-          src="/images/landing/hero-home.png.png"
+          src="/images/landing/hero-home.png"
           alt="Inclusion Dashboard home screen showing domain readiness overview for Springwell Academy"
           className="lp-hero__img"
-          style={{ width: '100%', borderRadius: '12px', display: 'block' }}
+          style={{ width: '100%', height: 'auto', borderRadius: '12px', display: 'block' }}
         />
       </section>
 
@@ -257,10 +257,10 @@ export default function LandingPage() {
             </ul>
           </div>
           <img
-            src="/images/landing/solution-belonging.png.png"
+            src="/images/landing/solution-belonging.png"
             alt="Belonging domain detail screen showing provision point rows with status indicators"
             className="lp-solution__img"
-            style={{ width: '100%', borderRadius: '12px', display: 'block' }}
+            style={{ width: '100%', height: 'auto', borderRadius: '12px', display: 'block' }}
           />
         </div>
       </section>
@@ -289,7 +289,7 @@ export default function LandingPage() {
                 src={tabs[activeTab].img}
                 alt={tabs[activeTab].imgAlt}
                 className="lp-how__tab-img"
-                style={{ width: '100%', borderRadius: '12px', display: 'block' }}
+                style={{ width: '100%', height: 'auto', borderRadius: '12px', display: 'block' }}
               />
             )}
             {tabs[activeTab].demoLink && (
