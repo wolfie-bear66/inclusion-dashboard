@@ -98,18 +98,20 @@ export default function LandingPage() {
     {
       label: '1. Record',
       body: 'Log everything your school does for inclusion — with the evidence behind it, the costs, and the outcomes. Your team can contribute across their areas of responsibility, with an approval layer to ensure accuracy. Review dates are tracked and you\'ll be reminded when they\'re due.',
-      imgLabel: '[Screenshot: Evidence modal — data entry fields for evidence, cost, outcomes, document links]',
+      img: '/images/landing/howitworks-evidence.png.png',
+      imgAlt: 'Evidence modal showing data entry fields for evidence, cost, outcomes, and document links',
     },
     {
       label: '2. Analyse',
       body: 'As your provision picture builds, the gaps become visible. See where provision is strong and where it\'s thin — and crucially, see which student groups are underserved. FSM, SEND, EAL, care-experienced — the dashboard shows you where support isn\'t reaching the pupils who need it most.',
-      imgLabel: '[Screenshot: Analytics screen — Domain Readiness chart or gap analysis view]',
+      imgAlt: 'Analytics screen showing Domain Readiness chart and gap analysis view',
       demoLink: true,
     },
     {
       label: '3. Report',
       body: 'Generate a formatted PDF export ready to use as the foundation of your statutory Inclusion Strategy. Scope your report for different audiences — a full compliance document for governors, a focused summary for a specific domain, or a funding breakdown for your trust.',
-      imgLabel: '[Screenshot: PDF export preview — landscape layout with school context and domain readiness]',
+      img: '/images/landing/howitworks-report.png.png',
+      imgAlt: 'PDF export preview showing landscape layout with school context and domain readiness',
     },
   ]
 
@@ -185,9 +187,12 @@ export default function LandingPage() {
         <p className="lp-hero__trust">
           Built for the Every Child Achieving and Thriving white paper (February 2026)
         </p>
-        <div className="img-placeholder lp-hero__img">
-          [Screenshot: Full dashboard home screen — Springwell Academy]
-        </div>
+        <img
+          src="/images/landing/hero-home.png.png"
+          alt="Inclusion Dashboard home screen showing domain readiness overview for Springwell Academy"
+          className="lp-hero__img"
+          style={{ width: '100%', borderRadius: '12px', display: 'block' }}
+        />
       </section>
 
       {/* ── Section 3: Problem ── */}
@@ -251,12 +256,12 @@ export default function LandingPage() {
               <li>No compliance guesswork.</li>
             </ul>
           </div>
-          <div
-            className="img-placeholder lp-solution__img"
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            [Screenshot: Domain detail screen — Belonging domain with provision point rows]
-          </div>
+          <img
+            src="/images/landing/solution-belonging.png.png"
+            alt="Belonging domain detail screen showing provision point rows with status indicators"
+            className="lp-solution__img"
+            style={{ width: '100%', borderRadius: '12px', display: 'block' }}
+          />
         </div>
       </section>
 
@@ -279,9 +284,14 @@ export default function LandingPage() {
           </div>
           <div className="lp-how__tab-panel">
             <p className="lp-how__tab-body">{tabs[activeTab].body}</p>
-            <div className={`img-placeholder lp-how__tab-img`}>
-              {tabs[activeTab].imgLabel}
-            </div>
+            {tabs[activeTab].img && (
+              <img
+                src={tabs[activeTab].img}
+                alt={tabs[activeTab].imgAlt}
+                className="lp-how__tab-img"
+                style={{ width: '100%', borderRadius: '12px', display: 'block' }}
+              />
+            )}
             {tabs[activeTab].demoLink && (
               <a className="lp-how__demo-link" href={DEMO_URL}>
                 See it live — explore the Springwell Academy demo →
