@@ -79,6 +79,46 @@ Last updated: 18 June 2026 (Session 12 — invite user, category nav fix, accord
 
 ---
 
+## Future features
+
+### Staff Ownership & Onboarding Flow
+Status: Deferred — build after first trial cohort confirmed
+Priority: High (impacts activation, retention, and sales story)
+
+**What it is**
+A responsibility layer that assigns each provision point to a named staff member, transforming the tool from a single-user compliance log into a whole-school system.
+
+**Onboarding sequence**
+1. Head signs up and logs in
+2. Prompted to add team members (name, role, email) — soft prompt, not a hard gate
+3. Invite emails sent → staff get school-scoped accounts via Supabase auth
+4. Head assigns provision points to named staff (unassigned points flagged as a gap)
+5. Staff log in → directed to their assigned points, ordered by ease of completion (logic TBD)
+
+**UI changes required**
+- New "Team" management screen for the Inclusion Lead (head)
+- Assignment interface on each provision point (dropdown of school staff)
+- "All provision / My provision" toggle across domain and category views
+- "Unassigned" filter for the Inclusion Lead
+- Staff-filtered view for line management / appraisal conversations
+
+**Data model changes required**
+- New `school_users` or extend existing profiles table with role field
+- New `owner_id` field on provision_points table (nullable, FK to profiles)
+- Invite flow via Supabase auth (email invite → school-scoped RLS on signup)
+- RLS policies updated to respect owner visibility where needed
+
+**Trigger for building**
+At least one school has agreed a trial period with multiple staff users identified. Validate with headteacher that they would use the assignment step before building.
+
+**Notes**
+- Keep to single owner per provision point (no shared ownership at this stage)
+- "Ease of completion" ordering for staff onboarding = likely based on category type (Policy/Published Document easier than Staff Training & CPD) + current status
+- This is the activation mechanism that gets beyond the single power user ceiling
+- Strong sales story for MATs: accountability gaps visible at trust level
+
+---
+
 ## Post-validation / future
 
 - [ ] **Student belonging survey feature** — downloadable template with aggregated score input. Instruments researched: PSSM, BeeWell, Children's Happiness Scale.
