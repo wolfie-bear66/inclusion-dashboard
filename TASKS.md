@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 12 June 2026 (Session 9 + filter pills)
+Last updated: 18 June 2026 (Session 10 — landing page + /demo fix)
 
 ---
 
@@ -38,6 +38,11 @@ Last updated: 12 June 2026 (Session 9 + filter pills)
 - [x] **Session 6 — School context on home screen** — extracted SchoolContextPanel to module scope, added to home screen above domain cards with overall readiness headline (large %, progress bar). schoolCtx state lifted to App level so both home and Analytics share the same data.
 - [x] **Session 7 — PDF logic update** — rewrote `generateReport.js` to respond to all Report Builder options: conditional sections (equity, funding, outcomes, reach), chart style choices (table vs radar fallback / bar vs table), outcomes filter by domain/group/subdomain, group reach table and bar chart. Dynamic page count — footer `Page X of N` now reflects actual pages. Old fixed 3-page structure replaced with flowing y-position layout.
 - [x] **Mobile / tablet sidebar** — added isMobile state (resize listener, <768px breakpoint), hamburger button (ti-menu-2) in main content area, overlay sidebar with backdrop (rgba 30% black), auto-close on nav item tap. Desktop behaviour unchanged.
+- [x] **Session 10 — Public landing page** — full marketing landing page at `/` (Nav, Hero, Problem, Solution, How It Works tabs, Six Domains Bento, MAT/Trust CTA, Testimonial, Pricing/CTA, Footer). Formspree contact form wired to `https://formspree.io/f/mdavvadd` with hidden `enquiry_type` field (school / mat), inline submit confirmation, and inline error handling. All styles use existing CSS custom properties. `LandingPage.jsx` + `LandingPage.css` created in `src/pages/`.
+- [x] **Auth-based routing** — authenticated users at `/` redirect to `/dashboard`; unauthenticated users at `/dashboard` redirect to `/`. Added to routing block in `src/App.jsx`.
+- [x] **Vercel SPA rewrite** — added `vercel.json` with `/(.*) → /index.html` rewrite so deep links (e.g. `/dashboard`, `/demo`) resolve correctly after deploy.
+- [x] **`/demo` public auto-login route** — `DemoAutoLogin` component signs in as `demo@testschool.co.uk` and redirects to `/dashboard` on success, shows error state on failure. Route is exempt from all auth redirect rules.
+- [x] **`/demo` redirect loop fix (Session 10)** — moved `/demo` check before the `authLoading` gate so `DemoAutoLogin` always mounts; component now owns the full redirect via `useEffect` (checks existing session first, then signs in). Eliminated render-phase `window.location.replace` that was racing with `onAuthStateChange`.
 
 ---
 
@@ -65,7 +70,7 @@ Last updated: 12 June 2026 (Session 9 + filter pills)
 
 - [ ] **MAT demo walkthrough** — prepare structured demo script using Springwell and Rydell High. Open with headteacher pain points before introducing features. Key commercial decisions: subscription ownership, named users, pilot scope.
 
-- [ ] **Landing page contact form** — wire up Formspree on existing landing page so inbound interest from MAT demo can be captured.
+- [x] **Landing page contact form** — Formspree wired up (see Session 10 above). ✓
 
 ---
 
