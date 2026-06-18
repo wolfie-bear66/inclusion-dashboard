@@ -409,8 +409,8 @@ export default function LandingPage() {
           </div>
           <nav className="lp-footer__nav">
             <a href={DEMO_URL}>Demo</a>
-            <a href="/">About</a>
-            <a href="/">Privacy</a>
+            <a href="/about">About</a>
+            <a href="/privacy">Privacy</a>
             <a href={MAILTO}>Contact</a>
           </nav>
           <p className="lp-footer__small">

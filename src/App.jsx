@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabaseClient'
 import MATDashboard from './MATDashboard'
 import LandingPage from './pages/LandingPage'
+import AboutPage from './pages/AboutPage'
+import PrivacyPage from './pages/PrivacyPage'
 import './App.css'
 import { generateReport } from './generateReport'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts'
@@ -2229,9 +2231,13 @@ export default function App() {
   const answeredCount = allPoints.filter(p => entries[p.id]?.status).length
   const progress = allPoints.length ? Math.round((answeredCount / allPoints.length) * 100) : 0
 
+  // Public static pages — no auth required
+  const pathname = window.location.pathname
+  if (pathname === '/about') return <AboutPage />
+  if (pathname === '/privacy') return <PrivacyPage />
+
   // /demo is exempt from all auth checks — must come before authLoading gate
   // so the component always mounts and manages its own redirect.
-  const pathname = window.location.pathname
   if (pathname === '/demo') {
     return <DemoAutoLogin />
   }

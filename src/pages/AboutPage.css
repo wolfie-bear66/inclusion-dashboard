@@ -1,0 +1,50 @@
+.static-page {
+  min-height: 100vh;
+  background: var(--bg-canvas);
+  display: flex;
+  flex-direction: column;
+}
+
+.static-page__body {
+  flex: 1;
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 96px 24px;
+}
+
+.static-page__eyebrow {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brand-teal, #2563EB);
+  margin-bottom: 0.75rem;
+}
+
+.static-page__h1 {
+  font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin-bottom: 2rem;
+}
+
+.static-page__body p {
+  font-size: 1rem;
+  line-height: 1.75;
+  color: var(--text-secondary);
+  margin-bottom: 1.25rem;
+}
+
+.static-page__signoff {
+  margin-top: 2.5rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--border-subtle, #E2E8F0);
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.7;
+  font-size: 1rem;
+  white-space: pre-line;
+}
