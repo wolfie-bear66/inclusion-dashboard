@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 18 June 2026 (Session 10 — landing page + /demo fix)
+Last updated: 18 June 2026 (Session 11 — design system + sidebar accordion)
 
 ---
 
@@ -43,6 +43,8 @@ Last updated: 18 June 2026 (Session 10 — landing page + /demo fix)
 - [x] **Vercel SPA rewrite** — added `vercel.json` with `/(.*) → /index.html` rewrite so deep links (e.g. `/dashboard`, `/demo`) resolve correctly after deploy.
 - [x] **`/demo` public auto-login route** — `DemoAutoLogin` component signs in as `demo@testschool.co.uk` and redirects to `/dashboard` on success, shows error state on failure. Route is exempt from all auth redirect rules.
 - [x] **`/demo` redirect loop fix (Session 10)** — moved `/demo` check before the `authLoading` gate so `DemoAutoLogin` always mounts; component now owns the full redirect via `useEffect` (checks existing session first, then signs in). Eliminated render-phase `window.location.replace` that was racing with `onAuthStateChange`.
+- [x] **Session 11 — Design system applied (cosmetic pass)** — full 13-step design system applied across `index.html`, `index.css`, `App.css`, `App.jsx`. Changes: Inter font via Google Fonts; full `:root` CSS custom property block (neutral, brand, RAG, domain identity, node states, typography, charting layers); header/buttons/login to brand navy `#1B365D` (hover `#152A4A`); sidebar background `#F0F2F5` with navy active states (`rgba(27,54,93,0.10)`); domain identity palette applied to sidebar dots, analytics charts, and `DOMAIN_COLOUR_MAP` (SEND `#4338CA`, Equity `#7A5C13`, Attendance `#0E6251`, Enrichment `#6B21A8`, Belonging `#334E68`, Wellbeing `#5B3A9C`); RAG status colours standardised to `#257A3B` / `#D4751A` / `#EA4335`; all progress bars → `#E2E8F0` track / `#1B365D` fill (neutral) or domain/RAG colour; card borders `#E2E8F0`; ACard shadow updated; chart fills updated (radar → `#4A90D9`, funding bar → `#1B365D`). No logic, routing, or data fetching changed.
+- [x] **Session 11 — Sidebar accordion** — replaced three independent open booleans (`sidebarDomainsOpen`, `sidebarCatsOpen`, `sidebarAnalyticsOpen`) with single `activeSidebarSection` string (null when all closed). Opening any section now automatically closes the previously open one. Toggle: clicking an open section closes it; clicking a different one switches to it. No other sidebar logic affected.
 
 ---
 
