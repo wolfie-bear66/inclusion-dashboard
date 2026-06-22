@@ -1856,6 +1856,10 @@ export default function App() {
   const [modalSaveMsg, setModalSaveMsg] = useState(null)
   const [modalSaveError, setModalSaveError] = useState(false)
   const modalRef = useRef(null)
+  // Freeze pathname at mount — window.location.replace() updates window.location.pathname
+  // synchronously, so re-reading it on every render causes the /demo route to fall through
+  // to the authLoading guard during the sign-in flow, producing a visible flash on mobile.
+  const pathnameRef = useRef(window.location.pathname)
 
   // Invite user modal state
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -2346,7 +2350,7 @@ export default function App() {
   const progress = allPoints.length ? Math.round((answeredCount / allPoints.length) * 100) : 0
 
   // Public static pages — no auth required
-  const pathname = window.location.pathname
+  const pathname = pathnameRef.current
   if (pathname === '/about') return <AboutPage />
   if (pathname === '/privacy') return <PrivacyPage />
 
