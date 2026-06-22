@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 22 June 2026 (Session 13 — hero copy update, onboarding flow planning)
+Last updated: 22 June 2026 (Session 13 — Provision Depth heat map grids)
 
 ---
 
@@ -49,6 +49,7 @@ Last updated: 22 June 2026 (Session 13 — hero copy update, onboarding flow pla
 - [x] **Session 12 — Invite user feature** — Supabase Edge Function at `supabase/functions/invite-user/index.ts` calls `admin.auth.admin.inviteUserByEmail` and inserts a profile row. Approver-only "Add user" button in sidebar footer opens a modal (email + role select). Frontend fetch includes `Authorization: Bearer <session token>` and `apikey` headers. Env var: `SERVICE_ROLE_KEY`. Deploy: `supabase functions deploy invite-user --project-ref zgolrthcrupvrrvfokvz`.
 - [x] **Session 12 — Category view navigation fix** — sidebar category links were setting `overviewMode='category'` but the `!selectedDomain` render block always showed the home screen regardless. Restored the category card grid and domain-grouped provision point list as an early-return branch inside the same IIFE, matching the pre-redesign behaviour.
 - [x] **Session 12 — Domain sub-section accordion** — only one sub-domain section can be open at a time within a domain view. `toggleSD` now returns `new Set([sdId])` (open one, close all others) or `new Set()` (close if already open).
+- [x] **Session 13 — Provision Depth heat map grids** — replaced the four Recharts bar charts in `ProvisionDepth` with heat map grids. Each of the four categories (Staff Training & CPD, External Partnership, Family & Community Engagement, Direct Provision for Students) renders as an `ACard` with provision points grouped by domain. Cells are 28×28px; colour scale: 0 entries `#e8edf2`, 1–2 `#7B9FBF`, 3+ `#1B365D` (white count label). Domain filter pills apply to all grids. Fixed-position hover tooltip shows provision point name, domain, and entry count. Recharts imports retained (still used by FundingCost).
 - [x] **Session 13 — Hero copy update** — heading changed to "Inclusion, evidenced in full." and subheading to "See every gap, organise improvements, report with confidence." in `LandingPage.jsx`.
 
 ---
