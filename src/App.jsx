@@ -1329,22 +1329,38 @@ function GroupReach({ reachMatrix, schoolCtx }) {
 
 function DemoAutoLogin() {
   const [error, setError] = useState(null)
+  const attempted = useRef(false)
 
   useEffect(() => {
-    // Check for an existing valid session first so we never double-sign-in.
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // Guard: fire at most once per mount regardless of auth state changes or
+    // mobile WebKit re-invocations.
+    if (attempted.current) return
+    attempted.current = true
+
+    // Subscribe to the auth event stream rather than reading getSession() directly.
+    // On mobile Safari, localStorage/IndexedDB writes from a preceding signOut() may
+    // not have flushed yet, so getSession() can return a stale non-null session and
+    // trigger a premature redirect to /dashboard before the session is verified.
+    // onAuthStateChange emits the true settled state and bypasses that race.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      subscription.unsubscribe() // one-shot — act on the first settled state only
+
       if (session) {
         window.location.replace('/dashboard')
         return
       }
+
+      // session is confirmed null — safe to sign in
       supabase.auth.signInWithPassword({
         email: 'demo@testschool.co.uk',
         password: 'DemoAccess2026!',
-      }).then(({ error }) => {
-        if (error) setError(error.message)
+      }).then(({ error: signInError }) => {
+        if (signInError) setError(signInError.message)
         else window.location.replace('/dashboard')
       })
     })
+
+    return () => subscription.unsubscribe()
   }, [])
 
   const centre = { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', fontFamily: 'var(--font-base)', gap: '0.75rem' }
