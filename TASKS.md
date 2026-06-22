@@ -142,6 +142,12 @@ Approximately 4–6 Claude Code sessions. Longest pole is the invite and school-
 
 ---
 
+## Analytics — deferred items
+
+- [ ] **Internal Process / System category excluded from Provision Depth analytics** — review whether points in this category need recategorising before V1.5
+
+---
+
 ## Known issues / technical debt
 
 - [ ] Sub-domains RLS errors appearing in console — pre-existing, not blocking, needs investigation.
