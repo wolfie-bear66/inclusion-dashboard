@@ -2360,16 +2360,17 @@ export default function App() {
   const answeredCount = allPoints.filter(p => entries[p.id]?.status).length
   const progress = allPoints.length ? Math.round((answeredCount / allPoints.length) * 100) : 0
 
-  // Public static pages — no auth required
+  // /demo must be the very first route evaluated — before any auth guard,
+  // before authLoading, before the catch-all login form. startsWith handles
+  // trailing-slash normalisations (/demo/) added by Vercel or mobile browsers.
   const pathname = pathnameRef.current
-  if (pathname === '/about') return <AboutPage />
-  if (pathname === '/privacy') return <PrivacyPage />
-
-  // /demo is exempt from all auth checks — must come before authLoading gate
-  // so the component always mounts and manages its own redirect.
-  if (pathname === '/demo') {
+  if (pathname.startsWith('/demo')) {
     return <DemoAutoLogin />
   }
+
+  // Public static pages — no auth required
+  if (pathname === '/about') return <AboutPage />
+  if (pathname === '/privacy') return <PrivacyPage />
 
   if (authLoading) {
     return <LoadingScreen />
