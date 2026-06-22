@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 18 June 2026 (Session 12 — landing page images)
+Last updated: 22 June 2026 (Session 13 — hero copy update)
 
 ---
 
@@ -49,6 +49,7 @@ Last updated: 18 June 2026 (Session 12 — landing page images)
 - [x] **Session 12 — Invite user feature** — Supabase Edge Function at `supabase/functions/invite-user/index.ts` calls `admin.auth.admin.inviteUserByEmail` and inserts a profile row. Approver-only "Add user" button in sidebar footer opens a modal (email + role select). Frontend fetch includes `Authorization: Bearer <session token>` and `apikey` headers. Env var: `SERVICE_ROLE_KEY`. Deploy: `supabase functions deploy invite-user --project-ref zgolrthcrupvrrvfokvz`.
 - [x] **Session 12 — Category view navigation fix** — sidebar category links were setting `overviewMode='category'` but the `!selectedDomain` render block always showed the home screen regardless. Restored the category card grid and domain-grouped provision point list as an early-return branch inside the same IIFE, matching the pre-redesign behaviour.
 - [x] **Session 12 — Domain sub-section accordion** — only one sub-domain section can be open at a time within a domain view. `toggleSD` now returns `new Set([sdId])` (open one, close all others) or `new Set()` (close if already open).
+- [x] **Session 13 — Hero copy update** — heading changed to "Inclusion, evidenced in full." and subheading to "See every gap, organise improvements, report with confidence." in `LandingPage.jsx`.
 
 ---
 

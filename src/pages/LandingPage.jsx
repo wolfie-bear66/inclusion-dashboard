@@ -173,10 +173,9 @@ export default function LandingPage() {
       {/* ── Section 1: Hero ── */}
       <section className="lp-hero">
         <div className="lp-hero__eyebrow-pill">Ahead of the 2028–29 statutory deadline</div>
-        <h1 className="lp-hero__h1">Your inclusion provision, in one place.</h1>
+        <h1 className="lp-hero__h1">Inclusion, evidenced in full.</h1>
         <p className="lp-hero__sub">
-          One place to record everything your school does for inclusion — evidence attached, review dates
-          tracked, gaps visible. When the deadline arrives, you're already prepared.
+          See every gap, organise improvements, report with confidence.
         </p>
         <div className="lp-hero__cta-row">
           <button className="lp-btn-primary" onClick={() => scrollTo('cta-section')}>Book a demo</button>
