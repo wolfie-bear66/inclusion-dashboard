@@ -780,18 +780,24 @@ function ProvisionDepth({ analyticsEntries, domains, onNavigateToCategory }) {
     'Direct Provision for Students',
   ]
 
+  function truncate(str, max) {
+    return str.length > max ? str.slice(0, max - 1) + '…' : str
+  }
+
   function barDataForCategory(category) {
-    return domains
-      .map((d, idx) => {
-        const count = filteredEntries
-          .filter(e =>
-            (e.provision_points?.sub_domains?.domains?.id ?? '') === d.id &&
-            (e.provision_points?.category ?? '') === category
-          )
-          .reduce((sum, e) => sum + (e.evidence_entries ?? []).length, 0)
-        return { name: d.name.length > 12 ? d.name.split(/[&\s]/)[0] : d.name, fullName: d.name, value: count, colour: aDomainColour(d.name, idx) }
+    return filteredEntries
+      .filter(e => (e.provision_points?.category ?? '') === category)
+      .map(e => {
+        const domainName = e.provision_points?.sub_domains?.domains?.name ?? ''
+        const domainIdx  = domains.findIndex(d => d.name === domainName)
+        return {
+          name:     truncate(e.provision_points?.label ?? 'Unknown', 35),
+          fullName: e.provision_points?.label ?? 'Unknown',
+          value:    (e.evidence_entries ?? []).length,
+          colour:   aDomainColour(domainName, domainIdx >= 0 ? domainIdx : 0),
+        }
       })
-      .filter(d => d.value > 0)
+      .sort((a, b) => b.value - a.value)
   }
 
   const pillBase = { fontSize: 12, padding: '5px 12px', borderRadius: 99, cursor: 'pointer', border: '0.5px solid #e2e8f0', fontFamily: 'inherit' }
@@ -829,22 +835,26 @@ function ProvisionDepth({ analyticsEntries, domains, onNavigateToCategory }) {
         ))}
       </div>
 
-      {/* Bar charts */}
+      {/* Bar charts — one per category, one bar per provision point */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         {BAR_CATEGORIES.map(cat => {
           const data = barDataForCategory(cat)
+          const chartHeight = Math.max(data.length * 30, 80)
           return (
             <ACard key={cat}>
-              <ASectionTitle sub="Evidence entries by domain">{cat}</ASectionTitle>
+              <div style={{ marginBottom: 16 }}>
+                <p style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1A202C' }}>{cat}</p>
+                <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 2 }}>{data.length} provision point{data.length !== 1 ? 's' : ''}</p>
+              </div>
               {data.length === 0 ? (
-                <p style={{ fontSize: '0.82rem', color: '#94a3b8' }}>No entries recorded yet.</p>
+                <p style={{ fontSize: '0.82rem', color: '#94a3b8' }}>No provision points in this category.</p>
               ) : (
-                <ResponsiveContainer width="100%" height={180}>
-                  <BarChart data={data} layout="vertical" barCategoryGap="25%" margin={{ left: 0, right: 8 }}>
+                <ResponsiveContainer width="100%" height={chartHeight}>
+                  <BarChart data={data} layout="vertical" barCategoryGap="20%" margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
                     <XAxis type="number" tick={{ fontSize: 10 }} allowDecimals={false} />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={70} />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={180} />
                     <Tooltip
-                      formatter={v => `${v} entr${v === 1 ? 'y' : 'ies'}`}
+                      formatter={v => [`${v} entr${v === 1 ? 'y' : 'ies'}`, 'Evidence']}
                       labelFormatter={(_l, payload) => payload?.[0]?.payload?.fullName ?? _l}
                     />
                     <Bar dataKey="value" radius={[0, 4, 4, 0]}>
