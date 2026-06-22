@@ -85,7 +85,7 @@ export default function AboutPage() {
             <a href={DEMO_URL}>Demo</a>
             <a href="/about">About</a>
             <a href="/privacy">Privacy</a>
-            <a href="mailto:yatesstuart66@gmail.com?subject=Inclusion%20Dashboard%20Demo%20Request">Contact</a>
+            <a href="mailto:hello@inclusiondashboard.co.uk?subject=Inclusion%20Dashboard%20Demo%20Request">Contact</a>
           </nav>
           <p className="lp-footer__small">
             Built for English state schools. Aligned to the Every Child Achieving and Thriving white

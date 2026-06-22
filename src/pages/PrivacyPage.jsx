@@ -32,7 +32,7 @@ export default function PrivacyPage() {
           </p>
           <p>
             If you have any questions about this policy, contact us at{' '}
-            <a href="mailto:yatesstuart66@gmail.com">yatesstuart66@gmail.com</a>
+            <a href="mailto:hello@inclusiondashboard.co.uk">hello@inclusiondashboard.co.uk</a>
           </p>
         </div>
 
@@ -90,7 +90,7 @@ export default function PrivacyPage() {
           </ul>
           <p>
             To exercise any of these rights, contact us at{' '}
-            <a href="mailto:yatesstuart66@gmail.com">yatesstuart66@gmail.com</a>. We will respond
+            <a href="mailto:hello@inclusiondashboard.co.uk">hello@inclusiondashboard.co.uk</a>. We will respond
             within 30 days.
           </p>
         </div>
@@ -124,7 +124,7 @@ export default function PrivacyPage() {
           <h3>Contact</h3>
           <p className="privacy-page__contact">
             Stuart Yates<br />
-            <a href="mailto:yatesstuart66@gmail.com">yatesstuart66@gmail.com</a><br />
+            <a href="mailto:hello@inclusiondashboard.co.uk">hello@inclusiondashboard.co.uk</a><br />
             Inclusion Dashboard — inclusiondashboard.co.uk
           </p>
         </div>
@@ -141,7 +141,7 @@ export default function PrivacyPage() {
             <a href={DEMO_URL}>Demo</a>
             <a href="/about">About</a>
             <a href="/privacy">Privacy</a>
-            <a href="mailto:yatesstuart66@gmail.com?subject=Inclusion%20Dashboard%20Demo%20Request">Contact</a>
+            <a href="mailto:hello@inclusiondashboard.co.uk?subject=Inclusion%20Dashboard%20Demo%20Request">Contact</a>
           </nav>
           <p className="lp-footer__small">
             Built for English state schools. Aligned to the Every Child Achieving and Thriving white
