@@ -79,6 +79,21 @@ const ENTRY_SELECT = [
 ].join(', ')
 
 // ── Analytics sub-components ─────────────────────────────────────
+function LoadingScreen() {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      background: '#F7F8FA', fontFamily: 'var(--font-base)',
+    }}>
+      <p style={{ fontSize: '1rem', fontWeight: 600, color: '#1B365D', letterSpacing: '-0.3px' }}>
+        Inclusion Dashboard
+      </p>
+      <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: 8 }}>Loading…</p>
+    </div>
+  )
+}
+
 const ACard = ({ children, className = '' }) => (
   <div style={{ background: '#FFFFFF', borderRadius: 16, border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)', padding: 24 }} className={className}>{children}</div>
 )
@@ -1373,11 +1388,7 @@ function DemoAutoLogin() {
     </div>
   )
 
-  return (
-    <div style={centre}>
-      <p style={{ color: 'var(--text-meta)' }}>Connecting to demo…</p>
-    </div>
-  )
+  return <LoadingScreen />
 }
 
 function SchoolContextPanel({ schoolCtx, onSave, ctxLoading }) {
@@ -2361,7 +2372,7 @@ export default function App() {
   }
 
   if (authLoading) {
-    return <div className="auth-loading">Loading…</div>
+    return <LoadingScreen />
   }
 
   // Authenticated user at / → send to dashboard
