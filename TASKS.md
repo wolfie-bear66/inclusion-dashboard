@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 22 June 2026 (Session 13 — hero copy update)
+Last updated: 22 June 2026 (Session 13 — hero copy update, onboarding flow planning)
 
 ---
 
@@ -42,7 +42,6 @@ Last updated: 22 June 2026 (Session 13 — hero copy update)
 - [x] **Auth-based routing** — authenticated users at `/` redirect to `/dashboard`; unauthenticated users at `/dashboard` redirect to `/`. Added to routing block in `src/App.jsx`.
 - [x] **Vercel SPA rewrite** — added `vercel.json` with `/(.*) → /index.html` rewrite so deep links (e.g. `/dashboard`, `/demo`) resolve correctly after deploy.
 - [x] **`/demo` public auto-login route** — `DemoAutoLogin` component signs in as `demo@testschool.co.uk` and redirects to `/dashboard` on success, shows error state on failure. Route is exempt from all auth redirect rules.
-- [x] **Landing page screenshots** — replaced all four placeholder divs in `LandingPage.jsx` with `<img>` tags: hero section (`hero-home.png`), solution split layout (`solution-belonging.png`), How It Works Tab 1 Record (`howitworks-evidence.png`), Tab 3 Report (`howitworks-report.png`). Tab 2 Analyse has no image yet — renders gracefully with conditional check. Files in `public/images/landing/`. Fixed image sizing: removed fixed `height` values from `.lp-hero__img`, `.lp-solution__img`, `.lp-how__tab-img` (desktop and mobile) in `LandingPage.css`; all images now use `height: auto` and fill their containers naturally.
 - [x] **`/demo` redirect loop fix (Session 10)** — moved `/demo` check before the `authLoading` gate so `DemoAutoLogin` always mounts; component now owns the full redirect via `useEffect` (checks existing session first, then signs in). Eliminated render-phase `window.location.replace` that was racing with `onAuthStateChange`.
 - [x] **Session 11 — Design system applied (cosmetic pass)** — full 13-step design system applied across `index.html`, `index.css`, `App.css`, `App.jsx`. Changes: Inter font via Google Fonts; full `:root` CSS custom property block (neutral, brand, RAG, domain identity, node states, typography, charting layers); header/buttons/login to brand navy `#1B365D` (hover `#152A4A`); sidebar background `#F0F2F5` with navy active states (`rgba(27,54,93,0.10)`); domain identity palette applied to sidebar dots, analytics charts, and `DOMAIN_COLOUR_MAP` (SEND `#4338CA`, Equity `#7A5C13`, Attendance `#0E6251`, Enrichment `#6B21A8`, Belonging `#334E68`, Wellbeing `#5B3A9C`); RAG status colours standardised to `#257A3B` / `#D4751A` / `#EA4335`; all progress bars → `#E2E8F0` track / `#1B365D` fill (neutral) or domain/RAG colour; card borders `#E2E8F0`; ACard shadow updated; chart fills updated (radar → `#4A90D9`, funding bar → `#1B365D`). No logic, routing, or data fetching changed.
 - [x] **Session 11 — Sidebar accordion** — replaced three independent open booleans (`sidebarDomainsOpen`, `sidebarCatsOpen`, `sidebarAnalyticsOpen`) with single `activeSidebarSection` string (null when all closed). Opening any section now automatically closes the previously open one. Toggle: clicking an open section closes it; clicking a different one switches to it. No other sidebar logic affected.
@@ -83,51 +82,230 @@ Last updated: 22 June 2026 (Session 13 — hero copy update)
 
 ## Future features
 
+### Reviews due panel — copy fix
+**Priority: Low — do alongside any home screen work**
+Relabel "Reviews due" panel to "Evidence due for review" across home screen and
+personal view. Review dates sit on evidence entries, not provision points. The
+distinction matters for accuracy and to avoid confusion with the approval flow.
+Review cadence for provision points is a head decision, not a dashboard function.
+
+---
+
 ### Staff Ownership & Onboarding Flow
-Status: Deferred — build after first trial cohort confirmed
+Status: Deferred — validate with pilot schools before building
 Priority: High (impacts activation, retention, and sales story)
+Trigger: At least one school with multiple named staff ready to trial.
+Validate with headteacher that they would use the assignment step before building.
+Note: Self-assignment part could be built independently as a lower-risk first step.
+
+---
 
 **What it is**
-A responsibility layer that assigns each provision point to a named staff member, transforming the tool from a single-user compliance log into a whole-school system.
+A responsibility layer assigning each provision point to a named staff member.
+Transforms the tool from a single-user compliance log into a whole-school system.
+Replaces current "Add user" sidebar button with a full "Team" screen for approvers.
 
-**Onboarding sequence**
-1. Head signs up and logs in
-2. Prompted to add team members (name, role, email) — soft prompt, not a hard gate
-3. Invite emails sent → staff get school-scoped accounts via Supabase auth
-4. Head assigns provision points to named staff (unassigned points flagged as a gap)
-5. Staff log in → directed to their assigned points, ordered by ease of completion (logic TBD)
+---
 
-**UI changes required**
-- New "Team" management screen for the Inclusion Lead (head)
-- Assignment interface on each provision point (dropdown of school staff)
-- "All provision / My provision" toggle across domain and category views
-- "Unassigned" filter for the Inclusion Lead
-- Staff-filtered view for line management / appraisal conversations
+**Approver first login prompt**
+
+On first login the head sees a three-way prompt (soft — not a hard gate):
+- "Assign points to myself"
+- "Add team members"
+- "Skip for now"
+
+"Assign points to myself" disappears permanently after it has been entered once,
+regardless of how much was assigned. No completion detection — head decides
+what's theirs by what they leave unassigned to others.
+
+After any action completed, prompt reappears with updated language:
+- "Add another team member"
+- "Come back to it later"
+
+Once at least one team member exists, a fourth option appears:
+- "Done — notify my team"
+
+On second login with no assignments made, prompt reappears automatically.
+Options: start assigning, or "Don't show this again."
+If dismissed permanently: notification appears — "You can come back to team
+setup any time using the Team button." Team button in sidebar then flashes
+briefly (3–4 pulses) then stops. Continuous flash rejected — too persistent
+given deliberately low-pressure tone.
+
+Onboarding state tracked via `onboarding_state` JSON field on profiles table:
+- `self_assign_entered` (boolean)
+- `has_team_members` (boolean)
+- `team_prompt_dismissed` (boolean)
+
+---
+
+**Onboarding setup sequence (person by person)**
+
+For each team member:
+1. Enter name, role, email
+2. Shown Named Person points → select which belong to this person
+3. Shown Policy/Published Document points → select
+4. Shown Monitoring & Data points → select
+5. Prompt: "Add another person" or "Continue to next category (4/8)"
+
+Category counter (e.g. 4/8) shows progress without forcing completion.
+Head can stop at any point and notify the team with whatever is assigned.
+
+When "Complete team" selected, confirmation screen shows:
+> "[X]/166 points assigned. [Y] unassigned. Notify team?"
+
+Unassigned count shown alongside assigned — surfaces accountability gaps
+before anyone has logged in.
+
+No autosuggestions based on role — head knows their team.
+Designed to work on a projected screen in a staff meeting as well as solo.
+The setup act itself is a compliance act: unassigned = visible gap.
+
+---
+
+**Invite email (sent on "Notify team?")**
+Personalised — names the head, school, number of assigned points, first point.
+Example: "[Head name] has set up your Inclusion Dashboard account for [School].
+You've been assigned 8 provision points to complete — starting with [point name].
+Your role in building the school's Inclusion Strategy starts here."
+Hints that additional points may follow beyond their assigned set.
+
+---
+
+**Team screen (ongoing management — approver only)**
+
+"Team" sidebar item visible to approver role only. Replaces "Add user" button.
+Two switchable views within the same screen:
+
+View by person:
+- Select staff member → see all assigned points
+- Add points, remove points, reassign to another staff member
+- "Transfer all" action for staff transitions (see below)
+
+View by point:
+- Browse all provision points, filterable by domain or category
+- Each point shows current owner or "Unassigned"
+- Assign, reassign, or deselect from here
+
+Both views support: assign, deselect/remove, reassign.
+
+"Add team member" button at top of Team screen — triggers same name/role/email
+flow as initial setup, then drops into point assignment for that person.
+This is how new staff are invited after initial onboarding is complete.
+
+---
+
+**Staff transition flow (member leaves)**
+
+From View by person → select departing staff member → "Transfer or remove":
+1. Shows all points currently assigned to that person
+2. "Transfer all to..." — dropdown of current staff, one action
+3. Or selective transfer — tick individual points, assign to different people
+4. Option to deactivate departing staff member's login
+5. Untransferred points return to unassigned → home screen nudge reappears
+
+---
+
+**Personal view (home screen)**
+
+Home screen structurally identical for all users but toggled by role.
+
+Non-approvers land on personal view by default:
+- Domain cards show only assigned points
+- Domain with no assigned points shows "Belonging: 0 out of 0 complete"
+  (not hidden — honest and complete)
+- "Evidence due for review" panel shows only their evidence review dates
+- Overall readiness % stays whole-school (school metric, not personal)
+- Toggle: My provision / Whole school
+
+Approvers (head) get a dropdown instead of toggle:
+- Whole school / My provision / [named staff member]
+- Named staff member view enables line management conversations without
+  a separate screen
+
+Non-approver first login — personal view is default landing state. Points
+that require only a name, date, or an already-available document should be
+surfaced first. "You can probably complete these now" is a legitimate UI
+affordance — gives first session momentum, makes tool feel useful not
+bureaucratic.
+
+---
+
+**Approval flow**
+
+Home screen (approver only): line at bottom of overall readiness panel:
+> "4 points waiting for your approval →"
+
+Clicking opens modal or page listing those points with point names and links.
+
+Two actions per point:
+- Approve → point moves to green, contributor sees sign-off
+- Return with comment → point returns to amber, contributor notified,
+  comment visible to both approver and contributor
+
+Each provision point needs a small comment thread (not full messaging —
+just a simple exchange for the approval conversation). Can be actioned
+in or out of inclusion meetings.
+
+No hard "deny" — return with comment is more useful and keeps the
+conversation in the tool rather than moving it to email.
+
+---
+
+**Email digests**
+
+Weekly personal digest (non-approvers):
+- Their completion picture
+- Evidence entries with upcoming review dates
+- Single most pressing call to action
+- Not a list of everything undone — one thing, one link to personal view
+
+Weekly summary (approver/head), scannable in under two minutes:
+1. What needs attention now — expiring evidence review dates, approval queue count
+2. Recent progress — completed/evidenced in last 7 days, with contributor name
+3. Overall picture — domain RAG status, completion %, trend if history exists
+4. Coming up — evidence review dates in next 2–4 weeks
+
+Deep links to specific points rejected — SPA routing makes these fragile and
+restructuring routing carries breakage risk. Instead: point names listed in
+email body, one link to personal view (already filtered and sorted by urgency).
+Recipient lands in the right place without per-point URLs.
+
+---
 
 **Data model changes required**
-- New `school_users` or extend existing profiles table with role field
-- New `owner_id` field on provision_points table (nullable, FK to profiles)
-- Invite flow via Supabase auth (email invite → school-scoped RLS on signup)
-- RLS policies updated to respect owner visibility where needed
+- Extend profiles table: `onboarding_state` JSON field, role field (if not present)
+- New nullable `owner_id` on `provision_points` (FK to profiles)
+  — nullable so Springwell and St Augustine pilot data unaffected
+- Comment thread storage on provision points (simple array or child table)
+- RLS policies: read current policies before any migration runs
+- MAT dashboard queries must explicitly exclude ownership filtering
 
-**Trigger for building**
-At least one school has agreed a trial period with multiple staff users identified. Validate with headteacher that they would use the assignment step before building.
-
-**Notes**
-- Keep to single owner per provision point (no shared ownership at this stage)
-- "Ease of completion" ordering for staff onboarding = likely based on category type (Policy/Published Document easier than Staff Training & CPD) + current status
-- This is the activation mechanism that gets beyond the single power user ceiling
-- Strong sales story for MATs: accountability gaps visible at trust level
+---
 
 **Build estimate**
-Approximately 4–6 Claude Code sessions. Longest pole is the invite and school-scoped user profile layer (1–2 sessions). Assignment UI (1 session), My provision toggle (1 session), onboarding prompt + unassigned flagging (1 session), RLS testing and edge cases (1 session).
+Approximately 6–9 Claude Code sessions total across all components:
+- Onboarding prompt + state tracking: 1 session
+- Team screen (both views, assign/deselect/reassign): 2 sessions
+- Self-assignment flow + setup sequence: 1–2 sessions
+- Personal view toggle + dropdown: 1 session
+- Approval flow + comment thread: 1–2 sessions
+- Email digest infrastructure: 1–2 sessions
+- RLS verification, staff transition, edge cases: 1 session
 
-**Risk level: Moderate**
-- Add `owner_id` as nullable column only — existing provision point data unaffected
-- RLS policies are the highest-risk touch point — read current policies before any migration runs
-- MAT dashboard queries must explicitly exclude ownership filtering or they will break
-- Build invite/profile layer first in isolation, test, then add assignment UI in a separate session
-- Never rewrite existing query logic in the same session as the migration
+Invite/profile layer (Session 12) already built — do not rebuild.
+Build onboarding prompt and Team screen first, in isolation.
+Never rewrite existing query logic in same session as any migration.
+
+**Risk level: Moderate-High across full feature set**
+- `owner_id` nullable column — safe for existing data
+- RLS policies highest-risk touch point — verify before any migration
+- MAT queries must explicitly exclude ownership filtering
+- Comment thread is new data structure — design carefully to avoid
+  coupling it to future messaging features
+- Email digest requires either a Supabase Edge Function cron job or
+  external service (e.g. Resend, Loops) — infrastructure decision needed
+  before building
 
 ---
 
@@ -143,17 +321,11 @@ Approximately 4–6 Claude Code sessions. Longest pole is the invite and school-
 
 ---
 
-## Analytics — deferred items
-
-- [ ] **Internal Process / System category excluded from Provision Depth analytics** — review whether points in this category need recategorising before V1.5
-
----
-
 ## Known issues / technical debt
 
 - [ ] Sub-domains RLS errors appearing in console — pre-existing, not blocking, needs investigation.
 - [ ] `evidenceEntries` is empty on category view (domain-specific fetch only) — existing behaviour, not broken, but worth revisiting if evidence needs to show in category view.
-- [ ] Customise Supabase invite email to mention the Inclusion Dashboard by name and give the user context about what they're signing up for.
+- [ ] Customise Supabase invite email to mention Inclusion Dashboard by name and give context about what they're signing up for.
 
 ---
 
