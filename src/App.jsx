@@ -769,6 +769,7 @@ function CircleProgress({ label, count, denominator, onClick }) {
 
 function ProvisionDepth({ analyticsEntries, domains, onNavigateToCategory }) {
   const [domainFilter, setDomainFilter] = useState(null)
+  const [tooltip, setTooltip] = useState(null)
 
   const filteredEntries = domainFilter
     ? analyticsEntries.filter(e => (e.provision_points?.sub_domains?.domains?.name ?? '') === domainFilter)
@@ -788,37 +789,47 @@ function ProvisionDepth({ analyticsEntries, domains, onNavigateToCategory }) {
     { label: 'Monitoring & Data',           category: 'Monitoring & Data',           denominator: 18 },
   ]
 
-  const BAR_CATEGORIES = [
+  const HEAT_CATEGORIES = [
     'Staff Training & CPD',
     'External Partnership',
     'Family & Community Engagement',
     'Direct Provision for Students',
   ]
 
-  function truncate(str, max) {
-    return str.length > max ? str.slice(0, max - 1) + '…' : str
+  const DOMAIN_ORDER = [
+    'SEND Support & Needs',
+    'Equity & Disadvantage',
+    'Attendance & Engagement',
+    'Enrichment',
+    'Belonging',
+    'Wellbeing',
+  ]
+
+  function cellColour(count) {
+    if (count === 0) return '#e8edf2'
+    if (count <= 2) return '#7B9FBF'
+    return '#1B365D'
   }
 
-  function barDataForCategory(category) {
-    return filteredEntries
-      .filter(e => (e.provision_points?.category ?? '') === category)
-      .map(e => {
-        const domainName = e.provision_points?.sub_domains?.domains?.name ?? ''
-        const domainIdx  = domains.findIndex(d => d.name === domainName)
-        return {
-          name:     truncate(e.provision_points?.label ?? 'Unknown', 35),
-          fullName: e.provision_points?.label ?? 'Unknown',
-          value:    (e.evidence_entries ?? []).length,
-          colour:   aDomainColour(domainName, domainIdx >= 0 ? domainIdx : 0),
-        }
+  function heatGroupsForCategory(category) {
+    const catEntries = filteredEntries.filter(e => (e.provision_points?.category ?? '') === category)
+    const byDomain = {}
+    catEntries.forEach(e => {
+      const dn = e.provision_points?.sub_domains?.domains?.name ?? 'Unknown'
+      if (!byDomain[dn]) byDomain[dn] = []
+      byDomain[dn].push({
+        name:   e.provision_points?.label ?? 'Unknown',
+        domain: dn,
+        count:  (e.evidence_entries ?? []).length,
       })
-      .sort((a, b) => b.value - a.value)
+    })
+    return DOMAIN_ORDER.filter(d => byDomain[d]).map(d => ({ domain: d, points: byDomain[d] }))
   }
 
   const pillBase = { fontSize: 12, padding: '5px 12px', borderRadius: 99, cursor: 'pointer', border: '0.5px solid #e2e8f0', fontFamily: 'inherit' }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, position: 'relative' }}>
       {/* Domain filter */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {[null, ...domains.map(d => d.name)].map((dn, i) => {
@@ -850,38 +861,64 @@ function ProvisionDepth({ analyticsEntries, domains, onNavigateToCategory }) {
         ))}
       </div>
 
-      {/* Bar charts — one per category, one bar per provision point */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        {BAR_CATEGORIES.map(cat => {
-          const data = barDataForCategory(cat)
-          const chartHeight = Math.max(data.length * 30, 80)
-          return (
-            <ACard key={cat}>
-              <div style={{ marginBottom: 16 }}>
-                <p style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1A202C' }}>{cat}</p>
-                <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 2 }}>{data.length} provision point{data.length !== 1 ? 's' : ''}</p>
+      {/* Heat map grids — one per category */}
+      {HEAT_CATEGORIES.map(cat => {
+        const groups = heatGroupsForCategory(cat)
+        const totalPoints = groups.reduce((sum, g) => sum + g.points.length, 0)
+        return (
+          <ACard key={cat}>
+            <p style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1A202C', marginBottom: 2 }}>{cat}</p>
+            <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginBottom: 12 }}>{totalPoints} point{totalPoints !== 1 ? 's' : ''}</p>
+            {groups.length === 0 ? (
+              <p style={{ fontSize: '0.82rem', color: '#94a3b8' }}>No provision points in this category.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {groups.map(g => (
+                  <div key={g.domain}>
+                    <p style={{ fontSize: '0.68rem', color: '#94a3b8', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{g.domain}</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {g.points.map((pt, idx) => (
+                        <div
+                          key={idx}
+                          onMouseEnter={e => {
+                            const r = e.currentTarget.getBoundingClientRect()
+                            setTooltip({ x: r.right + 6, y: r.top, name: pt.name, domain: pt.domain, count: pt.count })
+                          }}
+                          onMouseLeave={() => setTooltip(null)}
+                          style={{
+                            width: 28, height: 28, borderRadius: 4,
+                            background: cellColour(pt.count),
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            cursor: 'default', flexShrink: 0,
+                          }}
+                        >
+                          {pt.count >= 3 && (
+                            <span style={{ fontSize: 10, color: '#fff', fontWeight: 600, lineHeight: 1 }}>{pt.count}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
-              {data.length === 0 ? (
-                <p style={{ fontSize: '0.82rem', color: '#94a3b8' }}>No provision points in this category.</p>
-              ) : (
-                <ResponsiveContainer width="100%" height={chartHeight}>
-                  <BarChart data={data} layout="vertical" barCategoryGap="20%" margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
-                    <XAxis type="number" tick={{ fontSize: 10 }} allowDecimals={false} />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={180} />
-                    <Tooltip
-                      formatter={v => [`${v} entr${v === 1 ? 'y' : 'ies'}`, 'Evidence']}
-                      labelFormatter={(_l, payload) => payload?.[0]?.payload?.fullName ?? _l}
-                    />
-                    <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                      {data.map((d, idx) => <Cell key={idx} fill={d.colour} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </ACard>
-          )
-        })}
-      </div>
+            )}
+          </ACard>
+        )
+      })}
+
+      {/* Hover tooltip */}
+      {tooltip && (
+        <div style={{
+          position: 'fixed', left: tooltip.x, top: tooltip.y,
+          background: '#1A202C', color: '#fff',
+          padding: '6px 10px', borderRadius: 6, fontSize: '0.75rem',
+          pointerEvents: 'none', zIndex: 9999, maxWidth: 220, lineHeight: 1.5,
+        }}>
+          <p style={{ fontWeight: 600, marginBottom: 2 }}>{tooltip.name}</p>
+          <p style={{ color: '#94a3b8', fontSize: '0.68rem' }}>{tooltip.domain}</p>
+          <p style={{ fontSize: '0.68rem' }}>{tooltip.count} entr{tooltip.count === 1 ? 'y' : 'ies'}</p>
+        </div>
+      )}
     </div>
   )
 }
