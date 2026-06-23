@@ -56,6 +56,14 @@
   transition: background 0.15s;
 }
 .lp-btn-ghost:hover { background: var(--bg-structure); }
+.lp-nav__link {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.lp-nav__link:hover { color: var(--brand-navy); }
 
 /* Image placeholders */
 .img-placeholder {
@@ -132,11 +140,36 @@
   color: var(--text-meta);
   margin-top: 1rem;
 }
-.lp-hero__img {
-  width: 100%;
-  height: auto;
-  max-width: 1100px;
-  margin: 3rem auto 0;
+.lp-hero__cta-btn {
+  padding: 0.75rem 2rem;
+  font-size: 1rem;
+}
+.lp-hero__see-how {
+  display: block;
+  text-align: center;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.9rem;
+  margin-top: 0.75rem;
+  transition: color 0.15s;
+}
+.lp-hero__see-how:hover { color: var(--brand-navy); }
+.hero-image-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(27, 54, 93, 0.75);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 18px;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+a:hover .hero-image-overlay {
+  opacity: 1;
 }
 
 /* ── SECTION 3 — Problem ── */

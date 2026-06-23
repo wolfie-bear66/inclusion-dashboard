@@ -160,13 +160,11 @@ export default function LandingPage() {
       <nav className="lp-nav">
         <a className="lp-nav__wordmark" href="/">Inclusion Dashboard</a>
         <div className="lp-nav__actions">
-          <a className="lp-btn-ghost" href={DEMO_URL}>
+          <a className="lp-btn-primary" href={DEMO_URL}>
             Try the demo
           </a>
+          <a className="lp-nav__link" href="#contact">Get in touch</a>
           <a className="lp-btn-ghost" href="/login">Sign in</a>
-          <button className="lp-btn-primary" onClick={() => scrollTo('cta-section')}>
-            Book a demo
-          </button>
         </div>
       </nav>
 
@@ -177,21 +175,45 @@ export default function LandingPage() {
         <p className="lp-hero__sub">
           See every gap, organise improvements, report with confidence.
         </p>
+        <p className="lp-hero__sub" style={{ opacity: 0.7, fontWeight: 400, marginTop: '0.35rem' }}>
+          Explore a school dashboard and a full MAT overview — live, right now.
+        </p>
+
         <div className="lp-hero__cta-row">
-          <button className="lp-btn-primary" onClick={() => scrollTo('cta-section')}>Book a demo</button>
-          <button className="lp-btn-ghost" onClick={() => scrollTo('how-it-works')}>
-            See how it works ↓
-          </button>
+          <a className="lp-btn-primary lp-hero__cta-btn" href="/demo">
+            Explore the live demo →
+          </a>
         </div>
+        <p style={{ fontSize: 13, color: '#6B7280', textAlign: 'center', fontStyle: 'italic', margin: '0.75rem 0 0' }}>
+          No account needed. Opens instantly.
+        </p>
+        <a
+          href="#how-it-works"
+          onClick={e => { e.preventDefault(); scrollTo('how-it-works') }}
+          className="lp-hero__see-how"
+        >
+          See how it works ↓
+        </a>
+
         <p className="lp-hero__trust">
           Built for the Every Child Achieving and Thriving white paper (February 2026)
         </p>
-        <img
-          src="/images/landing/hero-home.png"
-          alt="Inclusion Dashboard home screen showing domain readiness overview for Springwell Academy"
-          className="lp-hero__img"
-          style={{ width: '100%', height: 'auto', borderRadius: '12px', display: 'block' }}
-        />
+        <div style={{ position: 'relative', maxWidth: '1100px', margin: '3rem auto 0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, paddingLeft: 4, paddingRight: 4 }}>
+            <span style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6B7280' }}>MAT Dashboard</span>
+            <span style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6B7280' }}>School Dashboard</span>
+          </div>
+          <a href="/demo" style={{ display: 'block', position: 'relative', cursor: 'pointer' }}>
+            <img
+              src="/images/landing/hero-dashboard.png"
+              alt="Inclusion Dashboard — MAT and school dashboards side by side"
+              style={{ width: '100%', borderRadius: '12px', display: 'block' }}
+            />
+            <div className="hero-image-overlay">
+              Explore the live demo →
+            </div>
+          </a>
+        </div>
       </section>
 
       {/* ── Section 3: Problem ── */}
@@ -293,7 +315,7 @@ export default function LandingPage() {
             )}
             {tabs[activeTab].demoLink && (
               <a className="lp-how__demo-link" href={DEMO_URL}>
-                See it live — explore the Springwell Academy demo →
+                Try a live demo — start with the MAT overview →
               </a>
             )}
           </div>
@@ -326,12 +348,11 @@ export default function LandingPage() {
         <div className="lp-mat__inner">
           <div>
             <p className="lp-eyebrow">For multi-academy trusts</p>
-            <h2 className="lp-mat__h2">One decision. Every school in your trust, covered.</h2>
+            <h2 className="lp-mat__h2">Built for MATs — see every school at a glance</h2>
             <p className="lp-mat__body">
-              The Inclusion Dashboard includes a trust-level view — compare provision readiness across
-              every school, identify where support is needed most, and track compliance progress
-              trust-wide. With Ofsted now inspecting trusts as whole entities, consistent inclusion
-              standards across every school isn't just good practice — it's a strategic necessity.
+              For multi-academy trust directors and inclusion leads, Inclusion Dashboard gives you a live
+              picture of compliance across your whole trust. Spot which schools are on track and which
+              need support — before Ofsted does. One dashboard. Every school. No spreadsheets.
             </p>
             <div className="lp-mat__callouts">
               {[
@@ -343,9 +364,24 @@ export default function LandingPage() {
                 <div key={i} className="lp-mat__callout">{text}</div>
               ))}
             </div>
+            <div style={{ marginTop: 24 }}>
+              <a
+                href={DEMO_URL}
+                className="lp-btn-ghost"
+                style={{ display: 'inline-block' }}
+              >
+                See it in the demo →
+              </a>
+            </div>
           </div>
-          <div className="img-placeholder lp-mat__img">
-            [Screenshot: MAT dashboard — RAG school pills and domain comparison chart]
+          {/* TODO: replace with real MAT dashboard screenshot */}
+          <div className="img-placeholder lp-mat__img" style={{
+            border: '2px solid #e2e8f0', borderRadius: 12,
+            background: '#f8fafc', aspectRatio: '16/9',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#94a3b8', fontSize: '0.85rem', textAlign: 'center', padding: 24,
+          }}>
+            [MAT Dashboard screenshot — coming soon]
           </div>
         </div>
       </section>
@@ -359,44 +395,29 @@ export default function LandingPage() {
         <p className="lp-testimonial__attr">— Headteacher · Secondary school</p>
       </section>
 
-      {/* ── Section 10: CTA / Pricing ── */}
-      <section className="lp-cta" id="cta-section">
-        <h2 className="lp-cta__h2">Start before the deadline does</h2>
-        <p className="lp-cta__sub">
-          Inclusion compliance isn't a one-off task, it's a reflection of your school culture. The
-          schools that will be ready are the ones that start managing it continuously now.
+      {/* ── Section 10: Contact ── */}
+      <section id="contact" style={{ background: '#F7F8FA', padding: '80px 24px', textAlign: 'center' }}>
+        <p style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6B7280', marginBottom: '12px' }}>
+          GET IN TOUCH
         </p>
-        <div className="lp-cta__cards">
-          <div className="lp-cta-card">
-            <h3 className="lp-cta-card__label">Single school</h3>
-            <p className="lp-cta-card__sub">
-              For headteachers who want clarity on the Inclusion vision
-            </p>
-            <ContactForm
-              enquiryType="school"
-              btnClass="lp-cta-card__btn--primary"
-              btnLabel="Book a demo"
-            />
-            <p className="lp-cta-card__note">
-              Limited early adopter places available for the 2026–27 academic year
-            </p>
-          </div>
-          <div className="lp-cta-card lp-cta-card--navy">
-            <h3 className="lp-cta-card__label">Multi-academy trust</h3>
-            <p className="lp-cta-card__sub">
-              For trust leaders who want coverage across every school
-            </p>
-            <ContactForm
-              enquiryType="mat"
-              btnClass="lp-cta-card__btn--white"
-              btnLabel="Talk to us"
-            />
-            <p className="lp-cta-card__note">
-              One conversation. Every school in your trust onboarded.
-            </p>
-          </div>
+        <h2 style={{ fontSize: '32px', fontWeight: '700', color: '#1B365D', marginBottom: '16px' }}>
+          Built by a teacher, for teachers
+        </h2>
+        <p style={{ fontSize: '16px', color: '#4B5563', maxWidth: '560px', margin: '0 auto 32px', lineHeight: '1.6' }}>
+          I'm Stuart — a secondary school science teacher who built Inclusion Dashboard from inside a school.
+          If you'd like to know more, try the tool, or talk about what it could look like in your school or trust,
+          I'd love to hear from you.
+        </p>
+        <div style={{ maxWidth: 480, margin: '0 auto' }}>
+          <ContactForm
+            enquiryType="school"
+            btnClass="lp-cta-card__btn--primary"
+            btnLabel="Send message"
+          />
         </div>
-        <p className="lp-cta__gdpr">No named pupil data required at any stage.</p>
+        <p style={{ fontSize: '13px', color: '#9CA3AF', marginTop: '24px' }}>
+          Or email directly: <a href="mailto:hello@inclusiondashboard.co.uk" style={{ color: '#1B365D' }}>hello@inclusiondashboard.co.uk</a>
+        </p>
       </section>
 
       {/* ── Section 11: Footer ── */}

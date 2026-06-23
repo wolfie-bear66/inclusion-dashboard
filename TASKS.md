@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 23 June 2026 (Session 14 — Heat map colour scale recalibrated)
+Last updated: 23 June 2026 (Session 18 — Landing page CTA and hero image overhaul)
 
 ---
 
@@ -54,6 +54,15 @@ Last updated: 23 June 2026 (Session 14 — Heat map colour scale recalibrated)
 - [x] **Session 14 — Springwell evidence enrichment (categories 4–7)** — `springwell_evidence_v2.sql` ensures entries exist (status complete) for all provision points in Staff Training & CPD, External Partnership, Family & Community Engagement, Direct Provision for Students, and adds one rich evidence_entry per provision point with realistic data (dates, costs, impact notes, group reach flags). Added 22 June 2026.
 - [x] **Session 14 — Rydell High seed data** — `rydell_high_v2.sql` populates all provision points for Rydell High with a non-compliant status mix. Named Person and Policy complete; Monitoring & Data in_progress; External Partnership and Family & Community Engagement not_started; Enrichment, Belonging, Wellbeing domains predominantly not_started. ON CONFLICT DO NOTHING preserves any 3 existing entries. Added 22 June 2026.
 - [x] **Heat map colour scale recalibrated** — 5-step scale replacing the original 3-step. 0 → `#E5E7EB`, 1 → `#C7D9EE`, 2 → `#8FB8D8`, 3–4 → `#4A7FA8`, 5+ → `#1B365D`. Count label now only shown at 5+ (was 3+). Added 23 June 2026.
+- [x] **Session 15 — Demo route → MAT dashboard** — `DemoAutoLogin` now sets `sessionStorage.isDemoMode = 'true'` and redirects to `/mat-dashboard` (was `/dashboard`). Both redirect paths (existing session + fresh sign-in) updated. `/mat-dashboard` falls through to the main authenticated app; `mat_admin` role sets `view = 'mat'` → MAT dashboard renders correctly.
+- [x] **Session 15 — MAT dashboard school cards** — Added prominent school selector cards to `MATDashboard.jsx` (above divergence alert). Each card shows school name, overall readiness %, RAG colour (green ≥70%, amber 40–69%, red <40%), descriptor line, and "Explore this school →" CTA button (navy). Two-column auto-fit grid, collapses to single column on mobile.
+- [x] **Session 15 — Demo mode guidance text** — `isDemoMode` prop added to `MATDashboard`. When true, shows instructional text above school cards: "Explore either school to see how Inclusion Dashboard works in practice — one model school, one that needs attention."
+- [x] **Session 15 — Demo mode read-only banner** — Amber banner ("You're viewing a demo school. Changes won't be saved.") shown in `App.jsx` when `isDemoMode && readOnly`. Replaces the existing blue read-only banner for demo sessions. NOTE: writes not yet suppressed — see new task above.
+- [x] **Session 15 — RLS policy on mats table** — Verified existing policy "mat members can read their mat" already correct. No change needed.
+- [x] **Session 16 — Demo routing fix** — `handleDemoLogin` (sign-in page) changed from direct `signInWithPassword` to `window.location.href = '/demo'`. `DemoAutoLogin` gains a separate mount-time `useEffect` that sets `sessionStorage.demoEntry = 'true'`. App.jsx routing block (after `authLoading` gate) checks for `demoEntry`: if found with active session, consumes flag, sets `isDemoMode`, and `window.location.replace('/mat-dashboard')`. Overriding redirect was in `handleDemoLogin` bypassing `DemoAutoLogin` entirely.
+- [x] **Session 16 — Landing page hero dual dashboard panel** — Two-line hero subheading. School card (Springwell, domain colour dots, "Explore school dashboard →") + MAT card (Demo MAT, green/red school dots, navy border, RECOMMENDED badge, "Explore MAT dashboard →"). Both link to `/demo`. Note: "Both dashboards are fully interactive. No sign-up required." Nav label updated to "Try the demo — MAT view first →".
+- [x] **Session 18 — Landing page CTA and hero image overhaul** — Nav: "Try the demo" (navy fill, primary), "Get in touch" (plain link → #contact), "Sign in" (ghost); removed "Book a demo". Hero: single "Explore the live demo →" CTA + friction line + "See how it works ↓" text link, replacing dual dashboard cards. Hero image replaced with `hero-dashboard.png` in clickable wrapper with hover overlay; MAT/School labels above. Bottom CTA section replaced with `#contact` section ("Built by a teacher, for teachers", Formspree form, mailto fallback). All remaining "Book a demo" references removed.
+- [x] **Session 17 — Fix persisted session breaking demo routing** — `DemoAutoLogin` refactored from `onAuthStateChange`-based flow to `async/await`. On mount: sets `demoEntry` flag, then `await supabase.auth.signOut()` (clears any localStorage-cached session), then `signInWithPassword`, then sets `isDemoMode` + `window.location.replace('/mat-dashboard')`. Sign-out is the first async step — guarantees a clean auth cycle for returning visitors. Mobile loop fix (`attempted.current` ref) preserved — it guards re-runs, not session state. `console.log` trace at each step for browser debugging.
 
 ---
 
@@ -71,9 +80,18 @@ Last updated: 23 June 2026 (Session 14 — Heat map colour scale recalibrated)
 
 - [x] **Rydell High seed data** — `rydell_high_v2.sql` seeds all provision points with non-compliant status mix (Named Person/Policy complete; Monitoring in_progress; Enrichment/Belonging/Wellbeing not_started). Added 22 June 2026.
 
-- [ ] **Landing page: expose MAT view in demo mode** — next priority after heat map fix. Allow unauthenticated visitors on the landing page to preview the MAT dashboard (Springwell vs Rydell contrast) without signing in.
+- [x] **Landing page: expose MAT view in demo mode** — Added MAT subsection to Section 7 with headline "Built for MATs — see every school at a glance", body copy, placeholder screenshot frame, and "See it in the demo →" CTA. Updated "Analyse" tab demo link copy to "Try a live demo — start with the MAT overview →". Session 15.
 - [ ] **MAT dashboard: full review pass** — review layout, contrast, and data accuracy after landing page MAT demo is in place.
-- [ ] **RLS policy on `mats` table** — fix so "Demo MAT" displays correctly in MAT dashboard header.
+- [x] **RLS policy on `mats` table** — Confirmed existing policy "mat members can read their mat" already in place (SELECT where id = profile's mat_id). No action needed. Session 15.
+
+- [x] **Fix demo routing to land on MAT dashboard** — Root cause: `handleDemoLogin` (sign-in page "Explore Demo" button) was calling `supabase.auth.signInWithPassword` directly, bypassing `DemoAutoLogin` entirely — no `isDemoMode` was set and no redirect to `/mat-dashboard` fired. Fix: (1) `handleDemoLogin` now navigates to `/demo` so all demo sign-ins go through `DemoAutoLogin`. (2) `DemoAutoLogin` sets `sessionStorage.demoEntry = 'true'` on mount (insurance). (3) App.jsx routing block checks for `demoEntry` after auth settles and redirects to `/mat-dashboard` if found, consuming the flag. `demoEntry` flag is set in `DemoAutoLogin`, consumed in App routing. Session 16.
+- [x] **Landing page hero dual dashboard panel** — Hero updated with two-line subheading, school card (Springwell Academy, domain dots) and MAT card (Demo MAT, Springwell/Rydell indicators, navy border + RECOMMENDED badge), both linking to `/demo`. Centred note "Both dashboards are fully interactive. No sign-up required." below. Nav "Try the demo" updated to "Try the demo — MAT view first →". Single hero CTA button row removed. Session 16.
+- [ ] **Replace MAT dashboard screenshot placeholder on landing page with real screenshot** — `lp-mat__img` div in `LandingPage.jsx` Section 7 currently shows placeholder text. Replace with actual screenshot once MAT view is confirmed working in production.
+- [ ] **Review landing page on mobile — check hero image scaling and nav items at small viewport**
+- [ ] **Replace placeholder testimonial quotes with real ones when available**
+- [ ] **Verify demo routing fix for returning users** — Test: (1) sign in as demo account via normal login, stay signed in, (2) navigate to landing page, (3) click "Try the demo — MAT view first →", (4) confirm browser console shows `[DemoAutoLogin]` sign-out + sign-in logs and user lands at `/mat-dashboard`. Browser console logs are now in place for this trace.
+- [ ] **Verify demo mode read-only banner displays correctly on mobile** — amber banner ("You're viewing a demo school. Changes won't be saved.") shown when `isDemoMode && readOnly`. Test on iOS Safari and Android Chrome.
+- [ ] **Suppress writes in demo mode** — `handleStatusChange` and `handleModalSave` in `App.jsx` currently still write to Supabase when `isDemoMode` is true. TODO: add `if (isDemoMode) return` guard at the start of each save handler. Currently only the read-only banner is shown; writes are not suppressed. Flag: `isDemoMode = sessionStorage.getItem('isDemoMode') === 'true'`.
 
 ### Analytics
 
