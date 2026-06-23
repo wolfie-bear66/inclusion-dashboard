@@ -354,15 +354,11 @@ export default function LandingPage() {
               </a>
             </div>
           </div>
-          {/* TODO: replace with real MAT dashboard screenshot */}
-          <div className="img-placeholder lp-mat__img" style={{
-            border: '2px solid #e2e8f0', borderRadius: 12,
-            background: '#f8fafc', aspectRatio: '16/9',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#94a3b8', fontSize: '0.85rem', textAlign: 'center', padding: 24,
-          }}>
-            [MAT Dashboard screenshot — coming soon]
-          </div>
+          <img
+            src="/images/landing/mat-dashboard-screenshot.png"
+            alt="MAT dashboard showing RAG status across all schools in the trust"
+            style={{ width: '100%', borderRadius: 12, display: 'block' }}
+          />
         </div>
       </section>
 
