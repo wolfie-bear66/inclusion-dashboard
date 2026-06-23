@@ -806,8 +806,10 @@ function ProvisionDepth({ analyticsEntries, domains, onNavigateToCategory }) {
   ]
 
   function cellColour(count) {
-    if (count === 0) return '#e8edf2'
-    if (count <= 2) return '#7B9FBF'
+    if (count === 0) return '#E5E7EB'
+    if (count === 1) return '#C7D9EE'
+    if (count === 2) return '#8FB8D8'
+    if (count <= 4)  return '#4A7FA8'
     return '#1B365D'
   }
 
@@ -892,7 +894,7 @@ function ProvisionDepth({ analyticsEntries, domains, onNavigateToCategory }) {
                             cursor: 'default', flexShrink: 0,
                           }}
                         >
-                          {pt.count >= 3 && (
+                          {pt.count >= 5 && (
                             <span style={{ fontSize: 10, color: '#fff', fontWeight: 600, lineHeight: 1 }}>{pt.count}</span>
                           )}
                         </div>

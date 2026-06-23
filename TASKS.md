@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 22 June 2026 (Session 14 — Demo data enrichment: Springwell evidence categories 4–7, Rydell High seed)
+Last updated: 23 June 2026 (Session 14 — Heat map colour scale recalibrated)
 
 ---
 
@@ -53,6 +53,7 @@ Last updated: 22 June 2026 (Session 14 — Demo data enrichment: Springwell evid
 - [x] **Session 13 — Hero copy update** — heading changed to "Inclusion, evidenced in full." and subheading to "See every gap, organise improvements, report with confidence." in `LandingPage.jsx`.
 - [x] **Session 14 — Springwell evidence enrichment (categories 4–7)** — `springwell_evidence_v2.sql` ensures entries exist (status complete) for all provision points in Staff Training & CPD, External Partnership, Family & Community Engagement, Direct Provision for Students, and adds one rich evidence_entry per provision point with realistic data (dates, costs, impact notes, group reach flags). Added 22 June 2026.
 - [x] **Session 14 — Rydell High seed data** — `rydell_high_v2.sql` populates all provision points for Rydell High with a non-compliant status mix. Named Person and Policy complete; Monitoring & Data in_progress; External Partnership and Family & Community Engagement not_started; Enrichment, Belonging, Wellbeing domains predominantly not_started. ON CONFLICT DO NOTHING preserves any 3 existing entries. Added 22 June 2026.
+- [x] **Heat map colour scale recalibrated** — 5-step scale replacing the original 3-step. 0 → `#E5E7EB`, 1 → `#C7D9EE`, 2 → `#8FB8D8`, 3–4 → `#4A7FA8`, 5+ → `#1B365D`. Count label now only shown at 5+ (was 3+). Added 23 June 2026.
 
 ---
 
@@ -70,6 +71,8 @@ Last updated: 22 June 2026 (Session 14 — Demo data enrichment: Springwell evid
 
 - [x] **Rydell High seed data** — `rydell_high_v2.sql` seeds all provision points with non-compliant status mix (Named Person/Policy complete; Monitoring in_progress; Enrichment/Belonging/Wellbeing not_started). Added 22 June 2026.
 
+- [ ] **Landing page: expose MAT view in demo mode** — next priority after heat map fix. Allow unauthenticated visitors on the landing page to preview the MAT dashboard (Springwell vs Rydell contrast) without signing in.
+- [ ] **MAT dashboard: full review pass** — review layout, contrast, and data accuracy after landing page MAT demo is in place.
 - [ ] **RLS policy on `mats` table** — fix so "Demo MAT" displays correctly in MAT dashboard header.
 
 ### Analytics
