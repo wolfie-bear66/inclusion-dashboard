@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 22 June 2026 (Session 13 — Provision Depth heat map grids)
+Last updated: 22 June 2026 (Session 14 — Demo data enrichment: Springwell evidence categories 4–7, Rydell High seed)
 
 ---
 
@@ -51,6 +51,8 @@ Last updated: 22 June 2026 (Session 13 — Provision Depth heat map grids)
 - [x] **Session 12 — Domain sub-section accordion** — only one sub-domain section can be open at a time within a domain view. `toggleSD` now returns `new Set([sdId])` (open one, close all others) or `new Set()` (close if already open).
 - [x] **Session 13 — Provision Depth heat map grids** — replaced the four Recharts bar charts in `ProvisionDepth` with heat map grids. Each of the four categories (Staff Training & CPD, External Partnership, Family & Community Engagement, Direct Provision for Students) renders as an `ACard` with provision points grouped by domain. Cells are 28×28px; colour scale: 0 entries `#e8edf2`, 1–2 `#7B9FBF`, 3+ `#1B365D` (white count label). Domain filter pills apply to all grids. Fixed-position hover tooltip shows provision point name, domain, and entry count. Recharts imports retained (still used by FundingCost).
 - [x] **Session 13 — Hero copy update** — heading changed to "Inclusion, evidenced in full." and subheading to "See every gap, organise improvements, report with confidence." in `LandingPage.jsx`.
+- [x] **Session 14 — Springwell evidence enrichment (categories 4–7)** — `springwell_evidence_v2.sql` ensures entries exist (status complete) for all provision points in Staff Training & CPD, External Partnership, Family & Community Engagement, Direct Provision for Students, and adds one rich evidence_entry per provision point with realistic data (dates, costs, impact notes, group reach flags). Added 22 June 2026.
+- [x] **Session 14 — Rydell High seed data** — `rydell_high_v2.sql` populates all provision points for Rydell High with a non-compliant status mix. Named Person and Policy complete; Monitoring & Data in_progress; External Partnership and Family & Community Engagement not_started; Enrichment, Belonging, Wellbeing domains predominantly not_started. ON CONFLICT DO NOTHING preserves any 3 existing entries. Added 22 June 2026.
 
 ---
 
@@ -66,7 +68,7 @@ Last updated: 22 June 2026 (Session 13 — Provision Depth heat map grids)
 
 - [x] **"Flag this" friction logger** — flag button on every provision point row (both domain and category views); inline panel with optional note; saves to `friction_logs` table in Supabase; flag button highlights red when flagged; existing flags loaded on school login. (Session 9)
 
-- [ ] **Rydell High seed data** — populate Rydell High from publicly available school documents for MAT demo.
+- [x] **Rydell High seed data** — `rydell_high_v2.sql` seeds all provision points with non-compliant status mix (Named Person/Policy complete; Monitoring in_progress; Enrichment/Belonging/Wellbeing not_started). Added 22 June 2026.
 
 - [ ] **RLS policy on `mats` table** — fix so "Demo MAT" displays correctly in MAT dashboard header.
 
