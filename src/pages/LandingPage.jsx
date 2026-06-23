@@ -175,34 +175,14 @@ export default function LandingPage() {
         <p className="lp-hero__sub">
           See every gap, organise improvements, report with confidence.
         </p>
-        <p className="lp-hero__sub" style={{ opacity: 0.7, fontWeight: 400, marginTop: '0.35rem' }}>
-          Explore a school dashboard and a full MAT overview — live, right now.
-        </p>
 
         <div className="lp-hero__cta-row">
           <a className="lp-btn-primary lp-hero__cta-btn" href="/demo">
             Explore the live demo →
           </a>
         </div>
-        <p style={{ fontSize: 13, color: '#6B7280', textAlign: 'center', fontStyle: 'italic', margin: '0.75rem 0 0' }}>
-          No account needed. Opens instantly.
-        </p>
-        <a
-          href="#how-it-works"
-          onClick={e => { e.preventDefault(); scrollTo('how-it-works') }}
-          className="lp-hero__see-how"
-        >
-          See how it works ↓
-        </a>
 
-        <p className="lp-hero__trust">
-          Built for the Every Child Achieving and Thriving white paper (February 2026)
-        </p>
         <div style={{ position: 'relative', maxWidth: '1100px', margin: '3rem auto 0' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, paddingLeft: 4, paddingRight: 4 }}>
-            <span style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6B7280' }}>MAT Dashboard</span>
-            <span style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6B7280' }}>School Dashboard</span>
-          </div>
           <a href="/demo" style={{ display: 'block', position: 'relative', cursor: 'pointer' }}>
             <img
               src="/images/landing/hero-dashboard.png"

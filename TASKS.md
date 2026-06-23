@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 23 June 2026 (Session 18 — Landing page CTA and hero image overhaul)
+Last updated: 23 June 2026 (Session 18 — Hero section declutter)
 
 ---
 
@@ -61,6 +61,7 @@ Last updated: 23 June 2026 (Session 18 — Landing page CTA and hero image overh
 - [x] **Session 15 — RLS policy on mats table** — Verified existing policy "mat members can read their mat" already correct. No change needed.
 - [x] **Session 16 — Demo routing fix** — `handleDemoLogin` (sign-in page) changed from direct `signInWithPassword` to `window.location.href = '/demo'`. `DemoAutoLogin` gains a separate mount-time `useEffect` that sets `sessionStorage.demoEntry = 'true'`. App.jsx routing block (after `authLoading` gate) checks for `demoEntry`: if found with active session, consumes flag, sets `isDemoMode`, and `window.location.replace('/mat-dashboard')`. Overriding redirect was in `handleDemoLogin` bypassing `DemoAutoLogin` entirely.
 - [x] **Session 16 — Landing page hero dual dashboard panel** — Two-line hero subheading. School card (Springwell, domain colour dots, "Explore school dashboard →") + MAT card (Demo MAT, green/red school dots, navy border, RECOMMENDED badge, "Explore MAT dashboard →"). Both link to `/demo`. Note: "Both dashboards are fully interactive. No sign-up required." Nav label updated to "Try the demo — MAT view first →".
+- [x] **Hero section declutter** — Removed second subheading, friction-removal line, "See how it works" link, regulatory trust line, and MAT/School Dashboard labels. Hero now reads: eyebrow → headline → single subheading → CTA button → image. Session 18.
 - [x] **Session 18 — Landing page CTA and hero image overhaul** — Nav: "Try the demo" (navy fill, primary), "Get in touch" (plain link → #contact), "Sign in" (ghost); removed "Book a demo". Hero: single "Explore the live demo →" CTA + friction line + "See how it works ↓" text link, replacing dual dashboard cards. Hero image replaced with `hero-dashboard.png` in clickable wrapper with hover overlay; MAT/School labels above. Bottom CTA section replaced with `#contact` section ("Built by a teacher, for teachers", Formspree form, mailto fallback). All remaining "Book a demo" references removed.
 - [x] **Session 17 — Fix persisted session breaking demo routing** — `DemoAutoLogin` refactored from `onAuthStateChange`-based flow to `async/await`. On mount: sets `demoEntry` flag, then `await supabase.auth.signOut()` (clears any localStorage-cached session), then `signInWithPassword`, then sets `isDemoMode` + `window.location.replace('/mat-dashboard')`. Sign-out is the first async step — guarantees a clean auth cycle for returning visitors. Mobile loop fix (`attempted.current` ref) preserved — it guards re-runs, not session state. `console.log` trace at each step for browser debugging.
 
