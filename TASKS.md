@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 23 June 2026 (Session 18 — Hero section declutter)
+Last updated: 24 June 2026 (Session 19 — MAT dashboard Analytics view)
 
 ---
 
@@ -64,6 +64,7 @@ Last updated: 23 June 2026 (Session 18 — Hero section declutter)
 - [x] **Hero section declutter** — Removed second subheading, friction-removal line, "See how it works" link, regulatory trust line, and MAT/School Dashboard labels. Hero now reads: eyebrow → headline → single subheading → CTA button → image. Session 18.
 - [x] **Session 18 — Landing page CTA and hero image overhaul** — Nav: "Try the demo" (navy fill, primary), "Get in touch" (plain link → #contact), "Sign in" (ghost); removed "Book a demo". Hero: single "Explore the live demo →" CTA + friction line + "See how it works ↓" text link, replacing dual dashboard cards. Hero image replaced with `hero-dashboard.png` in clickable wrapper with hover overlay; MAT/School labels above. Bottom CTA section replaced with `#contact` section ("Built by a teacher, for teachers", Formspree form, mailto fallback). All remaining "Book a demo" references removed.
 - [x] **Session 17 — Fix persisted session breaking demo routing** — `DemoAutoLogin` refactored from `onAuthStateChange`-based flow to `async/await`. On mount: sets `demoEntry` flag, then `await supabase.auth.signOut()` (clears any localStorage-cached session), then `signInWithPassword`, then sets `isDemoMode` + `window.location.replace('/mat-dashboard')`. Sign-out is the first async step — guarantees a clean auth cycle for returning visitors. Mobile loop fix (`attempted.current` ref) preserved — it guards re-runs, not session state. `console.log` trace at each step for browser debugging.
+- [x] **Session 19 — MAT dashboard full rebuild — Home + Schools views** — `MATDashboard.jsx` fully rebuilt. Removed: yellow divergence alert, domain×school comparison matrix table, school name pills in header, legend. Added: persistent left sidebar (Home/Schools/Domains/Categories/Analytics, brand navy active state, 220px, `#F0F2F5` bg). Home view: trust header panel (name, subtitle, 51% trust-wide readiness, "X of Y provision points across N schools"), school cards with RAG % + dynamic active pp count + domain mini-bar (6 coloured segments) + "Explore school →" CTA, two-column attention panel (systemic gaps where >1 school below 40%) + reviews due panel (fetched from `evidence_entries.next_review_due` within 30 days, capped at 8). Schools view: sortable table (school name / overall % RAG badge / points evidenced / reviews due count / last activity / domain chips / view school link). Domains, Categories, Analytics: stub panels ("coming in a future update"). All data fetched once on mount via `activePpCount` query (`provision_points WHERE active = true`), entries query, and evidence_entries reviews query. Data: trust readiness 51% (170/332), Springwell 86%, Rydell High 17%. Reviews due query working (20 Springwell items returned).
 
 ---
 
@@ -72,6 +73,15 @@ Last updated: 23 June 2026 (Session 18 — Hero section declutter)
 ### Immediate
 
 - [x] **Home screen redesign** — greeting with first name, overall readiness % + progress bar, reviews due panel (teal, hidden if none), RAG-sorted domain cards in 3×2 grid. (Session 12)
+- [x] **Fix MAT dashboard home — school card order and attention panel logic** — Cards now sorted by in_place count descending (highest-performing school always left). Attention panel logic replaced: shows any school with one or more domains below 40%, with gaps ordered lowest % first. Rydell High now correctly shows 5 domains (Enrichment 3%, Belonging 6%, Wellbeing 9%, Equity 17%, Attendance 22%). SEND at 46% correctly excluded. Session 19.
+- [x] **MAT dashboard — build Domains view** — 6 domain pill buttons (identity colours, active = filled); sub-domain table with per-school RAG chips (green ≥70%, amber 40–69%, red <40%, grey = no data); column headers show school name + "X% in this domain"; Points column shows active pp count; sub-domains with 0 active points hidden; empty state message if no data. Data computed client-side from extended `provision_points` query (now includes `sub_domain_id`) + new `sub_domains` fetch + existing entries — no extra Supabase queries on pill click. Session 19.
+- [x] **MAT dashboard — build Categories view** — 8 categories in defined order (Named Person → Direct Provision for Students), summary banner ("X of 8 categories need attention"), overview table with per-school % chips and trust avg, expandable rows showing per-provision-point status chips (one-at-a-time accordion). Data computed client-side from existing ppMeta + ppEntryMap — no extra queries. Session 19.
+- [x] **MAT dashboard — build Analytics view** — two tabs: Provision Depth (school pill toggle, 4 heat map grids by category×domain, reusing school analytics heat map pattern; evidence count per cell from extended entries query including `evidence_entries(id)`) and Trust Trajectory (stacked bar chart per school — in_place/in_progress/not_in_place, 3 summary stat cards with trust-wide totals). Session 19.
+- [ ] **Gather pilot user feedback on Domains vs Categories view preference (drill-down vs overview)**
+- [x] **Fix MAT Analytics Provision Depth data** — Root cause: `ppMeta` did not include `domain_id`, so `heatGroupsForCategory` filtered out all provision points (`pp.domain_id` falsy → 0 groups). Fix: added `domain_id: pp.sub_domains?.domain_id ?? null` to ppMeta build in load function. Data and domain ID lookups all verified correct via diagnostic logs. Session 19.
+- [ ] **MAT dashboard Analytics — expand Provision Depth and Trust Trajectory based on pilot user feedback**
+- [ ] **Review full MAT dashboard with pilot school before next feature build**
+- [ ] **MAT dashboard — add phase filter to Schools table once schools.phase column exists** — `// TODO` comment already in `SchoolsView` in `MATDashboard.jsx`.
 
 ### Pilot and validation
 

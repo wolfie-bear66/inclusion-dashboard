@@ -1386,35 +1386,48 @@ function DemoAutoLogin() {
   const attempted = useRef(false)
 
   useEffect(() => {
-    // Guard: fire at most once per mount regardless of auth state changes or
-    // mobile WebKit re-invocations.
-    if (attempted.current) return
+    console.log('[DemoAutoLogin] component mounted')
+
+    // Guard: fire at most once per mount regardless of React re-renders or
+    // mobile WebKit re-invocations. This is the mobile loop fix — do not remove.
+    if (attempted.current) {
+      console.log('[DemoAutoLogin] already attempted — skipping (loop guard)')
+      return
+    }
     attempted.current = true
 
-    // Subscribe to the auth event stream rather than reading getSession() directly.
-    // On mobile Safari, localStorage/IndexedDB writes from a preceding signOut() may
-    // not have flushed yet, so getSession() can return a stale non-null session and
-    // trigger a premature redirect to /dashboard before the session is verified.
-    // onAuthStateChange emits the true settled state and bypasses that race.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      subscription.unsubscribe() // one-shot — act on the first settled state only
+    // Set demoEntry immediately — consumed by the App routing block as a
+    // belt-and-suspenders guarantee of /mat-dashboard destination.
+    console.log('[DemoAutoLogin] setting demoEntry flag')
+    sessionStorage.setItem('demoEntry', 'true')
 
-      if (session) {
-        window.location.replace('/dashboard')
-        return
-      }
+    async function run() {
+      // Always sign out any persisted session before signing in.
+      // Without this, a returning visitor whose demo session is still cached in
+      // localStorage would be routed via the existing session before demoEntry
+      // is consumed — potentially landing on the school view instead of /mat-dashboard.
+      console.log('[DemoAutoLogin] signing out existing session')
+      await supabase.auth.signOut()
+      console.log('[DemoAutoLogin] signOut complete')
 
-      // session is confirmed null — safe to sign in
-      supabase.auth.signInWithPassword({
+      console.log('[DemoAutoLogin] attempting sign in')
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email: 'demo@testschool.co.uk',
         password: 'DemoAccess2026!',
-      }).then(({ error: signInError }) => {
-        if (signInError) setError(signInError.message)
-        else window.location.replace('/dashboard')
       })
-    })
 
-    return () => subscription.unsubscribe()
+      console.log('[DemoAutoLogin] signIn result:', signInError ? 'ERROR: ' + signInError.message : 'success')
+
+      if (signInError) {
+        setError(signInError.message)
+      } else {
+        sessionStorage.setItem('isDemoMode', 'true')
+        console.log('[DemoAutoLogin] redirecting to /mat-dashboard')
+        window.location.replace('/mat-dashboard')
+      }
+    }
+
+    run()
   }, [])
 
   const centre = { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', fontFamily: 'var(--font-base)', gap: '0.75rem' }
@@ -1928,6 +1941,7 @@ export default function App() {
       // authLoading cleared by the session effect once profile is resolved
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log('[Auth] state change — event:', _event, '| user:', session?.user?.email ?? 'none')
       setSession(session)
     })
     return () => subscription.unsubscribe()
@@ -1969,6 +1983,7 @@ export default function App() {
           return
         }
         const role = data.role ?? 'contributor'
+        console.log('[Profile] loaded — role:', role, '| mat_id:', data.mat_id, '| school_id:', data.school_id)
         setUserRole(role)
         setUserMatId(data.mat_id ?? null)
         setFirstName(data.first_name ?? '')
@@ -2183,12 +2198,8 @@ export default function App() {
     if (error) setLoginError(error.message)
   }
 
-  async function handleDemoLogin() {
-    setLoginLoading(true)
-    setLoginError(null)
-    const { error } = await supabase.auth.signInWithPassword({ email: 'demo@testschool.co.uk', password: 'DemoAccess2026!' })
-    setLoginLoading(false)
-    if (error) setLoginError(error.message)
+  function handleDemoLogin() {
+    window.location.href = '/demo'
   }
 
   async function handleLogout() {
@@ -2394,6 +2405,7 @@ export default function App() {
   }
 
   const readOnly = view === 'school_readonly'
+  const isDemoMode = sessionStorage.getItem('isDemoMode') === 'true'
 
   const allPoints = subDomains.flatMap(sd => sd.provision_points)
   const answeredCount = allPoints.filter(p => entries[p.id]?.status).length
@@ -2403,6 +2415,9 @@ export default function App() {
   // before authLoading, before the catch-all login form. startsWith handles
   // trailing-slash normalisations (/demo/) added by Vercel or mobile browsers.
   const pathname = pathnameRef.current
+
+  console.log('[App routing] evaluating — pathname:', pathname, '| demoEntry:', sessionStorage.getItem('demoEntry'), '| session:', !!session, '| authLoading:', authLoading, '| userRole:', userRole)
+
   if (pathname.startsWith('/demo')) {
     return <DemoAutoLogin />
   }
@@ -2414,6 +2429,20 @@ export default function App() {
   if (authLoading) {
     return <LoadingScreen />
   }
+
+  // Demo entry flag: consume and route to MAT dashboard unconditionally.
+  // This fires when DemoAutoLogin mounts (setting the flag) and auth settles,
+  // guaranteeing /mat-dashboard as the destination regardless of execution order.
+  if (session && sessionStorage.getItem('demoEntry') === 'true') {
+    console.log('[App routing] demoEntry branch taken — redirecting to /mat-dashboard')
+    sessionStorage.removeItem('demoEntry')
+    sessionStorage.setItem('isDemoMode', 'true')
+    console.log('[App routing] calling window.location.replace(/mat-dashboard)')
+    window.location.replace('/mat-dashboard')
+    return null
+  }
+
+  console.log('[App routing] no demoEntry — normal routing for role:', userRole, '| view:', view)
 
   // Authenticated user at / → send to dashboard
   if (pathname === '/' && session) {
@@ -2570,10 +2599,22 @@ export default function App() {
             supabase={supabase}
             matId={userMatId}
             onSchoolClick={handleMatSchoolClick}
+            isDemoMode={isDemoMode}
           />
         )}
 
-        {readOnly && (
+        {/* Demo mode read-only banner — shown when browsing a school from the MAT demo */}
+        {isDemoMode && readOnly && (
+          <div style={{
+            background: '#FEF3C7', borderBottom: '1px solid #FDE68A',
+            padding: '8px 0', textAlign: 'center',
+            fontSize: '0.8rem', color: '#92400E', fontWeight: 500,
+          }}>
+            You're viewing a demo school. Changes won't be saved.
+          </div>
+        )}
+
+        {readOnly && !(isDemoMode) && (
           <div style={{
             background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10,
             padding: '12px 18px', display: 'flex', alignItems: 'center', gap: 10,
