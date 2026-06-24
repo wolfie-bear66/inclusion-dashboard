@@ -171,9 +171,9 @@ export default function LandingPage() {
       {/* ── Section 1: Hero ── */}
       <section className="lp-hero">
         <div className="lp-hero__eyebrow-pill">Ahead of the 2028–29 statutory deadline</div>
-        <h1 className="lp-hero__h1">Inclusion, evidenced in full.</h1>
+        <h1 className="lp-hero__h1">Inclusion,<br />evidenced in full.</h1>
         <p className="lp-hero__sub">
-          See every gap, organise improvements, report with confidence.
+          See the gaps, act on them, report with confidence.
         </p>
 
         <div className="lp-hero__cta-row">
