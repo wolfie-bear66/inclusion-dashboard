@@ -1384,8 +1384,8 @@ function GroupReach({ reachMatrix, schoolCtx }) {
 function DemoBanner({ onDismiss }) {
   return (
     <div style={{
-      background: '#FFF8EE',
-      borderLeft: '4px solid #D4751A',
+      background: '#FDEFD8',
+      borderLeft: '6px solid #D4751A',
       padding: '12px 16px',
       display: 'flex',
       flexDirection: 'row',
@@ -1394,7 +1394,7 @@ function DemoBanner({ onDismiss }) {
       gap: 12,
       flexWrap: 'wrap',
     }}>
-      <p style={{ fontSize: '0.875rem', color: '#1B365D', margin: 0, flex: 1, minWidth: 200 }}>
+      <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1B365D', margin: 0, flex: 1, minWidth: 200 }}>
         You're exploring a demo school — ready to try it with your own data?
       </p>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
@@ -2569,7 +2569,10 @@ export default function App() {
           {view === 'school_readonly' && (
             <p className="header-sub" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <button type="button" onClick={handleBackToMat}
-                style={{ background: 'none', border: 'none', color: '#1B365D', cursor: 'pointer', fontSize: 'inherit', padding: 0, fontWeight: 500 }}>
+                style={{ background: '#D4751A', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, padding: '6px 14px', borderRadius: 999 }}
+                onMouseEnter={e => e.currentTarget.style.background = '#b86215'}
+                onMouseLeave={e => e.currentTarget.style.background = '#D4751A'}
+              >
                 MAT Dashboard
               </button>
               <span style={{ color: '#94a3b8' }}>›</span>
