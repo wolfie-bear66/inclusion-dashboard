@@ -84,26 +84,21 @@ function MatSidebar({ activeView, setActiveView, matName }) {
   )
 }
 
-// ── Domain mini-bar (school card) ─────────────────────────────────────
-function DomainMiniBar({ domains, schoolMatrix }) {
+// ── RAG hairline bars (school card) ──────────────────────────────────
+function RAGHairlineBars({ inPlace, inProgress, notInPlace, total }) {
+  const denom = total || 1
+  const bars = [
+    { width: (inPlace     / denom) * 100, colour: '#4CAF50' },
+    { width: (inProgress  / denom) * 100, colour: '#F59E0B' },
+    { width: (notInPlace  / denom) * 100, colour: '#EF4444' },
+  ]
   return (
-    <div style={{ display: 'flex', gap: 3, height: 8, borderRadius: 4, overflow: 'hidden', background: '#E5E7EB' }}>
-      {domains.map((d, i) => {
-        const cell = schoolMatrix?.[d.id]
-        const pct = cell?.total ? (cell.inPlace / cell.total) * 100 : 0
-        const colour = domainColour(d.name, i)
-        return (
-          <div key={d.id} style={{
-            flex: 1, height: '100%', position: 'relative', background: '#E5E7EB',
-          }}>
-            <div style={{
-              position: 'absolute', left: 0, top: 0,
-              height: '100%', width: `${pct}%`,
-              background: colour, transition: 'width 0.4s',
-            }} />
-          </div>
-        )
-      })}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {bars.map((b, i) => (
+        <div key={i} style={{ height: 4, borderRadius: 2, background: '#E5E7EB', overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${b.width}%`, background: b.colour, borderRadius: 2, transition: 'width 0.4s' }} />
+        </div>
+      ))}
     </div>
   )
 }
@@ -119,11 +114,12 @@ function HomeView({ matName, schools, domains, matrix, activePpCount, reviewsDue
 
   // Per-school stats
   function schoolStats(s) {
-    const inPlace    = domains.reduce((sum, d) => sum + (matrix[s.id]?.[d.id]?.inPlace ?? 0), 0)
+    const inPlace    = domains.reduce((sum, d) => sum + (matrix[s.id]?.[d.id]?.inPlace    ?? 0), 0)
     const inProgress = domains.reduce((sum, d) => sum + (matrix[s.id]?.[d.id]?.inProgress ?? 0), 0)
+    const notInPlace = domains.reduce((sum, d) => sum + (matrix[s.id]?.[d.id]?.notInPlace ?? 0), 0)
     const total      = activePpCount || domains.reduce((sum, d) => sum + (matrix[s.id]?.[d.id]?.total ?? 0), 0)
     const pct        = total ? Math.round((inPlace / total) * 100) : null
-    return { inPlace, inProgress, total, pct }
+    return { inPlace, inProgress, notInPlace, total, pct }
   }
 
   // School cards sorted highest in_place first (left = best performing)
@@ -182,7 +178,7 @@ function HomeView({ matName, schools, domains, matrix, activePpCount, reviewsDue
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
         {sortedSchools.map(s => {
-          const { inPlace, total, pct } = schoolStats(s)
+          const { inPlace, inProgress, notInPlace, total, pct } = schoolStats(s)
           const rag = ragColour(pct)
           return (
             <div key={s.id} style={{
@@ -202,7 +198,7 @@ function HomeView({ matName, schools, domains, matrix, activePpCount, reviewsDue
                 {inPlace} of {total || '—'} provision points
               </p>
 
-              <DomainMiniBar domains={domains} schoolMatrix={matrix[s.id]} />
+              <RAGHairlineBars inPlace={inPlace} inProgress={inProgress} notInPlace={notInPlace} total={total} />
 
               <button
                 type="button"
