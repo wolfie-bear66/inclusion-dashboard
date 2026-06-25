@@ -32,7 +32,7 @@ const SIDEBAR_ITEMS = [
   { id: 'analytics',  icon: 'ti-chart-bar',     label: 'Analytics' },
 ]
 
-function MatSidebar({ activeView, setActiveView, matName }) {
+function MatSidebar({ activeView, setActiveView, matName, onNavClick }) {
   const [hovered, setHovered] = useState(null)
 
   return (
@@ -62,7 +62,7 @@ function MatSidebar({ activeView, setActiveView, matName }) {
               type="button"
               onMouseEnter={() => setHovered(item.id)}
               onMouseLeave={() => setHovered(null)}
-              onClick={() => setActiveView(item.id)}
+              onClick={() => { setActiveView(item.id); onNavClick?.() }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 9,
                 width: '100%', padding: '8px 14px',
@@ -1050,6 +1050,16 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
   const [reviewsDueBySchool,  setReviewsDueBySchool]  = useState({})
   const [loading,             setLoading]             = useState(true)
 
+  // Mobile sidebar
+  const [isMobile,    setIsMobile]    = useState(window.innerWidth < 768)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
+
   useEffect(() => {
     if (!matId) return
     let cancelled = false
@@ -1228,10 +1238,47 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
       display: 'flex',
       margin: '-28px -32px -80px',
       minHeight: 'calc(100vh - 64px)',
+      position: 'relative',
     }}>
-      <MatSidebar activeView={activeView} setActiveView={setActiveView} matName={matName} />
+      {/* Backdrop — mobile only, when sidebar is open */}
+      {isMobile && sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 99 }}
+        />
+      )}
+
+      {/* Sidebar — always on desktop; overlay on mobile when open */}
+      {(!isMobile || sidebarOpen) && (
+        <div style={isMobile ? {
+          position: 'absolute', left: 0, top: 0, height: '100%', zIndex: 100, overflowY: 'auto',
+        } : {}}>
+          <MatSidebar
+            activeView={activeView}
+            setActiveView={setActiveView}
+            matName={matName}
+            onNavClick={isMobile ? () => setSidebarOpen(false) : undefined}
+          />
+        </div>
+      )}
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '28px 32px 80px', minWidth: 0 }}>
+        {/* Hamburger — mobile only */}
+        {isMobile && (
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(v => !v)}
+            aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+            style={{
+              padding: 10, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+              background: 'var(--color-background-secondary, #f1f5f9)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              alignSelf: 'flex-start', marginBottom: 8, borderRadius: 6,
+            }}
+          >
+            <i className="ti ti-menu-2" style={{ fontSize: 24, lineHeight: 1 }} />
+          </button>
+        )}
         {activeView === 'home' && (
           <HomeView
             matName={matName}
