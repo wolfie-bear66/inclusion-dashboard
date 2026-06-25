@@ -2139,22 +2139,32 @@ export default function App() {
   // so the loading screen stays up until we know the correct initial view.
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
+      // If the invite hash was detected at module load and getSession() resolves
+      // with the invite session before onAuthStateChange fires SIGNED_IN, catch it here.
+      if (session && sessionStorage.getItem('pendingSetPassword') === 'true') {
+        sessionStorage.removeItem('pendingSetPassword')
+        if (!window.location.pathname.startsWith('/set-password')) {
+          console.log('[Invite] getSession resolved with invite session — redirecting to /set-password')
+          window.location.replace('/set-password')
+          return
+        }
+      }
       setSession(session)
       // authLoading cleared by the session effect once profile is resolved
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       console.log('[Auth] state change — event:', _event, '| user:', session?.user?.email ?? 'none', '| pendingSetPassword:', sessionStorage.getItem('pendingSetPassword'))
-      // Intercept invite-link sign-ins — flag was set at module load before
-      // Supabase consumed and cleared the URL hash during getSession().
-      if (_event === 'SIGNED_IN' && sessionStorage.getItem('pendingSetPassword') === 'true') {
+      // Intercept invite-link sign-ins. The flag is set at module load before Supabase
+      // consumes the URL hash. We check both SIGNED_IN (if the event fires after we
+      // subscribe) and INITIAL_SESSION (if Supabase processed the hash before our
+      // subscriber was registered — in that case the first notification uses INITIAL_SESSION).
+      if ((_event === 'SIGNED_IN' || _event === 'INITIAL_SESSION') && session && sessionStorage.getItem('pendingSetPassword') === 'true') {
         sessionStorage.removeItem('pendingSetPassword')
         if (!window.location.pathname.startsWith('/set-password')) {
-          console.log('[Invite] SIGNED_IN with pendingSetPassword flag — redirecting to /set-password')
+          console.log('[Invite] auth event', _event, 'with pendingSetPassword flag — redirecting to /set-password')
           window.location.replace('/set-password')
           return // do not setSession — page will reload at /set-password
         }
-        // Already on /set-password (redirect URL was set correctly) — let
-        // SetPasswordPage handle the session via its own onAuthStateChange.
         console.log('[Invite] already on /set-password — flag cleared, no redirect needed')
         return
       }

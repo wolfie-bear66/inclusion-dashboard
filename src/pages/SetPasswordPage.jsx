@@ -8,6 +8,7 @@ export default function SetPasswordPage() {
   const [validationError, setValidationError] = useState(null)
   const [serverError, setServerError]   = useState(null)
   const [saving, setSaving]             = useState(false)
+  const [success, setSuccess]           = useState(false)
 
   // Wait for Supabase to process the invite-link hash and establish a session.
   // getSession() catches an already-resolved session; onAuthStateChange catches
@@ -52,7 +53,8 @@ export default function SetPasswordPage() {
       return
     }
 
-    window.location.replace('/dashboard')
+    setSuccess(true)
+    setTimeout(() => window.location.replace('/home'), 1000)
   }
 
   return (
@@ -76,7 +78,9 @@ export default function SetPasswordPage() {
           Set a password to secure your account.
         </p>
 
-        {!sessionReady ? (
+        {success ? (
+          <p style={{ fontSize: '0.88rem', color: '#257A3B', fontWeight: 500 }}>Password set successfully — taking you in…</p>
+        ) : !sessionReady ? (
           <p style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Setting up your account…</p>
         ) : (
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
