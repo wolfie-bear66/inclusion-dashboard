@@ -134,6 +134,7 @@ Review cadence for provision points is a head decision, not a dashboard function
 ---
 
 ### Staff Ownership & Onboarding Flow
+Phase 1 complete — onboarding_state column added to profiles; point_assignments table created with RLS policies.
 Status: Deferred — validate with pilot schools before building
 Priority: High (impacts activation, retention, and sales story)
 Trigger: At least one school with multiple named staff ready to trial.
