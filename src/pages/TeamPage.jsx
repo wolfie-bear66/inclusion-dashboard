@@ -52,6 +52,7 @@ function ByPersonView({ schoolId, currentUserId, supabase }) {
   async function loadData() {
     setLoading(true)
 
+    console.log('[team] schoolId:', schoolId, 'currentUserId:', currentUserId);
     const { data: profileData, error: pErr } = await supabase
       .from('profiles')
       .select('id, first_name, last_name, role, job_title')
