@@ -58,6 +58,7 @@ function ByPersonView({ schoolId, currentUserId, supabase }) {
       .select('id, first_name, last_name, role, job_title')
       .eq('school_id', schoolId)
       .neq('id', currentUserId)
+    console.log('[team] query result:', JSON.stringify(profileData), 'error:', pErr);
 
     const { data: assignData } = await supabase
       .from('point_assignments')
