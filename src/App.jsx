@@ -2125,8 +2125,10 @@ export default function App() {
 
   // Invite user modal state
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [inviteFirstName, setInviteFirstName] = useState('')
+  const [inviteLastName, setInviteLastName] = useState('')
+  const [inviteJobTitle, setInviteJobTitle] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState('contributor')
   const [inviteSending, setInviteSending] = useState(false)
   const [inviteMsg, setInviteMsg] = useState(null)  // { type: 'success'|'error', text: string }
   const inviteModalRef = useRef(null)
@@ -2464,8 +2466,10 @@ export default function App() {
   }
 
   function openInviteModal() {
+    setInviteFirstName('')
+    setInviteLastName('')
+    setInviteJobTitle('')
     setInviteEmail('')
-    setInviteRole('contributor')
     setInviteMsg(null)
     setInviteOpen(true)
   }
@@ -2481,10 +2485,13 @@ export default function App() {
     setInviteMsg(null)
     try {
       const requestBody = {
-        email:     inviteEmail,
-        role:      inviteRole,
-        school_id: selectedSchool,
-        mat_id:    userMatId,
+        first_name: inviteFirstName.trim(),
+        last_name:  inviteLastName.trim(),
+        job_title:  inviteJobTitle.trim(),
+        email:      inviteEmail,
+        role:       'contributor',
+        school_id:  selectedSchool,
+        mat_id:     userMatId,
       }
       const { data: { session } } = await supabase.auth.getSession()
       console.log('[invite] Sending request to:', 'https://zgolrthcrupvrrvfokvz.supabase.co/functions/v1/invite-user')
@@ -2503,9 +2510,12 @@ export default function App() {
       console.log('[invite] Response body:', json)
       if (!res.ok || json.error) {
         setInviteMsg({ type: 'error', text: json.error ?? 'Something went wrong. Please try again.' })
+      } else if (json.profileError) {
+        setInviteMsg({ type: 'error', text: `Invite sent but profile could not be created automatically — please contact hello@inclusiondashboard.co.uk.` })
+        setInviteFirstName(''); setInviteLastName(''); setInviteJobTitle(''); setInviteEmail('')
       } else {
         setInviteMsg({ type: 'success', text: `Invite sent to ${inviteEmail}.` })
-        setInviteEmail('')
+        setInviteFirstName(''); setInviteLastName(''); setInviteJobTitle(''); setInviteEmail('')
       }
     } catch {
       setInviteMsg({ type: 'error', text: 'Could not reach the server. Check your connection and try again.' })
@@ -3182,10 +3192,10 @@ export default function App() {
                 }}>
                   <div>
                     <p style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1B365D', marginBottom: 4 }}>
-                      Welcome — your provision points are ready.
+                      Welcome{firstName ? `, ${firstName}` : ''}. You have {personalAssignedPpIds.size} provision point{personalAssignedPpIds.size !== 1 ? 's' : ''} to look after.
                     </p>
                     <p style={{ fontSize: '0.82rem', color: '#475569', lineHeight: 1.55 }}>
-                      Your headteacher has assigned provision points to you. Explore them below, add evidence, and track progress.
+                      Explore them below, add evidence, and track your progress.
                     </p>
                   </div>
                   <button type="button"
@@ -3759,6 +3769,42 @@ export default function App() {
 
             <form className="modal-body" onSubmit={handleInviteSubmit}>
               <div className="detail-grid">
+                <div className="df df--half">
+                  <label htmlFor="invite-first-name">First name</label>
+                  <input
+                    id="invite-first-name"
+                    type="text"
+                    required
+                    autoComplete="off"
+                    placeholder="Sarah"
+                    value={inviteFirstName}
+                    onChange={e => { setInviteFirstName(e.target.value); setInviteMsg(null) }}
+                  />
+                </div>
+                <div className="df df--half">
+                  <label htmlFor="invite-last-name">Last name</label>
+                  <input
+                    id="invite-last-name"
+                    type="text"
+                    required
+                    autoComplete="off"
+                    placeholder="Jones"
+                    value={inviteLastName}
+                    onChange={e => { setInviteLastName(e.target.value); setInviteMsg(null) }}
+                  />
+                </div>
+                <div className="df df--full">
+                  <label htmlFor="invite-job-title">Role / position</label>
+                  <input
+                    id="invite-job-title"
+                    type="text"
+                    required
+                    autoComplete="off"
+                    placeholder="e.g. SENCO, Assistant Headteacher"
+                    value={inviteJobTitle}
+                    onChange={e => { setInviteJobTitle(e.target.value); setInviteMsg(null) }}
+                  />
+                </div>
                 <div className="df df--full">
                   <label htmlFor="invite-email">Email address</label>
                   <input
@@ -3770,17 +3816,6 @@ export default function App() {
                     value={inviteEmail}
                     onChange={e => { setInviteEmail(e.target.value); setInviteMsg(null) }}
                   />
-                </div>
-                <div className="df df--half">
-                  <label htmlFor="invite-role">Role</label>
-                  <select
-                    id="invite-role"
-                    value={inviteRole}
-                    onChange={e => setInviteRole(e.target.value)}
-                  >
-                    <option value="contributor">Contributor</option>
-                    <option value="approver">Approver</option>
-                  </select>
                 </div>
               </div>
 

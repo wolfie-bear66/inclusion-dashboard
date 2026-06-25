@@ -51,16 +51,20 @@ Deno.serve(async (req) => {
 
   // Step 3: parse request body
   let email: string, role: string, school_id: string, mat_id: string | null
+  let first_name: string, last_name: string, job_title: string
   try {
     const body = await req.json()
-    email = body.email
-    role = body.role
-    school_id = body.school_id
-    mat_id = body.mat_id ?? null
-    console.log('Body parsed:', email, role)
+    email      = body.email
+    role       = body.role ?? 'contributor'
+    school_id  = body.school_id
+    mat_id     = body.mat_id ?? null
+    first_name = body.first_name ?? ''
+    last_name  = body.last_name ?? ''
+    job_title  = body.job_title ?? ''
+    console.log('Body parsed:', email, role, first_name, last_name, job_title)
 
-    if (!email || !role || !school_id) {
-      return new Response(JSON.stringify({ error: 'email, role, and school_id are required' }), {
+    if (!email || !school_id) {
+      return new Response(JSON.stringify({ error: 'email and school_id are required' }), {
         status: 400,
         headers: { ...CORS, 'Content-Type': 'application/json' },
       })
@@ -85,7 +89,7 @@ Deno.serve(async (req) => {
       })
     }
     userId = inviteData.user.id
-    console.log('Invite sent')
+    console.log('Invite sent, userId:', userId)
   } catch (err: any) {
     console.error('Failed at step 4:', err.message)
     return new Response(JSON.stringify({ error: String(err) }), {
@@ -94,26 +98,38 @@ Deno.serve(async (req) => {
     })
   }
 
-  // Step 5: insert profile
+  // Step 5: insert profile — soft failure so invite success is still communicated
   try {
     const { error: profileError } = await admin.from('profiles').insert({
-      id: userId,
+      id:         userId,
       school_id,
       mat_id,
       role,
+      first_name,
+      last_name,
+      job_title:  job_title || null,
+      onboarding_state: {
+        self_assign_entered:   false,
+        has_team_members:      false,
+        team_prompt_dismissed: false,
+        second_login_or_later: false,
+      },
+      welcomed: false,
     })
     if (profileError) {
-      console.error('Failed at step 5:', profileError.message)
-      return new Response(JSON.stringify({ error: profileError.message }), {
-        status: 500,
+      console.error('Failed at step 5 (profile insert):', profileError.message)
+      // Invite was already sent — return success with a profileError flag so the
+      // frontend can show a tailored message rather than a generic error.
+      return new Response(JSON.stringify({ success: true, profileError: profileError.message }), {
+        status: 200,
         headers: { ...CORS, 'Content-Type': 'application/json' },
       })
     }
     console.log('Profile inserted')
   } catch (err: any) {
-    console.error('Failed at step 5:', err.message)
-    return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500,
+    console.error('Failed at step 5 (exception):', err.message)
+    return new Response(JSON.stringify({ success: true, profileError: String(err) }), {
+      status: 200,
       headers: { ...CORS, 'Content-Type': 'application/json' },
     })
   }

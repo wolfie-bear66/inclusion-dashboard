@@ -54,7 +54,7 @@ function ByPersonView({ schoolId, currentUserId, supabase }) {
 
     const { data: profileData, error: pErr } = await supabase
       .from('profiles')
-      .select('id, first_name, last_name, role')
+      .select('id, first_name, last_name, role, job_title')
       .eq('school_id', schoolId)
       .neq('id', currentUserId)
 
@@ -120,7 +120,11 @@ function ByPersonView({ schoolId, currentUserId, supabase }) {
                 {m.first_name} {m.last_name}
               </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <RoleChip role={m.role} />
+                {m.job_title
+                  ? <span style={{ fontSize: '0.75rem', color: '#475569', fontWeight: 500 }}>{m.job_title}</span>
+                  : <RoleChip role={m.role} />
+                }
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>·</span>
                 <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
                   {count === 0 ? 'No points assigned' : `${count} point${count !== 1 ? 's' : ''} assigned`}
                 </span>
