@@ -104,7 +104,7 @@ function RAGHairlineBars({ inPlace, inProgress, notInPlace, total }) {
 }
 
 // ── Home view ─────────────────────────────────────────────────────────
-function HomeView({ matName, schools, domains, matrix, activePpCount, reviewsDue, onSchoolClick, isDemoMode }) {
+function HomeView({ matName, schools, domains, matrix, activePpCount, reviewsDue, onSchoolClick, isDemoMode, isMobile }) {
   // Trust-wide stats
   const totalSchools = schools.length
   const totalPossible = activePpCount * totalSchools
@@ -218,12 +218,16 @@ function HomeView({ matName, schools, domains, matrix, activePpCount, reviewsDue
       </div>
 
       {/* Zone 3: Attention + Reviews */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+        gap: 16,
+      }}>
 
         {/* Needs attention */}
         <div style={{
           background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12,
-          padding: '20px 22px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+          padding: '20px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
         }}>
           <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1B365D', marginBottom: 14 }}>
             Needs attention across the trust
@@ -256,7 +260,7 @@ function HomeView({ matName, schools, domains, matrix, activePpCount, reviewsDue
         {/* Reviews due */}
         <div style={{
           background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12,
-          padding: '20px 22px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+          padding: '20px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
         }}>
           <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1B365D', marginBottom: 14 }}>
             Reviews due
@@ -270,7 +274,7 @@ function HomeView({ matName, schools, domains, matrix, activePpCount, reviewsDue
               {reviewsDue.slice(0, 8).map((r, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                   <div style={{ minWidth: 0 }}>
-                    <p style={{ fontSize: '0.8rem', fontWeight: 500, color: '#1A202C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <p style={{ fontSize: '0.8rem', fontWeight: 500, color: '#1A202C' }}>
                       {r.provision_name || r.label || 'Unnamed'}
                     </p>
                     <p style={{ fontSize: '0.72rem', color: '#6B7280', marginTop: 1 }}>{r.schoolName}</p>
@@ -1289,6 +1293,7 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
             reviewsDue={reviewsDue}
             onSchoolClick={onSchoolClick}
             isDemoMode={isDemoMode}
+            isMobile={isMobile}
           />
         )}
         {activeView === 'schools' && (
