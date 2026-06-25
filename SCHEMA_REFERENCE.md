@@ -48,6 +48,35 @@ Unique constraint: `(provision_point_id, school_id)` — one owner per point per
 
 ---
 
+## entries
+
+One row per `(school_id, provision_point_id)` pair. Records the current compliance status for a provision point at a school.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| school_id | uuid | FK → schools.id |
+| provision_point_id | uuid | FK → provision_points.id |
+| status | text | **Only valid values: `in_place`, `in_progress`, `not_in_place`.** The value `complete` does not exist and must never be used. |
+| updated_at | timestamptz | |
+
+Unique constraint: `(school_id, provision_point_id)`.
+
+---
+
+## evidence_entries
+
+Child rows of `entries`. Each entry can have multiple evidence records.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| entry_id | uuid | FK → entries.id |
+| provision_name | text | Display label for this piece of evidence |
+| next_review_due | date | Used for reviews-due panels |
+
+---
+
 ## migrations applied
 
 | File | Description |
