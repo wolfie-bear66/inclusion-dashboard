@@ -2213,6 +2213,7 @@ export default function App() {
       .eq('id', session.user.id)
       .single()
       .then(({ data, error }) => {
+        console.log('[profile fetch] data:', JSON.stringify(data), 'error:', JSON.stringify(error))
         if (error || !data) {
           console.error('[Profile] fetch error:', error)
           setMissingProfile(true)
