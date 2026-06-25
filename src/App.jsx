@@ -2044,7 +2044,6 @@ function ShowToggle({ expanded, total, onToggle }) {
 }
 
 export default function App() {
-  console.log('[startup] hash on load:', window.location.hash);
   // Auth state
   const [session, setSession] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
@@ -2107,6 +2106,7 @@ export default function App() {
 
   // Onboarding / welcome state
   const [missingProfile, setMissingProfile] = useState(false)
+  const [needsPasswordSet, setNeedsPasswordSet] = useState(false)
   const [onboardingState, setOnboardingState] = useState(null)
   const [firstLoginPromptVisible, setFirstLoginPromptVisible] = useState(false)
   const [sidebarFlashTeam, setSidebarFlashTeam] = useState(false)
@@ -2195,6 +2195,7 @@ export default function App() {
       setPersonalAssignedPpIds(new Set())
       setTeamMembers([])
       setMissingProfile(false)
+      setNeedsPasswordSet(false)
       setOnboardingState(null)
       setFirstLoginPromptVisible(false)
       setSidebarFlashTeam(false)
@@ -2208,13 +2209,19 @@ export default function App() {
 
     supabase
       .from('profiles')
-      .select('school_id, role, mat_id, first_name, schools(name), onboarding_state, welcomed')
+      .select('school_id, role, mat_id, first_name, schools(name), onboarding_state, welcomed, password_set')
       .eq('id', session.user.id)
       .single()
       .then(({ data, error }) => {
         if (error || !data) {
           console.error('[Profile] fetch error:', error)
           setMissingProfile(true)
+          setAuthLoading(false)
+          return
+        }
+        // Invited user who hasn't set a password yet — send to /set-password
+        if (data.password_set === false) {
+          setNeedsPasswordSet(true)
           setAuthLoading(false)
           return
         }
@@ -2713,12 +2720,14 @@ export default function App() {
   if (pathname === '/about') return <AboutPage />
   if (pathname === '/privacy') return <PrivacyPage />
 
-  // Invite-link landing page — handles its own session wait, must be before authLoading gate
+  // Invite-link landing page — also rendered when password_set flag is false (see profile fetch)
   if (pathname.startsWith('/set-password')) return <SetPasswordPage />
 
   if (authLoading) {
     return <LoadingScreen />
   }
+
+  if (needsPasswordSet && session) return <SetPasswordPage />
 
   if (missingProfile && session) {
     return (

@@ -53,6 +53,12 @@ export default function SetPasswordPage() {
       return
     }
 
+    // Mark password as set so App routing no longer redirects here
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session) {
+      await supabase.from('profiles').update({ password_set: true }).eq('id', session.user.id)
+    }
+
     setSuccess(true)
     setTimeout(() => window.location.replace('/home'), 1000)
   }
