@@ -50,6 +50,7 @@ function ByPersonView({ schoolId, currentUserId, supabase }) {
   const [modalPerson, setModalPerson] = useState(null)
 
   async function loadData() {
+    console.log('[team] fetch function entered');
     setLoading(true)
 
     console.log('[team] schoolId:', schoolId, 'currentUserId:', currentUserId);
