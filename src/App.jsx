@@ -2090,6 +2090,11 @@ export default function App() {
   const [userMatId, setUserMatId] = useState(null)
   // 'school' | 'mat' | 'school_readonly'
   const [view, setView] = useState('school')
+
+  // Personal view state — 'whole_school' | 'personal' | <userId UUID>
+  const [viewMode, setViewMode] = useState('whole_school')
+  const [personalAssignedPpIds, setPersonalAssignedPpIds] = useState(new Set())
+  const [teamMembers, setTeamMembers] = useState([])
   const [browsingSchoolName, setBrowsingSchoolName] = useState('')
 
   // Evidence modal state
@@ -2145,6 +2150,9 @@ export default function App() {
       setOverviewMode('domain')
       setSelectedCategory(null)
       setUserRole('contributor')
+      setViewMode('whole_school')
+      setPersonalAssignedPpIds(new Set())
+      setTeamMembers([])
       setUserMatId(null)
       setView('school')
       setBrowsingSchoolName('')
@@ -2166,6 +2174,7 @@ export default function App() {
         const role = data.role ?? 'contributor'
         console.log('[Profile] loaded — role:', role, '| mat_id:', data.mat_id, '| school_id:', data.school_id)
         setUserRole(role)
+        setViewMode(role === 'contributor' ? 'personal' : 'whole_school')
         setUserMatId(data.mat_id ?? null)
         setFirstName(data.first_name ?? '')
         if (role === 'mat_admin') {
@@ -2264,6 +2273,35 @@ export default function App() {
         setReviewsExpanded(false)
       })
   }, [selectedSchool])
+
+  // Fetch assigned provision point IDs for the personal view
+  useEffect(() => {
+    if (!selectedSchool || viewMode === 'whole_school') {
+      setPersonalAssignedPpIds(new Set())
+      return
+    }
+    const userId = viewMode === 'personal' ? session?.user?.id : viewMode
+    if (!userId) { setPersonalAssignedPpIds(new Set()); return }
+    supabase
+      .from('point_assignments')
+      .select('provision_point_id')
+      .eq('school_id', selectedSchool)
+      .eq('assignee_user_id', userId)
+      .then(({ data }) => {
+        setPersonalAssignedPpIds(new Set((data ?? []).map(a => a.provision_point_id)))
+      })
+  }, [viewMode, selectedSchool, session])
+
+  // Fetch team members for the approver dropdown
+  useEffect(() => {
+    if (!selectedSchool || userRole === 'contributor') { setTeamMembers([]); return }
+    supabase
+      .from('profiles')
+      .select('id, first_name, last_name, role')
+      .eq('school_id', selectedSchool)
+      .neq('id', session?.user?.id ?? '')
+      .then(({ data }) => setTeamMembers(data ?? []))
+  }, [selectedSchool, userRole])
 
   // Lightweight load: statuses + evidence counts + friction flags for all domains, current school
   useEffect(() => {
@@ -2977,13 +3015,20 @@ export default function App() {
           const hour     = new Date().getHours()
           const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
-          const untouchedCount  = allPpIds.filter(id => !(allEvidenceCounts[id] > 0)).length
-          const reviewsDueCount = overdueReviews.length
-          const visibleReviews  = reviewsExpanded ? overdueReviews : overdueReviews.slice(0, 3)
+          const untouchedCount = allPpIds.filter(id => !(allEvidenceCounts[id] > 0)).length
 
-          // Domain cards with RAG triage
+          const isPersonalView = viewMode !== 'whole_school'
+
+          // Reviews — filtered to assigned points in personal view
+          const filteredReviews = isPersonalView
+            ? overdueReviews.filter(r => personalAssignedPpIds.has(r.provisionPointId))
+            : overdueReviews
+          const reviewsDueCount = filteredReviews.length
+
+          // Domain cards with RAG triage — scoped to assigned points in personal view
           const domainCards = domains.map(d => {
-            const ppIds      = Object.entries(ppDomainMap).filter(([, did]) => did === d.id).map(([id]) => id)
+            let ppIds = Object.entries(ppDomainMap).filter(([, did]) => did === d.id).map(([id]) => id)
+            if (isPersonalView) ppIds = ppIds.filter(id => personalAssignedPpIds.has(id))
             const total      = ppIds.length
             const inPlace    = ppIds.filter(id => allStatuses[id] === 'in_place').length
             const inProgress = ppIds.filter(id => allStatuses[id] === 'in_progress').length
@@ -3002,8 +3047,21 @@ export default function App() {
           const ragBg     = { untouched: '#F7F8FA', red: 'rgba(234,67,53,0.06)', amber: 'rgba(212,117,26,0.08)', green: 'rgba(37,122,59,0.06)' }
           const ragBorder = { untouched: '#E2E8F0', red: 'rgba(234,67,53,0.25)', amber: 'rgba(212,117,26,0.25)', green: 'rgba(37,122,59,0.25)' }
 
+          // Empty personal view — no assignments at all
+          const totalAssigned = isPersonalView ? personalAssignedPpIds.size : null
+
+          // Viewing-as label for approver dropdown
+          const viewingAsMember = viewMode !== 'whole_school' && viewMode !== 'personal'
+            ? teamMembers.find(m => m.id === viewMode)
+            : null
+
           return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 20,
+              background: isPersonalView ? '#F5F4F0' : '#F7F8FA',
+              minHeight: '100%', margin: -24, padding: 24,
+              transition: 'background 0.25s',
+            }}>
 
               {/* Greeting row */}
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
@@ -3026,10 +3084,76 @@ export default function App() {
                 </button>
               </div>
 
+              {/* View toggle — pill for contributors, dropdown for approvers/mat_admins */}
+              {userRole === 'contributor' ? (
+                <div style={{ display: 'inline-flex', background: '#E2E8F0', borderRadius: 8, padding: 3, gap: 2, alignSelf: 'flex-start' }}>
+                  {[{ value: 'personal', label: 'My provision' }, { value: 'whole_school', label: 'Whole school' }].map(opt => {
+                    const active = viewMode === opt.value
+                    return (
+                      <button key={opt.value} type="button" onClick={() => setViewMode(opt.value)}
+                        style={{
+                          padding: '6px 16px', border: 'none', borderRadius: 6,
+                          fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit',
+                          background: active ? '#fff' : 'transparent',
+                          color: active ? '#1A202C' : '#64748b',
+                          fontWeight: active ? 600 : 400,
+                          boxShadow: active ? '0 1px 3px rgba(0,0,0,0.10)' : 'none',
+                          transition: 'all 0.12s',
+                        }}>
+                        {opt.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <label style={{ fontSize: '0.78rem', color: '#64748b', fontFamily: 'inherit' }}>Viewing:</label>
+                  <select
+                    value={viewMode}
+                    onChange={e => setViewMode(e.target.value)}
+                    style={{
+                      padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: 8,
+                      fontSize: '0.82rem', fontFamily: 'inherit', color: '#1A202C',
+                      background: '#fff', cursor: 'pointer', outline: 'none',
+                    }}
+                  >
+                    <option value="whole_school">Whole school</option>
+                    <option value="personal">My provision</option>
+                    {teamMembers.map(m => (
+                      <option key={m.id} value={m.id}>{m.first_name} {m.last_name}</option>
+                    ))}
+                  </select>
+                  {viewingAsMember && (
+                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      Showing points assigned to {viewingAsMember.first_name}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Empty personal view state */}
+              {isPersonalView && totalAssigned === 0 ? (
+                <div style={{
+                  background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
+                  padding: '32px 24px', textAlign: 'center',
+                }}>
+                  <p style={{ fontSize: '0.92rem', fontWeight: 600, color: '#1A202C', marginBottom: 6 }}>
+                    {viewingAsMember
+                      ? `No points have been assigned to ${viewingAsMember.first_name} yet.`
+                      : 'Your points haven\'t been assigned yet.'}
+                  </p>
+                  <p style={{ fontSize: '0.82rem', color: '#94a3b8' }}>
+                    {viewingAsMember
+                      ? 'Use the Team screen to assign provision points to this person.'
+                      : 'Your headteacher will set these up shortly.'}
+                  </p>
+                </div>
+              ) : (
+                <>
               {/* Readiness + Reviews band */}
               <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
 
-                {/* Left: readiness */}
+                {/* Left: readiness — always whole-school */}
                 <div style={{
                   flex: 1, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px',
                   display: 'flex', flexDirection: 'column', justifyContent: 'center',
@@ -3051,7 +3175,7 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Right: reviews due — hidden if none */}
+                {/* Right: reviews due — filtered in personal view, hidden if none */}
                 {reviewsDueCount > 0 && (
                   <div style={{
                     width: 248, flexShrink: 0,
@@ -3062,7 +3186,7 @@ export default function App() {
                       {reviewsDueCount} review{reviewsDueCount !== 1 ? 's' : ''} due
                     </p>
                     <div style={{ overflowY: 'auto', maxHeight: 210, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {overdueReviews.map((r, i) => {
+                      {filteredReviews.map((r, i) => {
                         const info       = ppInfoMap[r.provisionPointId]
                         const domainId   = info?.domainId
                         const domainName = info?.domainName ?? ''
@@ -3144,6 +3268,8 @@ export default function App() {
                   )
                 })}
               </div>
+              </>
+              )}
 
             </div>
           )
