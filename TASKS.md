@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 25 June 2026 (Session 20 — Fix report generation data fetch)
+Last updated: 25 June 2026 (Session 21 — Phase 4: onboarding prompt, sidebar flash, contributor welcome banner)
 
 ---
 
@@ -137,7 +137,8 @@ Review cadence for provision points is a head decision, not a dashboard function
 Phase 1 complete — onboarding_state column added to profiles; point_assignments table created with RLS policies.
 Phase 2 complete — Team screen built with By Person and By Point views; assignment modal writes to point_assignments table; sidebar updated.
 Phase 3 complete — personal view toggle added with role-appropriate controls; domain cards and reviews panel filter by assignment; background colour shift applied to personal view.
-Status: Deferred — validate with pilot schools before building
+Phase 4 complete — OnboardingPrompt (4 states A/B/C/D) for approvers on first login; AssignmentModal extracted to shared component; sidebar Team button flash animation on skip-without-team; contributor welcome banner; second_login_or_later and welcomed columns migrated.
+Status: Complete
 Priority: High (impacts activation, retention, and sales story)
 Trigger: At least one school with multiple named staff ready to trial.
 Validate with headteacher that they would use the assignment step before building.

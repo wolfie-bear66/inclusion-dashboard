@@ -5,6 +5,7 @@ import LandingPage from './pages/LandingPage'
 import AboutPage from './pages/AboutPage'
 import PrivacyPage from './pages/PrivacyPage'
 import TeamPage from './pages/TeamPage'
+import OnboardingPrompt from './components/OnboardingPrompt'
 import './App.css'
 import { generateReport } from './generateReport'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts'
@@ -173,6 +174,7 @@ function Sidebar({
   setOverviewMode, setSelectedCategory,
   onClose,
   userRole, onInviteUser,
+  flashTeam, onFlashTeamEnd,
 }) {
   const totalPP   = Object.keys(ppDomainMap).length
   const answered  = Object.values(allStatuses).filter(Boolean).length
@@ -358,12 +360,17 @@ function Sidebar({
         <div style={{ height: '0.5px', background: '#e2e8f0', margin: '6px 0' }} />
 
         {/* Team — approver and mat_admin only */}
-        {(userRole === 'approver' || userRole === 'mat_admin') && navBtn({
-          id: 'team', icon: 'ti-users',
-          label: 'Team',
-          active: selectedDomain === 'team',
-          onClick: () => { setSelectedDomain('team'); setAnalyticsTabRequest(null); onClose() },
-        })}
+        {(userRole === 'approver' || userRole === 'mat_admin') && (
+          <div className={flashTeam ? 'sidebar-team-flash' : undefined}
+               onAnimationEnd={onFlashTeamEnd}>
+            {navBtn({
+              id: 'team', icon: 'ti-users',
+              label: 'Team',
+              active: selectedDomain === 'team',
+              onClick: () => { setSelectedDomain('team'); setAnalyticsTabRequest(null); onClose() },
+            })}
+          </div>
+        )}
 
         {/* Generate Report */}
         {navBtn({
@@ -2097,6 +2104,12 @@ export default function App() {
   const [teamMembers, setTeamMembers] = useState([])
   const [browsingSchoolName, setBrowsingSchoolName] = useState('')
 
+  // Onboarding / welcome state
+  const [onboardingState, setOnboardingState] = useState(null)
+  const [firstLoginPromptVisible, setFirstLoginPromptVisible] = useState(false)
+  const [sidebarFlashTeam, setSidebarFlashTeam] = useState(false)
+  const [welcomed, setWelcomed] = useState(true)
+
   // Evidence modal state
   const [modalPoint, setModalPoint] = useState(null)
   const [draft, setDraft] = useState({})
@@ -2153,6 +2166,10 @@ export default function App() {
       setViewMode('whole_school')
       setPersonalAssignedPpIds(new Set())
       setTeamMembers([])
+      setOnboardingState(null)
+      setFirstLoginPromptVisible(false)
+      setSidebarFlashTeam(false)
+      setWelcomed(true)
       setUserMatId(null)
       setView('school')
       setBrowsingSchoolName('')
@@ -2162,7 +2179,7 @@ export default function App() {
 
     supabase
       .from('profiles')
-      .select('school_id, role, mat_id, first_name, schools(name)')
+      .select('school_id, role, mat_id, first_name, schools(name), onboarding_state, welcomed')
       .eq('id', session.user.id)
       .single()
       .then(({ data, error }) => {
@@ -2177,6 +2194,12 @@ export default function App() {
         setViewMode(role === 'contributor' ? 'personal' : 'whole_school')
         setUserMatId(data.mat_id ?? null)
         setFirstName(data.first_name ?? '')
+        const os = data.onboarding_state ?? {}
+        setOnboardingState(os)
+        setWelcomed(data.welcomed ?? false)
+        if (role === 'approver' && !os.team_prompt_dismissed) {
+          setFirstLoginPromptVisible(true)
+        }
         if (role === 'mat_admin') {
           setView('mat')
         } else {
@@ -2809,6 +2832,8 @@ export default function App() {
               onInviteUser={() => { openInviteModal(); setSidebarOpen(false) }}
               setSelectedCategory={setSelectedCategory}
               onClose={() => setSidebarOpen(false)}
+              flashTeam={sidebarFlashTeam}
+              onFlashTeamEnd={() => setSidebarFlashTeam(false)}
             />
           </div>
         )}
@@ -3131,6 +3156,33 @@ export default function App() {
                 </div>
               )}
 
+              {/* Contributor welcome banner — shown once after first assignment */}
+              {userRole === 'contributor' && !welcomed && personalAssignedPpIds.size > 0 && (
+                <div style={{
+                  background: 'rgba(27,54,93,0.05)', border: '1px solid rgba(27,54,93,0.18)',
+                  borderRadius: 12, padding: '16px 20px',
+                  display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
+                }}>
+                  <div>
+                    <p style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1B365D', marginBottom: 4 }}>
+                      Welcome — your provision points are ready.
+                    </p>
+                    <p style={{ fontSize: '0.82rem', color: '#475569', lineHeight: 1.55 }}>
+                      Your headteacher has assigned provision points to you. Explore them below, add evidence, and track progress.
+                    </p>
+                  </div>
+                  <button type="button"
+                    onClick={async () => {
+                      setWelcomed(true)
+                      await supabase.from('profiles').update({ welcomed: true }).eq('id', session.user.id)
+                    }}
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+                      color: '#94a3b8', fontSize: '1.1rem', lineHeight: 1, flexShrink: 0,
+                    }}>✕</button>
+                </div>
+              )}
+
               {/* Empty personal view state */}
               {isPersonalView && totalAssigned === 0 ? (
                 <div style={{
@@ -3296,6 +3348,24 @@ export default function App() {
             schoolId={selectedSchool}
             currentUserId={session.user.id}
             supabase={supabase}
+          />
+        )}
+
+        {firstLoginPromptVisible && session && selectedSchool && userRole === 'approver' && (
+          <OnboardingPrompt
+            onboardingState={onboardingState}
+            userId={session.user.id}
+            firstName={firstName}
+            schoolId={selectedSchool}
+            supabase={supabase}
+            onClose={({ flash }) => {
+              setFirstLoginPromptVisible(false)
+              if (flash) setSidebarFlashTeam(true)
+            }}
+            onGoToTeam={() => {
+              setFirstLoginPromptVisible(false)
+              setSelectedDomain('team')
+            }}
           />
         )}
 
