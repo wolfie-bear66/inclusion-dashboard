@@ -4,6 +4,7 @@ import MATDashboard from './MATDashboard'
 import LandingPage from './pages/LandingPage'
 import AboutPage from './pages/AboutPage'
 import PrivacyPage from './pages/PrivacyPage'
+import TeamPage from './pages/TeamPage'
 import './App.css'
 import { generateReport } from './generateReport'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts'
@@ -356,6 +357,14 @@ function Sidebar({
         {/* Divider */}
         <div style={{ height: '0.5px', background: '#e2e8f0', margin: '6px 0' }} />
 
+        {/* Team — approver and mat_admin only */}
+        {(userRole === 'approver' || userRole === 'mat_admin') && navBtn({
+          id: 'team', icon: 'ti-users',
+          label: 'Team',
+          active: selectedDomain === 'team',
+          onClick: () => { setSelectedDomain('team'); setAnalyticsTabRequest(null); onClose() },
+        })}
+
         {/* Generate Report */}
         {navBtn({
           id: 'generate-report', icon: 'ti-file-export',
@@ -373,7 +382,7 @@ function Sidebar({
             {answered} of {totalPP} recorded
           </span>
         </div>
-        {userRole === 'approver' && (
+        {(userRole === 'approver' || userRole === 'mat_admin') && (
           <button
             type="button"
             onClick={onInviteUser}
@@ -385,7 +394,7 @@ function Sidebar({
             }}
           >
             <i className="ti ti-user-plus" style={{ fontSize: '0.82rem', color: '#94a3b8' }} />
-            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Add user</span>
+            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Invite user</span>
           </button>
         )}
       </div>
@@ -2284,7 +2293,7 @@ export default function App() {
   }, [selectedSchool])
 
   useEffect(() => {
-    if (!selectedSchool || !selectedDomain || selectedDomain === 'analytics') {
+    if (!selectedSchool || !selectedDomain || selectedDomain === 'analytics' || selectedDomain === 'team' || selectedDomain === 'report-builder') {
       setSubDomains([])
       setEntries({})
       setEvidenceEntries({})
@@ -3156,7 +3165,15 @@ export default function App() {
           />
         )}
 
-        {view !== 'mat' && selectedSchool && selectedDomain && selectedDomain !== 'analytics' && selectedDomain !== 'report-builder' && (
+        {view !== 'mat' && selectedSchool && selectedDomain === 'team' && (userRole === 'approver' || userRole === 'mat_admin') && (
+          <TeamPage
+            schoolId={selectedSchool}
+            currentUserId={session.user.id}
+            supabase={supabase}
+          />
+        )}
+
+        {view !== 'mat' && selectedSchool && selectedDomain && selectedDomain !== 'analytics' && selectedDomain !== 'report-builder' && selectedDomain !== 'team' && (
           loading ? (
             <p className="state-msg">Loading…</p>
           ) : subDomains.length === 0 ? (
