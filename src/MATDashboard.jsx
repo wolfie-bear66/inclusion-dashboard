@@ -1105,6 +1105,7 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
       if (cancelled) return
 
       const allPPs      = ppRes.data ?? []
+      console.log('[ppMeta debug] first 3 rows:', JSON.stringify(allPPs?.slice(0, 3), null, 2))
       const allSubDoms  = subDomainsRes.data ?? []
       setActivePpCount(allPPs.length)
       setSubDomains(allSubDoms)
@@ -1127,6 +1128,7 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
           sdActiveCounts[sdId] = (sdActiveCounts[sdId] ?? 0) + 1
         }
       }
+      console.log('[ppToDomain debug] first 5 entries:', Object.entries(ppToDomain).slice(0, 5))
 
       // Build domain matrix: { [schoolId]: { [domainId]: { inPlace, inProgress, notInPlace, total } } }
       const mat    = {}
