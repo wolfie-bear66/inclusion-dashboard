@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
 
   // Step 5: insert profile — soft failure so invite success is still communicated
   try {
-    console.log('Attempting profile insert with:', { id: userId, first_name, last_name, job_title, school_id })
+    console.log('Attempting profile insert with:', { id: userId, first_name, last_name, school_id })
     const { error: profileError } = await admin.from('profiles').insert({
       id:         userId,
       school_id,
@@ -108,7 +108,6 @@ Deno.serve(async (req) => {
       role,
       first_name,
       last_name,
-      job_title:  job_title || null,
       onboarding_state: {
         self_assign_entered:   false,
         has_team_members:      false,
@@ -135,7 +134,7 @@ Deno.serve(async (req) => {
     })
   }
 
-  return new Response(JSON.stringify({ success: true }), {
+  return new Response(JSON.stringify({ success: true, userId }), {
     status: 200,
     headers: { ...CORS, 'Content-Type': 'application/json' },
   })

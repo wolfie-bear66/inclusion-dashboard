@@ -2517,6 +2517,13 @@ export default function App() {
         setInviteMsg({ type: 'error', text: `Invite sent but profile could not be created automatically — please contact hello@inclusiondashboard.co.uk.` })
         setInviteFirstName(''); setInviteLastName(''); setInviteJobTitle(''); setInviteEmail('')
       } else {
+        if (json.userId && inviteJobTitle.trim()) {
+          const { error: jobTitleError } = await supabase
+            .from('profiles')
+            .update({ job_title: inviteJobTitle.trim() })
+            .eq('id', json.userId)
+          if (jobTitleError) console.warn('[invite] job_title update failed:', jobTitleError.message)
+        }
         setInviteMsg({ type: 'success', text: `Invite sent to ${inviteEmail}.` })
         setInviteFirstName(''); setInviteLastName(''); setInviteJobTitle(''); setInviteEmail('')
       }

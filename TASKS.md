@@ -372,7 +372,7 @@ Never rewrite existing query logic in same session as any migration.
 
 - [ ] Sub-domains RLS errors appearing in console — pre-existing, not blocking, needs investigation.
 - [ ] `evidenceEntries` is empty on category view (domain-specific fetch only) — existing behaviour, not broken, but worth revisiting if evidence needs to show in category view.
-- [x] **Invite form updated** — now collects first name, last name, job title, and email; profile row created automatically on invite (first_name, last_name, job_title, onboarding_state, welcomed); job_title column added to profiles (step7_job_title.sql); By Person view shows job_title instead of role chip when available; contributor welcome banner personalised with first name and point count; Edge Function redeployed.
+- [x] **Invite form updated** — now collects first name, last name, job title, and email; profile row created automatically on invite (first_name, last_name, onboarding_state, welcomed); job_title column added to profiles (step7_job_title.sql); job_title moved to client-side update after Edge Function invite — schema cache workaround; By Person view shows job_title instead of role chip when available; contributor welcome banner personalised with first name and point count; Edge Function redeployed.
 - [x] **Set password page built** — invited users now land on /set-password before entering the dashboard. SetPasswordPage handles its own session wait (invite-link hash consumed by Supabase JS); auth listener intercepts SIGNED_IN with type=invite hash as belt-and-suspenders. Redirect URL in Supabase must be set to https://inclusiondashboard.co.uk/set-password.
 - [ ] Customise Supabase invite email to mention Inclusion Dashboard by name and give context about what they're signing up for.
 
