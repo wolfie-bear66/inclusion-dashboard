@@ -1381,6 +1381,53 @@ function GroupReach({ reachMatrix, schoolCtx }) {
   )
 }
 
+function DemoBanner({ onDismiss }) {
+  return (
+    <div style={{
+      background: '#FFF8EE',
+      borderLeft: '4px solid #D4751A',
+      padding: '12px 16px',
+      display: 'flex',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 12,
+      flexWrap: 'wrap',
+    }}>
+      <p style={{ fontSize: '0.875rem', color: '#1B365D', margin: 0, flex: 1, minWidth: 200 }}>
+        You're exploring a demo school — ready to try it with your own data?
+      </p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+        <a
+          href="mailto:hello@inclusiondashboard.co.uk"
+          style={{
+            fontSize: '0.875rem', fontWeight: 600, color: '#D4751A',
+            textDecoration: 'none',
+          }}
+          onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+          onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
+        >
+          Get in touch →
+        </a>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss banner"
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: '#1B365D', opacity: 0.5, fontSize: '1rem',
+            padding: '0 4px', lineHeight: 1, fontFamily: 'inherit',
+          }}
+          onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+          onMouseLeave={e => e.currentTarget.style.opacity = '0.5'}
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function DemoAutoLogin() {
   const [error, setError] = useState(null)
   const attempted = useRef(false)
@@ -1903,6 +1950,7 @@ export default function App() {
   // Mobile sidebar
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768)
+  const [demoBannerVisible, setDemoBannerVisible] = useState(sessionStorage.getItem('demoBannerDismissed') !== 'true')
 
   // MAT / role state
   const [userRole, setUserRole] = useState('contributor')
@@ -2535,8 +2583,23 @@ export default function App() {
             </p>
           )}
         </div>
-        <button type="button" className="logout-btn" onClick={handleLogout}>Sign out</button>
+        {isDemoMode ? (
+          <button type="button" className="logout-btn" onClick={async () => {
+            await supabase.auth.signOut()
+            sessionStorage.clear()
+            window.location.replace('/')
+          }}>Exit demo</button>
+        ) : (
+          <button type="button" className="logout-btn" onClick={handleLogout}>Sign out</button>
+        )}
       </header>
+
+      {isDemoMode && demoBannerVisible && (
+        <DemoBanner onDismiss={() => {
+          sessionStorage.setItem('demoBannerDismissed', 'true')
+          setDemoBannerVisible(false)
+        }} />
+      )}
 
       <div className="app-body" style={{ position: 'relative' }}>
         {/* Backdrop — mobile only, when sidebar is open */}
