@@ -6,6 +6,7 @@ import AboutPage from './pages/AboutPage'
 import PrivacyPage from './pages/PrivacyPage'
 import TeamPage from './pages/TeamPage'
 import OnboardingPrompt from './components/OnboardingPrompt'
+import SetPasswordPage from './pages/SetPasswordPage'
 import './App.css'
 import { generateReport } from './generateReport'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts'
@@ -2126,6 +2127,14 @@ export default function App() {
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       console.log('[Auth] state change — event:', _event, '| user:', session?.user?.email ?? 'none')
+      // Intercept invite-link sign-ins and send to set-password page
+      if (_event === 'SIGNED_IN' && !window.location.pathname.startsWith('/set-password')) {
+        const hash = window.location.hash
+        if (hash.includes('type=invite') || hash.includes('type=signup')) {
+          window.location.replace('/set-password')
+          return
+        }
+      }
       setSession(session)
     })
     return () => subscription.unsubscribe()
@@ -2652,6 +2661,9 @@ export default function App() {
   // Public static pages — no auth required
   if (pathname === '/about') return <AboutPage />
   if (pathname === '/privacy') return <PrivacyPage />
+
+  // Invite-link landing page — handles its own session wait, must be before authLoading gate
+  if (pathname.startsWith('/set-password')) return <SetPasswordPage />
 
   if (authLoading) {
     return <LoadingScreen />
