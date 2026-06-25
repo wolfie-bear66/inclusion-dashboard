@@ -32,6 +32,8 @@ export default function AssignmentModal({ person, schoolId, currentUserId, supab
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const overlayRef = useRef(null)
+  const bodyRef = useRef(null)
+  const catRefs = useRef({})
 
   useEffect(() => {
     async function load() {
@@ -170,13 +172,13 @@ export default function AssignmentModal({ person, schoolId, currentUserId, supab
         </div>
 
         {/* Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px' }}>
+        <div ref={bodyRef} style={{ flex: 1, overflowY: 'auto', padding: '0 24px' }}>
           {loading ? (
             <p style={{ color: '#94a3b8', padding: '24px 0', fontSize: '0.85rem' }}>Loading provision points…</p>
           ) : (
             <>
-              {grouped.map(({ cat, points }) => (
-                <div key={cat} style={{ paddingTop: 20 }}>
+              {grouped.map(({ cat, points }, catIdx) => (
+                <div key={cat} ref={el => { catRefs.current[catIdx] = el }} style={{ paddingTop: 20 }}>
                   <p style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1A202C', marginBottom: 10 }}>
                     {cat}
                     <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: 8 }}>
@@ -212,14 +214,15 @@ export default function AssignmentModal({ person, schoolId, currentUserId, supab
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   }}>
                     <p style={{ fontSize: '0.72rem', color: '#94a3b8', flex: 1, lineHeight: 1.45 }}>
-                      These points don't need an owner right now — skip to the next category.
+                      Move on without changing this category's selections.
                     </p>
                     <button type="button"
-                      onClick={() => setChecked(prev => {
-                        const next = new Set(prev)
-                        points.forEach(pp => next.delete(pp.id))
-                        return next
-                      })}
+                      onClick={() => {
+                        const next = catRefs.current[catIdx + 1]
+                        if (next && bodyRef.current) {
+                          bodyRef.current.scrollTo({ top: next.offsetTop - 8, behavior: 'smooth' })
+                        }
+                      }}
                       style={{
                         marginLeft: 12, background: 'none', border: 'none', cursor: 'pointer',
                         fontSize: '0.75rem', color: '#94a3b8', fontFamily: 'inherit',

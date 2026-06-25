@@ -293,7 +293,7 @@ function ByPointView({ schoolId, supabase }) {
 
 // ── TeamPage ──────────────────────────────────────────────────────────
 
-export default function TeamPage({ schoolId, currentUserId, supabase }) {
+export default function TeamPage({ schoolId, currentUserId, supabase, onInviteUser }) {
   const [view, setView] = useState('person')
 
   return (
@@ -308,8 +308,8 @@ export default function TeamPage({ schoolId, currentUserId, supabase }) {
         </p>
       </div>
 
-      {/* Toggle */}
-      <div style={{ marginBottom: 24 }}>
+      {/* Toggle + Invite */}
+      <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <PillToggle
           options={[
             { value: 'person', label: 'By Person' },
@@ -318,6 +318,17 @@ export default function TeamPage({ schoolId, currentUserId, supabase }) {
           value={view}
           onChange={setView}
         />
+        {onInviteUser && (
+          <button type="button" onClick={onInviteUser} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '7px 14px', border: '1px solid #1B365D', borderRadius: 8,
+            background: '#fff', color: '#1B365D',
+            fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+          }}>
+            <i className="ti ti-user-plus" style={{ fontSize: '0.9rem' }} />
+            Invite user
+          </button>
+        )}
       </div>
 
       {/* View */}

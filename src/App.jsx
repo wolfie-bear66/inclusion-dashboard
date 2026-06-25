@@ -389,21 +389,6 @@ function Sidebar({
             {answered} of {totalPP} recorded
           </span>
         </div>
-        {(userRole === 'approver' || userRole === 'mat_admin') && (
-          <button
-            type="button"
-            onClick={onInviteUser}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              width: '100%', marginTop: 8, padding: '6px 0',
-              background: 'none', border: 'none', cursor: 'pointer',
-              fontFamily: 'inherit', textAlign: 'left',
-            }}
-          >
-            <i className="ti ti-user-plus" style={{ fontSize: '0.82rem', color: '#94a3b8' }} />
-            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Invite user</span>
-          </button>
-        )}
       </div>
     </aside>
   )
@@ -3348,6 +3333,7 @@ export default function App() {
             schoolId={selectedSchool}
             currentUserId={session.user.id}
             supabase={supabase}
+            onInviteUser={openInviteModal}
           />
         )}
 
