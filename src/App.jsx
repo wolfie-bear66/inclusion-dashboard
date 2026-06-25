@@ -2105,6 +2105,7 @@ export default function App() {
   const [browsingSchoolName, setBrowsingSchoolName] = useState('')
 
   // Onboarding / welcome state
+  const [missingProfile, setMissingProfile] = useState(false)
   const [onboardingState, setOnboardingState] = useState(null)
   const [firstLoginPromptVisible, setFirstLoginPromptVisible] = useState(false)
   const [sidebarFlashTeam, setSidebarFlashTeam] = useState(false)
@@ -2182,6 +2183,7 @@ export default function App() {
       setViewMode('whole_school')
       setPersonalAssignedPpIds(new Set())
       setTeamMembers([])
+      setMissingProfile(false)
       setOnboardingState(null)
       setFirstLoginPromptVisible(false)
       setSidebarFlashTeam(false)
@@ -2201,6 +2203,7 @@ export default function App() {
       .then(({ data, error }) => {
         if (error || !data) {
           console.error('[Profile] fetch error:', error)
+          setMissingProfile(true)
           setAuthLoading(false)
           return
         }
@@ -2697,6 +2700,31 @@ export default function App() {
 
   if (authLoading) {
     return <LoadingScreen />
+  }
+
+  if (missingProfile && session) {
+    return (
+      <div className="login-page">
+        <div style={{
+          background: '#fff', border: '1px solid #E2E8F0', borderRadius: 16,
+          width: '100%', maxWidth: 440,
+          boxShadow: '0 4px 32px rgba(0,0,0,0.09)',
+          padding: '48px 40px',
+          display: 'flex', flexDirection: 'column',
+        }}>
+          <p style={{ fontSize: '0.82rem', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 28 }}>
+            Inclusion Dashboard
+          </p>
+          <h1 className="login-title" style={{ marginBottom: 12 }}>Your account is being set up.</h1>
+          <p style={{ fontSize: '0.88rem', color: '#64748b', lineHeight: 1.6 }}>
+            If this message persists please contact{' '}
+            <a href="mailto:hello@inclusiondashboard.co.uk" style={{ color: '#1B365D' }}>
+              hello@inclusiondashboard.co.uk
+            </a>
+          </p>
+        </div>
+      </div>
+    )
   }
 
   // Demo entry flag: consume and route to MAT dashboard unconditionally.
