@@ -1105,11 +1105,17 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
       if (cancelled) return
 
       const allPPs      = ppRes.data ?? []
-      console.log('[ppMeta debug] first 3 rows:', JSON.stringify(allPPs?.slice(0, 3), null, 2))
       const allSubDoms  = subDomainsRes.data ?? []
       setActivePpCount(allPPs.length)
       setSubDomains(allSubDoms)
-      setPpMeta(allPPs.map(pp => ({ id: pp.id, category: pp.category, label: pp.label, display_order: pp.display_order, domain_id: pp.sub_domains?.domain_id ?? null })))
+
+      // Build sub_domain → domain lookup from the direct sub_domains query (avoids nested join access issues)
+      const sdToDomain = {}
+      for (const sd of allSubDoms) {
+        sdToDomain[sd.id] = sd.domain_id
+      }
+
+      setPpMeta(allPPs.map(pp => ({ id: pp.id, category: pp.category, label: pp.label, display_order: pp.display_order, domain_id: sdToDomain[pp.sub_domain_id] ?? null })))
 
       // Build lookup maps from active provision points
       const ppToDomain    = {}   // ppId → domainId
@@ -1117,8 +1123,8 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
       const domainActiveCounts = {}
       const sdActiveCounts     = {}   // subDomainId → active pp count
       for (const pp of allPPs) {
-        const domId = pp.sub_domains?.domain_id
         const sdId  = pp.sub_domain_id
+        const domId = sdToDomain[sdId]
         if (domId) {
           ppToDomain[pp.id] = domId
           domainActiveCounts[domId] = (domainActiveCounts[domId] ?? 0) + 1
@@ -1128,7 +1134,6 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
           sdActiveCounts[sdId] = (sdActiveCounts[sdId] ?? 0) + 1
         }
       }
-      console.log('[ppToDomain debug] first 5 entries:', Object.entries(ppToDomain).slice(0, 5))
 
       // Build domain matrix: { [schoolId]: { [domainId]: { inPlace, inProgress, notInPlace, total } } }
       const mat    = {}
