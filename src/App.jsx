@@ -2044,6 +2044,7 @@ function ShowToggle({ expanded, total, onToggle }) {
 }
 
 export default function App() {
+  console.log('[startup] hash on load:', window.location.hash);
   // Auth state
   const [session, setSession] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
