@@ -11,6 +11,20 @@ import './App.css'
 import { generateReport } from './generateReport'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts'
 
+// ── Invite-link detection ─────────────────────────────────────────────
+// Must run at module evaluation, before Supabase auth initialises and
+// consumes (clears) the URL hash during getSession().  If the hash
+// contains 'type=invite' or 'type=signup' we store a flag so the
+// onAuthStateChange SIGNED_IN handler can redirect to /set-password.
+;(function detectInviteHash() {
+  const hash = window.location.hash
+  console.log('[Invite] initial hash on load:', hash || '(empty)')
+  if (hash.includes('type=invite') || hash.includes('type=signup')) {
+    console.log('[Invite] invite hash detected — setting pendingSetPassword flag')
+    sessionStorage.setItem('pendingSetPassword', 'true')
+  }
+})()
+
 const STATUSES = ['in_place', 'in_progress', 'not_in_place']
 const STATUS_LABELS = { in_place: 'In Place', in_progress: 'In Progress', not_in_place: 'Not In Place' }
 const SEND_TIERS = [
@@ -2126,14 +2140,20 @@ export default function App() {
       // authLoading cleared by the session effect once profile is resolved
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      console.log('[Auth] state change — event:', _event, '| user:', session?.user?.email ?? 'none')
-      // Intercept invite-link sign-ins and send to set-password page
-      if (_event === 'SIGNED_IN' && !window.location.pathname.startsWith('/set-password')) {
-        const hash = window.location.hash
-        if (hash.includes('type=invite') || hash.includes('type=signup')) {
+      console.log('[Auth] state change — event:', _event, '| user:', session?.user?.email ?? 'none', '| pendingSetPassword:', sessionStorage.getItem('pendingSetPassword'))
+      // Intercept invite-link sign-ins — flag was set at module load before
+      // Supabase consumed and cleared the URL hash during getSession().
+      if (_event === 'SIGNED_IN' && sessionStorage.getItem('pendingSetPassword') === 'true') {
+        sessionStorage.removeItem('pendingSetPassword')
+        if (!window.location.pathname.startsWith('/set-password')) {
+          console.log('[Invite] SIGNED_IN with pendingSetPassword flag — redirecting to /set-password')
           window.location.replace('/set-password')
-          return
+          return // do not setSession — page will reload at /set-password
         }
+        // Already on /set-password (redirect URL was set correctly) — let
+        // SetPasswordPage handle the session via its own onAuthStateChange.
+        console.log('[Invite] already on /set-password — flag cleared, no redirect needed')
+        return
       }
       setSession(session)
     })
