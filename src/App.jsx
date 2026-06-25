@@ -442,7 +442,7 @@ function RBChartToggle({ options, value, onChange }) {
   )
 }
 
-function ReportBuilder({ schoolName = '', allSubDomains = [] }) {
+function ReportBuilder({ schoolName = '', allSubDomains = [], supabase: sb, school, schoolCtx = {} }) {
   const [includeEquity,   setIncludeEquity]   = useState(true)
   const [equityChart,     setEquityChart]     = useState('table')
   const [includeFunding,  setIncludeFunding]  = useState(true)
@@ -452,6 +452,8 @@ function ReportBuilder({ schoolName = '', allSubDomains = [] }) {
   const [outcomeSelected, setOutcomeSelected] = useState([])
   const [includeReach,    setIncludeReach]    = useState(false)
   const [reachChart,      setReachChart]      = useState('table')
+  const [generating,      setGenerating]      = useState(false)
+  const [genError,        setGenError]        = useState(null)
 
   const domainPills    = ['SEND Support & Needs', 'Equity & Disadvantage', 'Attendance & Engagement', 'Enrichment', 'Belonging', 'Wellbeing']
   const groupPills     = ['Pupil Premium', 'SEND', 'FSM', 'EAL', 'LAC', 'White Working Class']
@@ -478,13 +480,130 @@ function ReportBuilder({ schoolName = '', allSubDomains = [] }) {
     ...(includeReach    ? ['group reach']                      : []),
   ]
 
-  function handleGeneratePdf() {
-    generateReport({
-      schoolCtx: {}, readinessData: [], upcomingReviews: [], equityData: [],
-      fundingSourceData: [], fundingDomainData: [], totalCost: 0,
-      allEvidence: [], domains: [], schoolName,
-      options: { includeEquity, equityChart, includeFunding, fundingChart, includeOutcomes, outcomeMode, outcomeSelected, includeReach, reachChart },
-    })
+  async function handleGeneratePdf() {
+    if (!sb || !school) {
+      setGenError('School data not available. Please reload and try again.')
+      return
+    }
+    setGenerating(true)
+    setGenError(null)
+    try {
+      const [entriesRes, domainsRes] = await Promise.all([
+        sb.from('entries')
+          .select(`
+            id, provision_point_id, status,
+            grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other,
+            provision_points(*, sub_domains(*, domains(id, name))),
+            evidence_entries(id, provision_name, indicator_type, provision_category, funding_source, cost, next_review_due,
+              evidence_notes, intended_outcomes, impact_on_outcomes, supporting_document_link,
+              reach_total, reach_send, reach_pp, reach_eal, reach_fsm, reach_lac, reach_wwc, reach_other,
+              grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other)
+          `)
+          .eq('school_id', school),
+        sb.from('domains').select('id, name, display_order').order('display_order'),
+      ])
+
+      if (entriesRes.error) throw new Error(`Entries fetch failed: ${entriesRes.error.message}`)
+      if (domainsRes.error) throw new Error(`Domains fetch failed: ${domainsRes.error.message}`)
+
+      const analyticsEntries = entriesRes.data ?? []
+      const fetchedDomains   = domainsRes.data ?? []
+
+      console.log('[ReportBuilder] fetched entries:', analyticsEntries.length, '| domains:', fetchedDomains.length)
+
+      // Domain readiness
+      const readinessData = fetchedDomains.map((d, idx) => {
+        const de = analyticsEntries.filter(e => e.provision_points?.sub_domains?.domains?.id === d.id)
+        return {
+          name:       d.name.length > 14 ? d.name.split(/[&\s]/)[0] : d.name,
+          fullName:   d.name,
+          colour:     aDomainColour(d.name, idx),
+          inPlace:    de.filter(e => e.status === 'in_place').length,
+          inProgress: de.filter(e => e.status === 'in_progress').length,
+          notInPlace: de.filter(e => e.status === 'not_in_place').length,
+          total:      de.length,
+        }
+      })
+
+      // Flatten all evidence entries with domain context
+      const allEvidence = analyticsEntries.flatMap(e =>
+        (e.evidence_entries ?? []).map(ev => ({
+          ...ev,
+          entryLabel:    e.provision_points?.label ?? '',
+          domainId:      e.provision_points?.sub_domains?.domains?.id,
+          domainName:    e.provision_points?.sub_domains?.domains?.name ?? '',
+          subDomainName: e.provision_points?.sub_domains?.name ?? '',
+        }))
+      )
+
+      // Upcoming reviews (next 60 days)
+      const today = new Date()
+      const upcomingReviews = allEvidence
+        .filter(ev => ev.next_review_due)
+        .map(ev => {
+          const daysLeft = Math.ceil((new Date(ev.next_review_due) - today) / 86400000)
+          return { ...ev, daysLeft, urgency: daysLeft <= 7 ? 'urgent' : daysLeft <= 21 ? 'soon' : 'upcoming' }
+        })
+        .filter(ev => ev.daysLeft <= 60)
+        .sort((a, b) => a.daysLeft - b.daysLeft)
+
+      // Funding
+      const fundingBySource = {}
+      const fundingByDomain = {}
+      for (const ev of allEvidence) {
+        const cost = Number(ev.cost)
+        if (!cost) continue
+        if (ev.funding_source) {
+          const label = FUNDING_LABELS_MAP[ev.funding_source] ?? ev.funding_source
+          fundingBySource[label] = (fundingBySource[label] ?? 0) + cost
+        }
+        if (ev.domainName) {
+          fundingByDomain[ev.domainName] = (fundingByDomain[ev.domainName] ?? 0) + cost
+        }
+      }
+      const fundingSourceData = Object.entries(fundingBySource).map(([name, value]) => ({ name, value }))
+      const fundingDomainData = Object.entries(fundingByDomain).map(([name, value], idx) => ({
+        name: name.length > 14 ? name.split(/[&\s]/)[0] : name,
+        fullName: name, value,
+        colour: aDomainColour(name, idx),
+      }))
+      const totalCost = fundingSourceData.reduce((s, d) => s + d.value, 0)
+
+      // Enrichment equity
+      const enrichBySubDomain = {}
+      for (const e of analyticsEntries.filter(e => {
+        const dn = e.provision_points?.sub_domains?.domains?.name ?? ''
+        return dn.toLowerCase().includes('enrichment')
+      })) {
+        const sub = e.provision_points?.sub_domains?.name ?? 'Unknown'
+        ;(enrichBySubDomain[sub] = enrichBySubDomain[sub] ?? []).push(e)
+      }
+      const equityData = Object.entries(enrichBySubDomain).map(([subDomain, es]) => ({
+        subDomain, total: es.length,
+        groups: A_GROUPS.map(g => {
+          const count = es.filter(e => (e.evidence_entries ?? []).some(ev => !!ev[g.key])).length
+          return { label: g.label, count, pct: es.length ? Math.round((count / es.length) * 100) : 0 }
+        }),
+      }))
+
+      generateReport({
+        schoolCtx,
+        readinessData,
+        upcomingReviews,
+        equityData,
+        fundingSourceData,
+        fundingDomainData,
+        totalCost,
+        allEvidence,
+        domains: fetchedDomains,
+        schoolName,
+        options: { includeEquity, equityChart, includeFunding, fundingChart, includeOutcomes, outcomeMode, outcomeSelected, includeReach, reachChart },
+      })
+    } catch (err) {
+      console.error('[ReportBuilder] generation error:', err)
+      setGenError('Could not generate report — check console for details.')
+    }
+    setGenerating(false)
   }
 
   const card = { background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '14px 18px', marginBottom: 10 }
@@ -639,20 +758,25 @@ function ReportBuilder({ schoolName = '', allSubDomains = [] }) {
       <div style={{
         position: 'sticky', bottom: 0, background: '#fff',
         borderTop: '1px solid #e2e8f0', padding: '12px 0',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16,
+        display: 'flex', flexDirection: 'column', gap: 8,
       }}>
-        <p style={{ fontSize: '0.8rem', color: '#64748b', flex: 1, minWidth: 0 }}>
-          Includes {includedSections.length} section{includedSections.length !== 1 ? 's' : ''} — {includedSections.join(', ')}
-        </p>
-        <button type="button" onClick={handleGeneratePdf} style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          padding: '9px 18px', borderRadius: 8, border: 'none',
-          background: '#1B365D', color: '#fff',
-          fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0, fontFamily: 'inherit',
-        }}>
-          <i className="ti ti-download" style={{ fontSize: '0.9rem', lineHeight: 1 }} />
-          Generate PDF
-        </button>
+        {genError && (
+          <p style={{ fontSize: '0.78rem', color: '#dc2626', margin: 0 }}>{genError}</p>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+          <p style={{ fontSize: '0.8rem', color: '#64748b', flex: 1, minWidth: 0 }}>
+            Includes {includedSections.length} section{includedSections.length !== 1 ? 's' : ''} — {includedSections.join(', ')}
+          </p>
+          <button type="button" onClick={handleGeneratePdf} disabled={generating} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '9px 18px', borderRadius: 8, border: 'none',
+            background: generating ? '#94a3b8' : '#1B365D', color: '#fff',
+            fontSize: '0.85rem', fontWeight: 600, cursor: generating ? 'default' : 'pointer', flexShrink: 0, fontFamily: 'inherit',
+          }}>
+            <i className="ti ti-download" style={{ fontSize: '0.9rem', lineHeight: 1 }} />
+            {generating ? 'Generating…' : 'Generate PDF'}
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -3023,7 +3147,13 @@ export default function App() {
         )}
 
         {view !== 'mat' && selectedSchool && selectedDomain === 'report-builder' && (
-          <ReportBuilder schoolName={schoolName} allSubDomains={allSubDomains} />
+          <ReportBuilder
+            schoolName={schoolName}
+            allSubDomains={allSubDomains}
+            supabase={supabase}
+            school={selectedSchool}
+            schoolCtx={schoolCtx}
+          />
         )}
 
         {view !== 'mat' && selectedSchool && selectedDomain && selectedDomain !== 'analytics' && selectedDomain !== 'report-builder' && (
