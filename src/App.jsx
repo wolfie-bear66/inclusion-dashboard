@@ -2710,7 +2710,7 @@ export default function App() {
   // trailing-slash normalisations (/demo/) added by Vercel or mobile browsers.
   const pathname = pathnameRef.current
 
-  console.log('[App routing] evaluating — pathname:', pathname, '| demoEntry:', sessionStorage.getItem('demoEntry'), '| session:', !!session, '| authLoading:', authLoading, '| userRole:', userRole)
+  console.log('[App routing] evaluating — pathname:', pathname, '| demoEntry:', sessionStorage.getItem('demoEntry'), '| session:', !!session, '| authLoading:', authLoading, '| userRole:', userRole, '| selectedSchool:', selectedSchool)
 
   if (pathname.startsWith('/demo')) {
     return <DemoAutoLogin />
