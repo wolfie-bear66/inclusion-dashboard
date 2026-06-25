@@ -100,6 +100,7 @@ Deno.serve(async (req) => {
 
   // Step 5: insert profile — soft failure so invite success is still communicated
   try {
+    console.log('Attempting profile insert with:', { id: userId, first_name, last_name, job_title, school_id })
     const { error: profileError } = await admin.from('profiles').insert({
       id:         userId,
       school_id,
@@ -117,7 +118,7 @@ Deno.serve(async (req) => {
       welcomed: false,
     })
     if (profileError) {
-      console.error('Failed at step 5 (profile insert):', profileError.message)
+      console.error('Profile insert error:', JSON.stringify(profileError, null, 2))
       // Invite was already sent — return success with a profileError flag so the
       // frontend can show a tailored message rather than a generic error.
       return new Response(JSON.stringify({ success: true, profileError: profileError.message }), {
