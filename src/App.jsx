@@ -2052,6 +2052,7 @@ export default function App() {
   const [loginPassword, setLoginPassword] = useState('')
   const [loginError, setLoginError] = useState(null)
   const [loginLoading, setLoginLoading] = useState(false)
+  const [forgotStatus, setForgotStatus] = useState(null) // null | 'success' | 'error' | 'no-email'
 
   const [domains, setDomains] = useState([])
   const [selectedSchool, setSelectedSchool] = useState('')
@@ -2469,6 +2470,16 @@ export default function App() {
     setDraft(prev => ({ ...prev, [field]: value }))
   }
 
+  async function handleForgotPassword() {
+    if (!loginEmail) {
+      setForgotStatus('no-email')
+      return
+    }
+    setForgotStatus(null)
+    const { error } = await supabase.auth.resetPasswordForEmail(loginEmail)
+    setForgotStatus(error ? 'error' : 'success')
+  }
+
   async function handleLogin(e) {
     e.preventDefault()
     setLoginLoading(true)
@@ -2790,6 +2801,7 @@ export default function App() {
   if (!session) {
     return (
       <div className="login-page">
+        <a href="/" className="login-wordmark">Inclusion Dashboard</a>
         <div className="login-card">
           <div className="login-panel login-panel--signin">
             <h1 className="login-title">Log in to your school's Inclusion Dashboard</h1>
@@ -2816,6 +2828,18 @@ export default function App() {
                   onChange={e => setLoginPassword(e.target.value)}
                 />
               </div>
+              <div style={{ textAlign: 'right', marginTop: '0.25rem' }}>
+                <button
+                  type="button"
+                  className="login-forgot"
+                  onClick={handleForgotPassword}
+                >
+                  Forgot password?
+                </button>
+              </div>
+              {forgotStatus === 'no-email' && <p className="login-forgot-msg login-forgot-msg--error">Please enter your email address first.</p>}
+              {forgotStatus === 'success' && <p className="login-forgot-msg login-forgot-msg--success">Check your inbox — we&apos;ve sent a password reset link.</p>}
+              {forgotStatus === 'error' && <p className="login-forgot-msg login-forgot-msg--error">Something went wrong. Please try again.</p>}
               {loginError && <p className="login-error">{loginError}</p>}
               <button type="submit" className="login-btn" disabled={loginLoading}>
                 {loginLoading ? 'Signing in…' : 'Sign in'}
