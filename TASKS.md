@@ -370,7 +370,7 @@ Never rewrite existing query logic in same session as any migration.
 
 - [ ] **Companion product decisions** — use early customer conversations to decide which of Cove, Revision Hub, and six-week reflective diary to formalise as ecosystem package.
 
-- [ ] **Founder admin view (private)** — protected route accessible only to Stuart's UUID (`9c539de8-0ddf-43d7-974b-e55406966bb3`). Shows per-school usage summary table: total evidence entries, entries in last 30 days, last entry date, domain coverage %, review dates set, overdue reviews, and report exports. Deferred until 3+ pilot schools are active. SQL queries drafted and ready.
+- [x] **Founder admin view (private)** — `/admin` route built in `src/pages/AdminView.jsx`. UUID guard on mount redirects non-founders to `/`. Table shows per school: MAT, total evidence entries, entries in last 30 days, last entry date, team members, unassigned points, domain coverage % (colour-coded cells), reports (n/a). Separate Supabase queries assembled in JS. Session 24.
 
 ---
 

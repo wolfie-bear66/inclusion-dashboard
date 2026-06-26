@@ -7,6 +7,7 @@ import PrivacyPage from './pages/PrivacyPage'
 import TeamPage from './pages/TeamPage'
 import OnboardingPrompt from './components/OnboardingPrompt'
 import SetPasswordPage from './pages/SetPasswordPage'
+import AdminView from './pages/AdminView'
 import './App.css'
 import { generateReport } from './generateReport'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts'
@@ -2733,6 +2734,7 @@ export default function App() {
   // Public static pages — no auth required
   if (pathname === '/about') return <AboutPage />
   if (pathname === '/privacy') return <PrivacyPage />
+  if (pathname === '/admin') return <AdminView />
 
   // Invite-link landing page — also rendered when password_set flag is false (see profile fetch)
   if (pathname.startsWith('/set-password')) return <SetPasswordPage />
