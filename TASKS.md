@@ -112,7 +112,7 @@ Last updated: 25 June 2026 (Session 23 — Invite form full details + auto profi
 - [ ] **Replace placeholder testimonial quotes with real ones when available**
 - [ ] **Verify demo routing fix for returning users** — Test: (1) sign in as demo account via normal login, stay signed in, (2) navigate to landing page, (3) click "Try the demo — MAT view first →", (4) confirm browser console shows `[DemoAutoLogin]` sign-out + sign-in logs and user lands at `/mat-dashboard`. Browser console logs are now in place for this trace.
 - [ ] **Verify demo mode read-only banner displays correctly on mobile** — amber banner ("You're viewing a demo school. Changes won't be saved.") shown when `isDemoMode && readOnly`. Test on iOS Safari and Android Chrome.
-- [ ] **Suppress writes in demo mode** — `handleStatusChange` and `handleModalSave` in `App.jsx` currently still write to Supabase when `isDemoMode` is true. TODO: add `if (isDemoMode) return` guard at the start of each save handler. Currently only the read-only banner is shown; writes are not suppressed. Flag: `isDemoMode = sessionStorage.getItem('isDemoMode') === 'true'`.
+- [x] **Suppress writes in demo mode** — `if (isDemoMode) return` guard added as the first line of both `handleStatusChange` and `handleModalSave` in `App.jsx`. Verified no guard was previously present. Debug console logs in `MATDashboard.jsx` confirmed already removed (no `console.log` calls found). Session 24.
 
 ### Analytics
 

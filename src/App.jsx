@@ -2611,6 +2611,7 @@ export default function App() {
   }
 
   async function handleStatusChange(ppId, status) {
+    if (isDemoMode) return
     const currentEntry = entries[ppId] ?? {}
     setEntries(prev => ({ ...prev, [ppId]: { ...currentEntry, status } }))
     setAllStatuses(prev => ({ ...prev, [ppId]: status }))
@@ -2632,6 +2633,7 @@ export default function App() {
   }
 
   async function handleModalSave() {
+    if (isDemoMode) return
     if (!selectedSchool || !modalPoint) return
     setModalSaving(true)
     setModalSaveMsg(null)
