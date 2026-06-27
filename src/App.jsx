@@ -906,7 +906,7 @@ function DomainReadiness({ readinessData, upcomingReviews }) {
 
       {upcomingReviews.length > 0 && (
         <ACard>
-          <ASectionTitle sub="Evidence entries with a review due within the next 60 days">Compliance Forecast</ASectionTitle>
+          <ASectionTitle sub="Evidence entries with an evaluate &amp; sustain date within the next 60 days">Compliance Forecast</ASectionTitle>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {upcomingReviews.map((ev, i) => {
               const bg  = ev.urgency === 'urgent' ? 'rgba(234,67,53,0.08)' : ev.urgency === 'soon' ? 'rgba(212,117,26,0.10)' : '#F7F8FA'
@@ -2169,6 +2169,18 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, on
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', flexWrap: 'wrap' }}>
         <span style={{ flex: 1, minWidth: 160, fontSize: 13, color: '#1A202C' }}>{pp.label}</span>
+        {pp.universal_or_targeted === 'universal' && (
+          <span style={{
+            fontSize: '0.68rem', fontWeight: 600, padding: '2px 8px', borderRadius: 20,
+            background: '#DBEAFE', color: '#1E40AF', whiteSpace: 'nowrap', flexShrink: 0,
+          }}>Universal</span>
+        )}
+        {pp.universal_or_targeted === 'targeted' && (
+          <span style={{
+            fontSize: '0.68rem', fontWeight: 600, padding: '2px 8px', borderRadius: 20,
+            background: '#EDE9FE', color: '#5B21B6', whiteSpace: 'nowrap', flexShrink: 0,
+          }}>Targeted</span>
+        )}
         {evidenceList.length > 0 && (
           <span className="evidence-count-badge" title={`${evidenceList.length} evidence ${evidenceList.length === 1 ? 'entry' : 'entries'}`}>
             {evidenceList.length}
@@ -2335,6 +2347,7 @@ export default function App() {
   const [expandedCatDomains, setExpandedCatDomains] = useState(new Set())
 
   const [flaggedPoints, setFlaggedPoints] = useState(new Set())
+  const [utFilter, setUtFilter] = useState('all')  // 'all' | 'universal' | 'targeted'
 
   // Mobile sidebar
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
@@ -2646,15 +2659,17 @@ export default function App() {
       setEntries({})
       setEvidenceEntries({})
       setExpandedSDs(new Set())
+      setUtFilter('all')
       return
     }
 
     setLoading(true)
+    setUtFilter('all')
 
     Promise.all([
       supabase
         .from('sub_domains')
-        .select('id, name, provision_points(id, label, display_order)')
+        .select('id, name, provision_points(id, label, display_order, universal_or_targeted)')
         .eq('domain_id', selectedDomain)
         .order('name'),
       supabase
@@ -3593,7 +3608,7 @@ export default function App() {
                     display: 'flex', flexDirection: 'column', gap: 10,
                   }}>
                     <p style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1A202C' }}>
-                      {reviewsDueCount} review{reviewsDueCount !== 1 ? 's' : ''} due
+                      Evaluate &amp; Sustain — due this term
                     </p>
                     <div style={{ overflowY: 'auto', maxHeight: 210, display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {filteredReviews.map((r, i) => {
@@ -3761,11 +3776,28 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Universal / Targeted filter */}
+                <div style={{ display: 'flex', gap: 4, background: '#E2E8F0', borderRadius: 8, padding: 3, alignSelf: 'flex-start', marginBottom: 12 }}>
+                  {[['all', 'All'], ['universal', 'Universal'], ['targeted', 'Targeted']].map(([val, label]) => (
+                    <button key={val} type="button" onClick={() => setUtFilter(val)} style={{
+                      padding: '5px 14px', border: 'none', borderRadius: 5, fontSize: '0.78rem', cursor: 'pointer',
+                      fontFamily: 'inherit', fontWeight: utFilter === val ? 600 : 400,
+                      color:      utFilter === val ? '#1A202C' : '#64748b',
+                      background: utFilter === val ? '#fff' : 'transparent',
+                      boxShadow:  utFilter === val ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+                      transition: 'all 0.15s',
+                    }}>{label}</button>
+                  ))}
+                </div>
+
                 {/* Sub-domain collapsible sections */}
                 {subDomains.map(sd => {
                   const isExpanded = expandedSDs.has(sd.id)
-                  const pps = sd.provision_points
+                  const pps = utFilter === 'all'
+                    ? sd.provision_points
+                    : sd.provision_points.filter(p => p.universal_or_targeted === utFilter)
                   const ppCount = pps.length
+                  if (ppCount === 0) return null
                   const sdInPlace   = pps.filter(p => entries[p.id]?.status === 'in_place').length
                   const sdInProg    = pps.filter(p => entries[p.id]?.status === 'in_progress').length
                   const sdUntouched = pps.filter(p => !entries[p.id]?.status).length
@@ -3847,6 +3879,20 @@ export default function App() {
               <h2 className="modal-title">{modalPoint.label}</h2>
               <button type="button" className="modal-close" onClick={closeModal} aria-label="Close">✕</button>
             </div>
+
+            {modalPoint.universal_or_targeted && (
+              <div style={{ padding: '8px 20px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Provision type</span>
+                <span style={{
+                  fontSize: '0.72rem', fontWeight: 600, padding: '2px 10px', borderRadius: 20,
+                  background: modalPoint.universal_or_targeted === 'universal' ? '#DBEAFE' : '#EDE9FE',
+                  color:      modalPoint.universal_or_targeted === 'universal' ? '#1E40AF' : '#5B21B6',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {modalPoint.universal_or_targeted === 'universal' ? 'Universal' : 'Targeted'}
+                </span>
+              </div>
+            )}
 
             <div className="modal-body">
               <div className="detail-grid">
@@ -4000,15 +4046,15 @@ export default function App() {
                             <input type="date" value={draft.date_started ?? ''} onChange={e => handleDraftChange('date_started', e.target.value || null)} />
                           </div>
                           <div className="df df--half">
-                            <label>Date Last Reviewed</label>
+                            <label>Date Last Evaluated &amp; Sustained</label>
                             <input type="date" value={draft.date_last_reviewed ?? ''} onChange={e => handleDraftChange('date_last_reviewed', e.target.value || null)} />
                           </div>
                           <div className="df df--half">
-                            <label>Next Review Due</label>
+                            <label>Next Evaluate &amp; Sustain Date</label>
                             <input type="date" value={draft.next_review_due ?? ''} onChange={e => handleDraftChange('next_review_due', e.target.value || null)} />
                           </div>
                           <div className="df df--half">
-                            <label>Review Cycle</label>
+                            <label>Evaluate &amp; Sustain Cycle</label>
                             <select value={draft.review_cycle ?? ''} onChange={e => handleDraftChange('review_cycle', e.target.value)}>
                               <option value="">—</option>
                               {REVIEW_CYCLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
