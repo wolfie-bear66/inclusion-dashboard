@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 25 June 2026 (Session 23 — Invite form full details + auto profile creation)
+Last updated: 27 June 2026 (Session 25 — Principle Coverage analytics tab + Inclusion Strategy PDF export)
 
 ---
 
@@ -371,6 +371,8 @@ Never rewrite existing query logic in same session as any migration.
 - [ ] **Companion product decisions** — use early customer conversations to decide which of Cove, Revision Hub, and six-week reflective diary to formalise as ecosystem package.
 
 - [x] **Founder admin view (private)** — `/admin` route built in `src/pages/AdminView.jsx`. UUID guard on mount redirects non-founders to `/`. Table shows per school: MAT, total evidence entries, entries in last 30 days, last entry date, team members, unassigned points, domain coverage % (colour-coded cells), reports (n/a). Separate Supabase queries assembled in JS. Session 24.
+- [x] **Session 25 — Principle Coverage analytics tab** — New "Principle Coverage" tab added to Analytics after Domain Readiness. Horizontal stacked bar chart (Recharts) shows RAG breakdown per DfE principle. Summary table below chart with totals and % complete. Data: fetches all active provision_points with principle column; cross-joins with entries status map; points with no entry count as not_in_place. PRINCIPLES constant defines fixed order of 7 principles. RAG_COLOURS constant added at module level.
+- [x] **Session 25 — Inclusion Strategy PDF export** — New `generateInclusionStrategy` export in `generateReport.js`. Portrait A4 layout. Cover page (navy background, school name, "Inclusion Strategy [academic year]", date generated). Per-principle sections: principle heading band, "X of N provision points in place" sub-heading, each in-place/in-progress point with status badge, label, entries.what, entries.evidence_notes. Excludes not_in_place points. Report Builder now shows two option cards at top: "Working Report" (existing behaviour) and "Inclusion Strategy" (new). Sticky bar description updates to reflect selected type.
 
 ---
 

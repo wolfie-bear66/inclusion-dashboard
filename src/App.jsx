@@ -9,7 +9,7 @@ import OnboardingPrompt from './components/OnboardingPrompt'
 import SetPasswordPage from './pages/SetPasswordPage'
 import AdminView from './pages/AdminView'
 import './App.css'
-import { generateReport } from './generateReport'
+import { generateReport, generateInclusionStrategy } from './generateReport'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts'
 
 // ── Invite-link detection ─────────────────────────────────────────────
@@ -157,11 +157,24 @@ const FUNDING_LABELS_MAP = {
 }
 
 const ANALYTICS_TABS = [
-  { id: 'readiness', label: 'Domain Readiness' },
-  { id: 'equity',    label: 'Provision Depth' },
-  { id: 'funding',   label: 'Funding & Cost' },
-  { id: 'outcomes',  label: 'Outcomes & Impact' },
+  { id: 'readiness',  label: 'Domain Readiness' },
+  { id: 'principle',  label: 'Principle Coverage' },
+  { id: 'equity',     label: 'Provision Depth' },
+  { id: 'funding',    label: 'Funding & Cost' },
+  { id: 'outcomes',   label: 'Outcomes & Impact' },
 ]
+
+const PRINCIPLES = [
+  'Leadership & Governance',
+  'Early & Evidence-Based Support',
+  'High Quality Adaptive Teaching',
+  'Enriching Provision',
+  'Safe & Respectful Culture',
+  'Family & Wider Partnerships',
+  'Accessible & Inclusive Environments',
+]
+
+const RAG_COLOURS = { in_place: '#257A3B', in_progress: '#D4751A', not_in_place: '#EA4335' }
 
 // ── Sidebar domain colours (spec-provided) ────────────────────────────
 const SIDEBAR_DOMAIN_COLOURS = {
@@ -460,6 +473,7 @@ function RBChartToggle({ options, value, onChange }) {
 }
 
 function ReportBuilder({ schoolName = '', allSubDomains = [], supabase: sb, school, schoolCtx = {} }) {
+  const [reportType,      setReportType]      = useState('working')
   const [includeEquity,   setIncludeEquity]   = useState(true)
   const [equityChart,     setEquityChart]     = useState('table')
   const [includeFunding,  setIncludeFunding]  = useState(true)
@@ -505,6 +519,25 @@ function ReportBuilder({ schoolName = '', allSubDomains = [], supabase: sb, scho
     setGenerating(true)
     setGenError(null)
     try {
+      if (reportType === 'strategy') {
+        const [entriesRes, ppsRes] = await Promise.all([
+          sb.from('entries')
+            .select('id, provision_point_id, status, what, evidence_notes')
+            .eq('school_id', school),
+          sb.from('provision_points')
+            .select('id, label, principle, display_order, sub_domain_id, sub_domains(name, domains(name))')
+            .eq('active', true),
+        ])
+        if (entriesRes.error) throw new Error(`Entries fetch failed: ${entriesRes.error.message}`)
+        if (ppsRes.error)     throw new Error(`Provision points fetch failed: ${ppsRes.error.message}`)
+        generateInclusionStrategy({
+          schoolName,
+          allEntries: entriesRes.data ?? [],
+          activePPs:  ppsRes.data ?? [],
+        })
+        return
+      }
+
       const [entriesRes, domainsRes] = await Promise.all([
         sb.from('entries')
           .select(`
@@ -525,8 +558,6 @@ function ReportBuilder({ schoolName = '', allSubDomains = [], supabase: sb, scho
 
       const analyticsEntries = entriesRes.data ?? []
       const fetchedDomains   = domainsRes.data ?? []
-
-      console.log('[ReportBuilder] fetched entries:', analyticsEntries.length, '| domains:', fetchedDomains.length)
 
       // Domain readiness
       const readinessData = fetchedDomains.map((d, idx) => {
@@ -633,6 +664,33 @@ function ReportBuilder({ schoolName = '', allSubDomains = [], supabase: sb, scho
       <div style={{ paddingBottom: 16, borderBottom: '1px solid #e2e8f0', marginBottom: 20 }}>
         <h1 style={{ fontSize: 15, fontWeight: 500, color: '#1A202C', marginBottom: 4 }}>Report builder</h1>
         <p style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5 }}>Choose what to include and how to present it. School context and domain readiness are always included.</p>
+      </div>
+
+      {/* Report type selector */}
+      <div style={{ marginBottom: 20 }}>
+        <p style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Report type</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {[
+            { id: 'working', icon: 'ti-layout-list', title: 'Working Report', desc: 'Provision points grouped by domain and sub-domain. Includes equity, funding, and outcomes.' },
+            { id: 'strategy', icon: 'ti-certificate', title: 'Inclusion Strategy', desc: 'Grouped by DfE Principle of Inclusion. Shows in-place and in-progress evidence for each principle.' },
+          ].map(opt => {
+            const active = reportType === opt.id
+            return (
+              <button key={opt.id} type="button" onClick={() => setReportType(opt.id)} style={{
+                textAlign: 'left', padding: '14px 16px', border: `2px solid ${active ? '#1B365D' : '#e2e8f0'}`,
+                borderRadius: 10, cursor: 'pointer', background: active ? 'rgba(27,54,93,0.05)' : '#fff',
+                fontFamily: 'inherit', transition: 'all 0.15s',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <i className={`ti ${opt.icon}`} style={{ color: active ? '#1B365D' : '#94a3b8', fontSize: '1rem' }} />
+                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: active ? '#1B365D' : '#1A202C' }}>{opt.title}</span>
+                  {active && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', fontWeight: 600, background: '#1B365D', color: '#fff', padding: '2px 8px', borderRadius: 20 }}>Selected</span>}
+                </div>
+                <p style={{ fontSize: '0.75rem', color: '#64748b', lineHeight: 1.4, margin: 0 }}>{opt.desc}</p>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Section cards */}
@@ -782,7 +840,9 @@ function ReportBuilder({ schoolName = '', allSubDomains = [], supabase: sb, scho
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
           <p style={{ fontSize: '0.8rem', color: '#64748b', flex: 1, minWidth: 0 }}>
-            Includes {includedSections.length} section{includedSections.length !== 1 ? 's' : ''} — {includedSections.join(', ')}
+            {reportType === 'strategy'
+              ? 'Inclusion Strategy — 7 DfE principles, in-place and in-progress points only'
+              : `Includes ${includedSections.length} section${includedSections.length !== 1 ? 's' : ''} — ${includedSections.join(', ')}`}
           </p>
           <button type="button" onClick={handleGeneratePdf} disabled={generating} style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -1701,9 +1761,103 @@ function SchoolContextPanel({ schoolCtx, onSave, ctxLoading }) {
   )
 }
 
+function PrincipleCoverage({ principleData }) {
+  const LABEL_SHORT = {
+    'Leadership & Governance':          'Leadership',
+    'Early & Evidence-Based Support':   'Early Support',
+    'High Quality Adaptive Teaching':   'Adaptive Teaching',
+    'Enriching Provision':              'Enriching Provision',
+    'Safe & Respectful Culture':        'Safe Culture',
+    'Family & Wider Partnerships':      'Family Partnerships',
+    'Accessible & Inclusive Environments': 'Accessible Envs',
+  }
+
+  const chartData = principleData.map(p => ({
+    name: LABEL_SHORT[p.principle] ?? p.principle,
+    fullName: p.principle,
+    in_place: p.inPlace,
+    in_progress: p.inProgress,
+    not_in_place: p.notInPlace,
+    total: p.total,
+  }))
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <ACard>
+        <ASectionTitle sub="RAG status breakdown for each of the 7 DfE Principles of Inclusion">Principle Coverage</ASectionTitle>
+        <div style={{ width: '100%', overflowX: 'auto' }}>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 20, left: 0, bottom: 4 }}>
+              <XAxis type="number" tick={{ fontSize: 11 }} />
+              <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11 }} />
+              <Tooltip
+                formatter={(value, name) => [value, STATUS_LABELS[name] ?? name]}
+                contentStyle={{ fontSize: 12 }}
+              />
+              <Bar dataKey="in_place"    name="in_place"    stackId="a" fill={RAG_COLOURS.in_place}    />
+              <Bar dataKey="in_progress" name="in_progress" stackId="a" fill={RAG_COLOURS.in_progress} />
+              <Bar dataKey="not_in_place" name="not_in_place" stackId="a" fill={RAG_COLOURS.not_in_place} radius={[0,3,3,0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Legend */}
+        <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
+          {[['in_place','In Place'],['in_progress','In Progress'],['not_in_place','Not In Place']].map(([key, label]) => (
+            <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 12, height: 12, borderRadius: 2, background: RAG_COLOURS[key], display: 'inline-block' }} />
+              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{label}</span>
+            </div>
+          ))}
+        </div>
+      </ACard>
+
+      <ACard>
+        <ASectionTitle sub="Points in place, in progress, not in place, and percentage complete per principle">Summary by Principle</ASectionTitle>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #E2E8F0' }}>
+                <th style={{ textAlign: 'left', padding: '8px 10px', color: '#64748b', fontWeight: 600 }}>Principle</th>
+                <th style={{ textAlign: 'center', padding: '8px 10px', color: '#64748b', fontWeight: 600 }}>Total</th>
+                <th style={{ textAlign: 'center', padding: '8px 10px', color: RAG_COLOURS.in_place, fontWeight: 600 }}>In Place</th>
+                <th style={{ textAlign: 'center', padding: '8px 10px', color: RAG_COLOURS.in_progress, fontWeight: 600 }}>In Progress</th>
+                <th style={{ textAlign: 'center', padding: '8px 10px', color: RAG_COLOURS.not_in_place, fontWeight: 600 }}>Not In Place</th>
+                <th style={{ textAlign: 'center', padding: '8px 10px', color: '#1B365D', fontWeight: 600 }}>% Complete</th>
+              </tr>
+            </thead>
+            <tbody>
+              {principleData.map((p, i) => {
+                const pct = p.total ? Math.round((p.inPlace / p.total) * 100) : 0
+                return (
+                  <tr key={i} style={{ borderBottom: '1px solid #F1F5F9', background: i % 2 === 0 ? '#fff' : '#F7F8FA' }}>
+                    <td style={{ padding: '9px 10px', fontWeight: 500, color: '#1A202C' }}>{p.principle}</td>
+                    <td style={{ padding: '9px 10px', textAlign: 'center', color: '#64748b' }}>{p.total}</td>
+                    <td style={{ padding: '9px 10px', textAlign: 'center', color: RAG_COLOURS.in_place, fontWeight: 600 }}>{p.inPlace}</td>
+                    <td style={{ padding: '9px 10px', textAlign: 'center', color: RAG_COLOURS.in_progress, fontWeight: 600 }}>{p.inProgress}</td>
+                    <td style={{ padding: '9px 10px', textAlign: 'center', color: RAG_COLOURS.not_in_place, fontWeight: 600 }}>{p.notInPlace}</td>
+                    <td style={{ padding: '9px 10px', textAlign: 'center' }}>
+                      <span style={{
+                        background: pct >= 70 ? 'rgba(37,122,59,0.12)' : pct >= 40 ? 'rgba(212,117,26,0.12)' : 'rgba(234,67,53,0.10)',
+                        color: pct >= 70 ? RAG_COLOURS.in_place : pct >= 40 ? RAG_COLOURS.in_progress : RAG_COLOURS.not_in_place,
+                        padding: '2px 8px', borderRadius: 20, fontWeight: 700, fontSize: '0.78rem',
+                      }}>{pct}%</span>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </ACard>
+    </div>
+  )
+}
+
 function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = null, schoolCtx, onSave, ctxLoading, onNavigateToCategory }) {
   const [analyticsEntries, setAnalyticsEntries] = useState([])
   const [domains, setDomains] = useState([])
+  const [allActivePPs, setAllActivePPs] = useState([])
   const [aLoading, setALoading] = useState(true)
   const [activeTab, setActiveTab] = useState('readiness')
 
@@ -1726,11 +1880,13 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
         `)
         .eq('school_id', school),
       sb.from('domains').select('id, name, display_order').order('display_order'),
-    ]).then(([entriesRes, domainsRes]) => {
+      sb.from('provision_points').select('id, principle, display_order').eq('active', true),
+    ]).then(([entriesRes, domainsRes, ppsRes]) => {
       if (entriesRes.error) console.error('Analytics entries error:', entriesRes.error)
       if (domainsRes.error) console.error('Analytics domains error:', domainsRes.error)
       setAnalyticsEntries(entriesRes.data ?? [])
       setDomains(domainsRes.data ?? [])
+      setAllActivePPs(ppsRes.data ?? [])
       setALoading(false)
     })
   }, [school])
@@ -1747,6 +1903,16 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
       notInPlace: de.filter(e => e.status === 'not_in_place').length,
       total: de.length,
     }
+  })
+
+  // Principle Coverage — join active PPs with entry statuses
+  const entryStatusMap = Object.fromEntries(analyticsEntries.map(e => [e.provision_point_id, e.status]))
+  const principleData = PRINCIPLES.map(principle => {
+    const pps = allActivePPs.filter(pp => pp.principle === principle)
+    const inPlace    = pps.filter(pp => entryStatusMap[pp.id] === 'in_place').length
+    const inProgress = pps.filter(pp => entryStatusMap[pp.id] === 'in_progress').length
+    const notInPlace = pps.filter(pp => !entryStatusMap[pp.id] || entryStatusMap[pp.id] === 'not_in_place').length
+    return { principle, total: pps.length, inPlace, inProgress, notInPlace }
   })
 
   // Flatten all evidence entries with domain context
@@ -1883,10 +2049,11 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
         </div>
       </div>
 
-      {activeTab === 'readiness' && <DomainReadiness readinessData={readinessData} upcomingReviews={upcomingReviews} />}
-      {activeTab === 'equity'    && <ProvisionDepth analyticsEntries={analyticsEntries} domains={domains} onNavigateToCategory={onNavigateToCategory} />}
-      {activeTab === 'funding'   && <FundingCost fundingDomainData={fundingDomainData} fundingSourceData={fundingSourceData} totalCost={totalCost} schoolCtx={schoolCtx} />}
-      {activeTab === 'outcomes'  && <OutcomesImpact allEvidence={allEvidence} domains={domains} analyticsEntries={analyticsEntries} />}
+      {activeTab === 'readiness'  && <DomainReadiness readinessData={readinessData} upcomingReviews={upcomingReviews} />}
+      {activeTab === 'principle'  && <PrincipleCoverage principleData={principleData} />}
+      {activeTab === 'equity'     && <ProvisionDepth analyticsEntries={analyticsEntries} domains={domains} onNavigateToCategory={onNavigateToCategory} />}
+      {activeTab === 'funding'    && <FundingCost fundingDomainData={fundingDomainData} fundingSourceData={fundingSourceData} totalCost={totalCost} schoolCtx={schoolCtx} />}
+      {activeTab === 'outcomes'   && <OutcomesImpact allEvidence={allEvidence} domains={domains} analyticsEntries={analyticsEntries} />}
     </div>
   )
 }

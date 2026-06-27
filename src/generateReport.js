@@ -728,3 +728,206 @@ export function generateReport({
 
   doc.save(`Inclusion_Report_${safeName}_${ay.replace('/', '-')}.pdf`)
 }
+
+// ── Inclusion Strategy PDF export ─────────────────────────────────────
+const PRINCIPLES = [
+  'Leadership & Governance',
+  'Early & Evidence-Based Support',
+  'High Quality Adaptive Teaching',
+  'Enriching Provision',
+  'Safe & Respectful Culture',
+  'Family & Wider Partnerships',
+  'Accessible & Inclusive Environments',
+]
+
+const IS_GREEN = [37, 122, 59]
+const IS_AMBER = [212, 117, 26]
+const IS_RED   = [234, 67, 53]
+
+function statusColour(status) {
+  if (status === 'in_place')    return IS_GREEN
+  if (status === 'in_progress') return IS_AMBER
+  return IS_RED
+}
+
+function statusLabel(status) {
+  if (status === 'in_place')    return 'In Place'
+  if (status === 'in_progress') return 'In Progress'
+  return 'Not In Place'
+}
+
+function applyStrategyHeadersFooters(doc, schoolName, dateStr, ay) {
+  const n = doc.getNumberOfPages()
+  for (let i = 1; i <= n; i++) {
+    doc.setPage(i)
+    if (i === 1) continue  // cover page has its own layout
+    doc.setFillColor(...NAVY)
+    doc.rect(0, 0, 210, 10, 'F')
+    doc.setTextColor(...WHITE)
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'bold')
+    doc.text(schoolName, 14, 6.5)
+    doc.setFont('helvetica', 'normal')
+    doc.text(`Inclusion Strategy ${ay}`, 196, 6.5, { align: 'right' })
+    doc.setFillColor(...NAVY)
+    doc.rect(0, 287, 210, 10, 'F')
+    doc.setTextColor(...WHITE)
+    doc.setFontSize(7)
+    doc.text('DfE 7 Principles of Inclusion', 14, 293)
+    doc.text(`Page ${i} of ${n}`, 196, 293, { align: 'right' })
+  }
+}
+
+export function generateInclusionStrategy({ schoolName = '', allEntries = [], activePPs = [] }) {
+  const doc     = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+  const dateStr = fmt()
+  const ay      = academicYear()
+  const safeName = (schoolName || 'School').replace(/[^a-z0-9]/gi, '_')
+
+  // ── Cover page ──────────────────────────────────────────────────────
+  doc.setFillColor(...NAVY)
+  doc.rect(0, 0, 210, 297, 'F')
+
+  doc.setTextColor(...WHITE)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(28)
+  doc.text('Inclusion Strategy', 105, 110, { align: 'center' })
+  doc.setFontSize(20)
+  doc.text(ay, 105, 125, { align: 'center' })
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(14)
+  doc.text(schoolName || 'School', 105, 150, { align: 'center' })
+
+  doc.setFontSize(10)
+  doc.setTextColor(180, 200, 220)
+  doc.text(`Generated ${dateStr}`, 105, 165, { align: 'center' })
+
+  doc.setFontSize(8)
+  doc.text('Based on the DfE 7 Principles of Inclusion', 105, 280, { align: 'center' })
+
+  // ── Build entry status map ──────────────────────────────────────────
+  const entryMap = {}
+  for (const e of allEntries) {
+    entryMap[e.provision_point_id] = e
+  }
+
+  const ML_P  = 14
+  const MAX_YP = 275
+  const CW_P   = 182
+
+  // ── One page per principle ──────────────────────────────────────────
+  for (const principle of PRINCIPLES) {
+    const pps = activePPs
+      .filter(pp => pp.principle === principle)
+      .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))
+
+    const includedPPs = pps.filter(pp => {
+      const e = entryMap[pp.id]
+      return e && (e.status === 'in_place' || e.status === 'in_progress')
+    })
+
+    const inPlaceCount = pps.filter(pp => entryMap[pp.id]?.status === 'in_place').length
+
+    doc.addPage()
+    let y = 14
+
+    // Principle heading band
+    doc.setFillColor(...NAVY)
+    doc.rect(0, y, 210, 12, 'F')
+    doc.setTextColor(...WHITE)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.text(principle, ML_P, y + 8)
+    y += 12
+
+    // Sub-heading: in place count
+    doc.setFillColor(240, 244, 248)
+    doc.rect(0, y, 210, 9, 'F')
+    doc.setTextColor(...DARK)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.text(`${inPlaceCount} of ${pps.length} provision points in place`, ML_P, y + 6)
+    y += 9 + 6
+
+    if (includedPPs.length === 0) {
+      doc.setTextColor(...MID)
+      doc.setFontSize(9)
+      doc.text('No provision points currently in place or in progress for this principle.', ML_P, y)
+      continue
+    }
+
+    // Group by domain then sub-domain for secondary sort — use label display_order already applied
+    for (const pp of includedPPs) {
+      const entry  = entryMap[pp.id]
+      const status = entry?.status ?? 'not_in_place'
+      const what   = entry?.what ?? ''
+      const notes  = entry?.evidence_notes ?? ''
+      const label  = pp.label ?? ''
+
+      // Estimate row height
+      const whatLines  = what  ? doc.splitTextToSize(what,  CW_P - 30).length : 0
+      const notesLines = notes ? doc.splitTextToSize(notes, CW_P - 30).length : 0
+      const rowH = 8 + (whatLines + notesLines) * 4.5 + (notes ? 5 : 0) + 6
+
+      if (y + rowH > MAX_YP) {
+        doc.addPage()
+        y = 14
+        // Repeat principle header on continuation pages
+        doc.setFillColor(...NAVY)
+        doc.rect(0, 0, 210, 10, 'F')
+        doc.setTextColor(...WHITE)
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(9)
+        doc.text(`${principle} (continued)`, ML_P, 6.5)
+        y = 14
+      }
+
+      // Row background
+      doc.setFillColor(248, 250, 252)
+      doc.rect(ML_P, y, CW_P, rowH - 2, 'F')
+
+      // Status badge
+      const col = statusColour(status)
+      doc.setFillColor(...col)
+      doc.roundedRect(ML_P, y + 1.5, 22, 5.5, 1.5, 1.5, 'F')
+      doc.setTextColor(...WHITE)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(6.5)
+      doc.text(statusLabel(status), ML_P + 11, y + 5, { align: 'center' })
+
+      // Point label
+      doc.setTextColor(...DARK)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(8.5)
+      doc.text(label, ML_P + 26, y + 5.5)
+      y += 9
+
+      // What is in place
+      if (what) {
+        const lines = doc.splitTextToSize(what, CW_P - 30)
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(8)
+        doc.setTextColor(...DARK)
+        doc.text(lines, ML_P + 26, y)
+        y += lines.length * 4.5
+      }
+
+      // Evidence notes
+      if (notes) {
+        y += 3
+        doc.setFont('helvetica', 'italic')
+        doc.setFontSize(7.5)
+        doc.setTextColor(...MID)
+        const noteLines = doc.splitTextToSize(`Evidence: ${notes}`, CW_P - 30)
+        doc.text(noteLines, ML_P + 26, y)
+        y += noteLines.length * 4.5
+      }
+
+      y += 4
+    }
+  }
+
+  applyStrategyHeadersFooters(doc, schoolName || 'School', dateStr, ay)
+  doc.save(`Inclusion_Strategy_${safeName}_${ay.replace('/', '-')}.pdf`)
+}
