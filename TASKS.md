@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 27 June 2026 (Session 27 — Evaluate & Sustain labelling, Universal/Targeted badges and filter)
+Last updated: 27 June 2026 (Session 28 — Barriers to learning feature — list view, add/edit modal, provision linking)
 
 ---
 
@@ -113,6 +113,7 @@ Last updated: 27 June 2026 (Session 27 — Evaluate & Sustain labelling, Univers
 - [ ] **Verify demo routing fix for returning users** — Test: (1) sign in as demo account via normal login, stay signed in, (2) navigate to landing page, (3) click "Try the demo — MAT view first →", (4) confirm browser console shows `[DemoAutoLogin]` sign-out + sign-in logs and user lands at `/mat-dashboard`. Browser console logs are now in place for this trace.
 - [ ] **Verify demo mode read-only banner displays correctly on mobile** — amber banner ("You're viewing a demo school. Changes won't be saved.") shown when `isDemoMode && readOnly`. Test on iOS Safari and Android Chrome.
 - [x] **Suppress writes in demo mode** — `if (isDemoMode) return` guard added as the first line of both `handleStatusChange` and `handleModalSave` in `App.jsx`. Verified no guard was previously present. Debug console logs in `MATDashboard.jsx` confirmed already removed (no `console.log` calls found). Session 24.
+- [x] **Session 28 — Barriers to learning feature** — `BarriersView` component added to `App.jsx`. Part 1: "Barriers" sidebar nav item (ti-alert-triangle icon) between Domains and Categories. Part 2: list view with header, domain/status/group filter bar, barrier cards (domain colour left border, description, group tags, scale/source badges, status badge, linked provision points expandable, E&S date, edit/delete buttons), empty states. Part 3: Add/Edit modal with all fields (description, domain, sub-domain, student groups, scale, source, status, actions, linked provision points multi-select with search, date identified, next E&S date). Save: INSERT/UPDATE barrier then DELETE + re-INSERT barrier_provision_links. Routing: `selectedDomain === 'barriers'` guard added to domain view exclusion condition and data fetch guard. 27 June 2026.
 
 ### Analytics
 

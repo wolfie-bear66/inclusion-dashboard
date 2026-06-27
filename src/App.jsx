@@ -385,6 +385,14 @@ function Sidebar({
           )
         })}
 
+        {/* Barriers */}
+        {navBtn({
+          id: 'barriers', icon: 'ti-alert-triangle',
+          label: 'Barriers',
+          active: selectedDomain === 'barriers',
+          onClick: () => { setSelectedDomain('barriers'); setAnalyticsTabRequest(null); onClose() },
+        })}
+
         {/* Divider */}
         <div style={{ height: '0.5px', background: '#e2e8f0', margin: '6px 0' }} />
 
@@ -855,6 +863,687 @@ function ReportBuilder({ schoolName = '', allSubDomains = [], supabase: sb, scho
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Barriers constants ────────────────────────────────────────────────
+const BARRIER_GROUPS = [
+  { key: 'send', label: 'SEND' },
+  { key: 'pp',   label: 'Pupil Premium' },
+  { key: 'eal',  label: 'EAL' },
+  { key: 'fsm',  label: 'FSM' },
+  { key: 'lac',  label: 'LAC' },
+  { key: 'wwc',  label: 'White Working Class' },
+  { key: 'other',label: 'Other' },
+]
+const BARRIER_SCALES = [
+  { value: 'individual',   label: 'Individual' },
+  { value: 'group',        label: 'Group' },
+  { value: 'whole_school', label: 'Whole school' },
+]
+const BARRIER_SOURCES = [
+  { value: 'data_analysis',    label: 'Data analysis' },
+  { value: 'staff_observation',label: 'Staff observation' },
+  { value: 'pupil_voice',      label: 'Pupil voice' },
+  { value: 'family_feedback',  label: 'Family feedback' },
+  { value: 'external_review',  label: 'External review' },
+]
+const BARRIER_STATUSES = [
+  { value: 'active',           label: 'Active' },
+  { value: 'being_addressed',  label: 'Being addressed' },
+  { value: 'resolved',         label: 'Resolved' },
+]
+const BARRIER_STATUS_STYLE = {
+  active:          { bg: 'rgba(234,67,53,0.10)',  color: '#EA4335' },
+  being_addressed: { bg: 'rgba(212,117,26,0.12)', color: '#D4751A' },
+  resolved:        { bg: 'rgba(37,122,59,0.10)',  color: '#257A3B' },
+}
+
+function BarriersView({ school, supabase: sb, domains: domainList }) {
+  const [barriers,      setBarriers]      = useState([])
+  const [subDomainMap,  setSubDomainMap]  = useState({})  // domainId → [{id,name}]
+  const [allEntries,    setAllEntries]    = useState([])  // for linking provision points
+  const [bLoading,      setBLoading]      = useState(true)
+  const [expandedLinks, setExpandedLinks] = useState(new Set())
+
+  // Filters
+  const [filterDomain, setFilterDomain]  = useState('')
+  const [filterStatus, setFilterStatus]  = useState('')
+  const [filterGroup,  setFilterGroup]   = useState('')
+
+  // Modal
+  const [modalOpen,   setModalOpen]   = useState(false)
+  const [editBarrier, setEditBarrier] = useState(null)  // null = add, else barrier row
+  const [form,        setForm]        = useState({})
+  const [formErrors,  setFormErrors]  = useState({})
+  const [saving,      setSaving]      = useState(false)
+  const [saveError,   setSaveError]   = useState(null)
+  const [deleting,    setDeleting]    = useState(false)
+
+  // Modal sub-state
+  const [modalSubDomains, setModalSubDomains] = useState([])
+  const [linkSearch,      setLinkSearch]      = useState('')
+  const [selectedLinks,   setSelectedLinks]   = useState(new Set())  // entry_id set
+
+  // ── Fetch barriers + sub_domains + all entries ─────────────────────
+  useEffect(() => {
+    if (!school) return
+    setBLoading(true)
+    Promise.all([
+      sb.from('barriers')
+        .select(`
+          id, description, domain_id, sub_domain_id, student_groups, scale, source,
+          status, actions, date_identified, next_review_due, created_at,
+          domains(id, name),
+          sub_domains(id, name),
+          barrier_provision_links(id, entry_id, entries(provision_point_id, provision_points(id, label, active)))
+        `)
+        .order('created_at', { ascending: false }),
+      sb.from('sub_domains').select('id, name, domain_id').order('name'),
+      sb.from('entries')
+        .select('id, provision_point_id, status, provision_points(id, label, active, sub_domains(name, domains(name)))')
+        .eq('school_id', school),
+    ]).then(([bRes, sdRes, eRes]) => {
+      if (bRes.error) console.error('Barriers fetch error:', bRes.error)
+      setBarriers(bRes.data ?? [])
+      const sdByDomain = {}
+      for (const sd of sdRes.data ?? []) {
+        ;(sdByDomain[sd.domain_id] = sdByDomain[sd.domain_id] ?? []).push(sd)
+      }
+      setSubDomainMap(sdByDomain)
+      setAllEntries((eRes.data ?? []).filter(e => e.provision_points?.active !== false))
+      setBLoading(false)
+    })
+  }, [school])
+
+  function refresh() {
+    sb.from('barriers')
+      .select(`
+        id, description, domain_id, sub_domain_id, student_groups, scale, source,
+        status, actions, date_identified, next_review_due, created_at,
+        domains(id, name),
+        sub_domains(id, name),
+        barrier_provision_links(id, entry_id, entries(provision_point_id, provision_points(id, label, active)))
+      `)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => setBarriers(data ?? []))
+  }
+
+  // ── Filter application ─────────────────────────────────────────────
+  const filtered = barriers.filter(b => {
+    if (filterDomain && b.domain_id !== filterDomain) return false
+    if (filterStatus && b.status !== filterStatus) return false
+    if (filterGroup  && !b.student_groups?.[filterGroup]) return false
+    return true
+  })
+
+  // ── Modal helpers ──────────────────────────────────────────────────
+  function openAdd() {
+    setEditBarrier(null)
+    setForm({ status: 'active', scale: 'group', student_groups: {} })
+    setFormErrors({})
+    setSaveError(null)
+    setSelectedLinks(new Set())
+    setLinkSearch('')
+    setModalSubDomains([])
+    setModalOpen(true)
+  }
+
+  function openEdit(b) {
+    setEditBarrier(b)
+    setForm({
+      description:    b.description ?? '',
+      domain_id:      b.domain_id ?? '',
+      sub_domain_id:  b.sub_domain_id ?? '',
+      student_groups: b.student_groups ?? {},
+      scale:          b.scale ?? 'group',
+      source:         b.source ?? '',
+      status:         b.status ?? 'active',
+      actions:        b.actions ?? '',
+      date_identified:b.date_identified ?? '',
+      next_review_due:b.next_review_due ?? '',
+    })
+    setFormErrors({})
+    setSaveError(null)
+    const existingLinks = new Set((b.barrier_provision_links ?? []).map(l => l.entry_id))
+    setSelectedLinks(existingLinks)
+    setLinkSearch('')
+    setModalSubDomains(subDomainMap[b.domain_id] ?? [])
+    setModalOpen(true)
+  }
+
+  function closeModal() { setModalOpen(false); setEditBarrier(null); setForm({}) }
+
+  function setField(k, v) {
+    setForm(prev => ({ ...prev, [k]: v }))
+    setFormErrors(prev => ({ ...prev, [k]: undefined }))
+  }
+
+  function onDomainChange(domainId) {
+    setField('domain_id', domainId)
+    setField('sub_domain_id', '')
+    setModalSubDomains(subDomainMap[domainId] ?? [])
+  }
+
+  function toggleGroup(key) {
+    setForm(prev => ({
+      ...prev,
+      student_groups: { ...(prev.student_groups ?? {}), [key]: !(prev.student_groups ?? {})[key] },
+    }))
+  }
+
+  function toggleLink(entryId) {
+    setSelectedLinks(prev => {
+      const next = new Set(prev)
+      if (next.has(entryId)) next.delete(entryId)
+      else next.add(entryId)
+      return next
+    })
+  }
+
+  async function handleSave() {
+    const errors = {}
+    if (!form.description?.trim()) errors.description = 'Description is required'
+    if (!form.domain_id) errors.domain_id = 'Domain is required'
+    if (Object.keys(errors).length) { setFormErrors(errors); return }
+
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const payload = {
+        description:    form.description.trim(),
+        domain_id:      form.domain_id,
+        sub_domain_id:  form.sub_domain_id || null,
+        student_groups: form.student_groups ?? {},
+        scale:          form.scale || null,
+        source:         form.source || null,
+        status:         form.status || 'active',
+        actions:        form.actions?.trim() || null,
+        date_identified:form.date_identified || null,
+        next_review_due:form.next_review_due || null,
+      }
+
+      let barrierId
+      if (editBarrier) {
+        const { error } = await sb.from('barriers').update(payload).eq('id', editBarrier.id)
+        if (error) throw error
+        barrierId = editBarrier.id
+      } else {
+        const { data, error } = await sb.from('barriers').insert({ ...payload }).select('id').single()
+        if (error) throw error
+        barrierId = data.id
+      }
+
+      // Sync links: delete all then reinsert selected
+      await sb.from('barrier_provision_links').delete().eq('barrier_id', barrierId)
+      if (selectedLinks.size > 0) {
+        const linkRows = [...selectedLinks].map(entry_id => ({ barrier_id: barrierId, entry_id }))
+        const { error } = await sb.from('barrier_provision_links').insert(linkRows)
+        if (error) throw error
+      }
+
+      closeModal()
+      refresh()
+    } catch (err) {
+      console.error('Barrier save error:', err)
+      setSaveError('Could not save — please try again.')
+    }
+    setSaving(false)
+  }
+
+  async function handleDelete(barrier) {
+    if (!window.confirm('Delete this barrier? This cannot be undone.')) return
+    setDeleting(true)
+    await sb.from('barriers').delete().eq('id', barrier.id)
+    setDeleting(false)
+    refresh()
+  }
+
+  // ── Linked provision points display ────────────────────────────────
+  function LinkedPoints({ barrier }) {
+    const links = barrier.barrier_provision_links ?? []
+    if (links.length === 0) return (
+      <span style={{ fontSize: '0.75rem', color: '#9CA3AF' }}>No provision points linked</span>
+    )
+    const isExpanded = expandedLinks.has(barrier.id)
+    return (
+      <div>
+        <button type="button"
+          onClick={() => setExpandedLinks(prev => {
+            const next = new Set(prev)
+            if (next.has(barrier.id)) next.delete(barrier.id)
+            else next.add(barrier.id)
+            return next
+          })}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit',
+                   fontSize: '0.75rem', color: '#1B365D', fontWeight: 500 }}>
+          {links.length} provision point{links.length !== 1 ? 's' : ''} linked
+          <i className={`ti ${isExpanded ? 'ti-chevron-up' : 'ti-chevron-down'}`}
+             style={{ fontSize: '0.65rem', marginLeft: 4 }} />
+        </button>
+        {isExpanded && (
+          <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {links.map(l => {
+              const pp = l.entries?.provision_points
+              if (!pp) return null
+              return (
+                <div key={l.id} style={{ fontSize: '0.73rem', color: '#475569',
+                  padding: '3px 8px', background: '#F7F8FA', borderRadius: 5, display: 'inline-block' }}>
+                  {pp.label}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Provision point link multi-select ──────────────────────────────
+  const groupedEntries = (() => {
+    const grouped = {}
+    for (const e of allEntries) {
+      const domainName = e.provision_points?.sub_domains?.domains?.name ?? 'Other'
+      const subName    = e.provision_points?.sub_domains?.name ?? ''
+      const key = `${domainName}||${subName}`
+      ;(grouped[key] = grouped[key] ?? { domainName, subName, entries: [] }).entries.push(e)
+    }
+    return Object.values(grouped).sort((a, b) => a.domainName.localeCompare(b.domainName) || a.subName.localeCompare(b.subName))
+  })()
+
+  const linkSearchLower = linkSearch.toLowerCase()
+  const filteredGroups = groupedEntries.map(g => ({
+    ...g,
+    entries: g.entries.filter(e =>
+      !linkSearchLower || (e.provision_points?.label ?? '').toLowerCase().includes(linkSearchLower)
+    ),
+  })).filter(g => g.entries.length > 0)
+
+  // ── Segmented control helper ───────────────────────────────────────
+  function SegCtrl({ options, value, onChange, small }) {
+    return (
+      <div style={{ display: 'flex', gap: 3, background: '#E2E8F0', borderRadius: 7, padding: 3, alignSelf: 'flex-start' }}>
+        {options.map(opt => (
+          <button key={opt.value} type="button" onClick={() => onChange(opt.value)} style={{
+            padding: small ? '4px 10px' : '5px 14px', border: 'none', borderRadius: 5,
+            fontSize: small ? '0.73rem' : '0.78rem', cursor: 'pointer', fontFamily: 'inherit',
+            fontWeight: value === opt.value ? 600 : 400,
+            color:      value === opt.value ? '#1A202C' : '#64748b',
+            background: value === opt.value ? '#fff' : 'transparent',
+            boxShadow:  value === opt.value ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+            transition: 'all 0.12s', whiteSpace: 'nowrap',
+          }}>{opt.label}</button>
+        ))}
+      </div>
+    )
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────
+  const lf = { display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 14 }
+  const lbl = { fontSize: '0.78rem', fontWeight: 600, color: '#374151' }
+  const inp = { padding: '7px 10px', border: '1px solid #CBD5E1', borderRadius: 7,
+                fontSize: '0.83rem', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' }
+  const errStyle = { fontSize: '0.72rem', color: '#DC2626', marginTop: 2 }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+        <div>
+          <h1 style={{ fontSize: '1rem', fontWeight: 700, color: '#1A202C', marginBottom: 4 }}>
+            Barriers to Learning &amp; Participation
+          </h1>
+          <p style={{ fontSize: '0.82rem', color: '#9CA3AF', lineHeight: 1.5, maxWidth: 520 }}>
+            Identify and track barriers affecting your pupils. Link each barrier to the provision you have in place to address it.
+          </p>
+        </div>
+        <button type="button" onClick={openAdd} style={{
+          padding: '9px 18px', borderRadius: 8, border: 'none',
+          background: '#1B365D', color: '#fff',
+          fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0, fontFamily: 'inherit',
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+        }}>
+          <i className="ti ti-plus" style={{ fontSize: '0.9rem' }} />
+          Add Barrier
+        </button>
+      </div>
+
+      {/* Filter bar */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        {/* Domain */}
+        <select value={filterDomain} onChange={e => setFilterDomain(e.target.value)}
+          style={{ ...inp, width: 'auto', minWidth: 160 }}>
+          <option value="">All domains</option>
+          {domainList.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
+
+        {/* Status pills */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          {[{ value: '', label: 'All' }, ...BARRIER_STATUSES].map(s => {
+            const active = filterStatus === s.value
+            return (
+              <button key={s.value} type="button" onClick={() => setFilterStatus(s.value)} style={{
+                padding: '5px 13px', borderRadius: 20, border: `1.5px solid ${active ? '#1B365D' : '#E2E8F0'}`,
+                background: active ? 'rgba(27,54,93,0.08)' : '#fff',
+                color: active ? '#1B365D' : '#64748b', fontSize: '0.78rem',
+                fontWeight: active ? 600 : 400, cursor: 'pointer', fontFamily: 'inherit',
+              }}>{s.label}</button>
+            )
+          })}
+        </div>
+
+        {/* Group */}
+        <select value={filterGroup} onChange={e => setFilterGroup(e.target.value)}
+          style={{ ...inp, width: 'auto', minWidth: 160 }}>
+          <option value="">All groups</option>
+          {BARRIER_GROUPS.map(g => <option key={g.key} value={g.key}>{g.label}</option>)}
+        </select>
+      </div>
+
+      {/* Barrier list */}
+      {bLoading ? (
+        <p className="state-msg">Loading barriers…</p>
+      ) : barriers.length === 0 ? (
+        <ACard>
+          <p style={{ color: '#9CA3AF', fontSize: '0.85rem', lineHeight: 1.6 }}>
+            No barriers recorded yet. Use the Add Barrier button to start identifying barriers to learning and participation for your pupils.
+          </p>
+        </ACard>
+      ) : filtered.length === 0 ? (
+        <ACard>
+          <p style={{ color: '#9CA3AF', fontSize: '0.85rem' }}>No barriers match the current filters.</p>
+        </ACard>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {filtered.map(b => {
+            const domainColour = b.domains?.name ? aDomainColour(b.domains.name) : '#94a3b8'
+            const statusStyle  = BARRIER_STATUS_STYLE[b.status] ?? BARRIER_STATUS_STYLE.active
+            const activeGroups = BARRIER_GROUPS.filter(g => b.student_groups?.[g.key])
+            const scaleLabel   = BARRIER_SCALES.find(s => s.value === b.scale)?.label
+            const sourceLabel  = BARRIER_SOURCES.find(s => s.value === b.source)?.label
+
+            return (
+              <div key={b.id} style={{
+                background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10,
+                borderLeft: `4px solid ${domainColour}`, overflow: 'hidden',
+              }}>
+                <div style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {/* Domain / sub-domain header */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 600, color: domainColour }}>
+                      {b.domains?.name ?? '—'}
+                    </span>
+                    {b.sub_domains?.name && (
+                      <>
+                        <span style={{ fontSize: '0.7rem', color: '#CBD5E1' }}>›</span>
+                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{b.sub_domains.name}</span>
+                      </>
+                    )}
+                    {/* Status badge — right-aligned */}
+                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', fontWeight: 600,
+                      padding: '2px 9px', borderRadius: 20,
+                      background: statusStyle.bg, color: statusStyle.color, whiteSpace: 'nowrap' }}>
+                      {BARRIER_STATUSES.find(s => s.value === b.status)?.label ?? b.status}
+                    </span>
+                  </div>
+
+                  {/* Description */}
+                  <p style={{ fontSize: '0.85rem', color: '#1A202C', lineHeight: 1.55, margin: 0 }}>
+                    {b.description}
+                  </p>
+
+                  {/* Group tags */}
+                  {activeGroups.length > 0 && (
+                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                      {activeGroups.map(g => (
+                        <AGroupPill key={g.key} label={g.label} />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Scale + Source badges */}
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {scaleLabel && (
+                      <span style={{ fontSize: '0.7rem', fontWeight: 500, padding: '2px 8px', borderRadius: 20,
+                        background: '#EFF6FF', color: '#1E40AF' }}>{scaleLabel}</span>
+                    )}
+                    {sourceLabel && (
+                      <span style={{ fontSize: '0.7rem', fontWeight: 500, padding: '2px 8px', borderRadius: 20,
+                        background: '#F5F3FF', color: '#5B21B6' }}>{sourceLabel}</span>
+                    )}
+                  </div>
+
+                  {/* Linked provision points + review date row */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <LinkedPoints barrier={b} />
+                    {b.next_review_due && (
+                      <span style={{ fontSize: '0.72rem', color: '#9CA3AF', whiteSpace: 'nowrap' }}>
+                        E&amp;S due: {new Date(b.next_review_due).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Actions row */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                    <button type="button" onClick={() => openEdit(b)} style={{
+                      padding: '5px 12px', border: '1px solid #E2E8F0', borderRadius: 6,
+                      background: '#fff', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit', color: '#374151',
+                    }}>Edit</button>
+                    <button type="button" onClick={() => handleDelete(b)} disabled={deleting} style={{
+                      padding: '5px 12px', border: '1px solid #FCA5A5', borderRadius: 6,
+                      background: '#FEF2F2', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit', color: '#DC2626',
+                    }}>Delete</button>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ── Add / Edit Modal ── */}
+      {modalOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+        }}
+          onClick={e => { if (e.target === e.currentTarget) closeModal() }}
+        >
+          <div style={{
+            background: '#fff', borderRadius: 14, width: '100%', maxWidth: 680,
+            maxHeight: '92vh', overflowY: 'auto', display: 'flex', flexDirection: 'column',
+          }}>
+            {/* Modal header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '18px 24px', borderBottom: '1px solid #E2E8F0', flexShrink: 0 }}>
+              <h2 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1A202C' }}>
+                {editBarrier ? 'Edit Barrier' : 'Add Barrier'}
+              </h2>
+              <button type="button" onClick={closeModal} style={{
+                background: 'none', border: 'none', fontSize: '1.1rem', cursor: 'pointer',
+                color: '#94a3b8', lineHeight: 1, padding: 4,
+              }}>✕</button>
+            </div>
+
+            {/* Modal body */}
+            <div style={{ padding: '20px 24px', flex: 1 }}>
+
+              {/* Description */}
+              <div style={lf}>
+                <label style={lbl}>Barrier description <span style={{ color: '#DC2626' }}>*</span></label>
+                <textarea rows={3} value={form.description ?? ''} onChange={e => setField('description', e.target.value)}
+                  placeholder="Describe the barrier to learning or participation you have identified"
+                  style={{ ...inp, resize: 'vertical' }} />
+                {formErrors.description && <span style={errStyle}>{formErrors.description}</span>}
+              </div>
+
+              {/* Domain + Sub-domain */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <label style={lbl}>Domain <span style={{ color: '#DC2626' }}>*</span></label>
+                  <select value={form.domain_id ?? ''} onChange={e => onDomainChange(e.target.value)} style={inp}>
+                    <option value="">Select domain…</option>
+                    {domainList.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                  {formErrors.domain_id && <span style={errStyle}>{formErrors.domain_id}</span>}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <label style={lbl}>Sub-domain (optional)</label>
+                  <select value={form.sub_domain_id ?? ''} onChange={e => setField('sub_domain_id', e.target.value)}
+                    style={inp} disabled={!form.domain_id}>
+                    <option value="">No sub-domain</option>
+                    {modalSubDomains.map(sd => <option key={sd.id} value={sd.id}>{sd.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Student groups */}
+              <div style={lf}>
+                <label style={lbl}>Student groups affected</label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {BARRIER_GROUPS.map(g => {
+                    const checked = !!(form.student_groups ?? {})[g.key]
+                    return (
+                      <label key={g.key} style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                        padding: '5px 11px', borderRadius: 20,
+                        border: `1.5px solid ${checked ? '#1B365D' : '#E2E8F0'}`,
+                        background: checked ? 'rgba(27,54,93,0.07)' : '#fff',
+                        cursor: 'pointer', fontSize: '0.78rem', color: checked ? '#1B365D' : '#374151',
+                        fontWeight: checked ? 600 : 400, userSelect: 'none',
+                      }}>
+                        <input type="checkbox" checked={checked} onChange={() => toggleGroup(g.key)}
+                          style={{ display: 'none' }} />
+                        {g.label}
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Scale */}
+              <div style={lf}>
+                <label style={lbl}>Scale</label>
+                <SegCtrl options={BARRIER_SCALES} value={form.scale ?? 'group'} onChange={v => setField('scale', v)} />
+              </div>
+
+              {/* Source */}
+              <div style={lf}>
+                <label style={lbl}>Source of identification</label>
+                <select value={form.source ?? ''} onChange={e => setField('source', e.target.value)} style={{ ...inp }}>
+                  <option value="">Select source…</option>
+                  {BARRIER_SOURCES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
+              </div>
+
+              {/* Status */}
+              <div style={lf}>
+                <label style={lbl}>Status</label>
+                <SegCtrl options={BARRIER_STATUSES} value={form.status ?? 'active'} onChange={v => setField('status', v)} />
+              </div>
+
+              {/* Actions */}
+              <div style={lf}>
+                <label style={lbl}>Actions being taken (optional)</label>
+                <textarea rows={2} value={form.actions ?? ''} onChange={e => setField('actions', e.target.value)}
+                  placeholder="Describe what is currently being done to address this barrier"
+                  style={{ ...inp, resize: 'vertical' }} />
+              </div>
+
+              {/* Linked provision points */}
+              <div style={{ ...lf, marginBottom: 14 }}>
+                <label style={lbl}>Linked provision points</label>
+                <p style={{ fontSize: '0.73rem', color: '#9CA3AF', marginBottom: 6 }}>
+                  Select the provision points that address this barrier.
+                </p>
+                <input type="text" placeholder="Search provision points…"
+                  value={linkSearch} onChange={e => setLinkSearch(e.target.value)}
+                  style={{ ...inp, marginBottom: 8 }} />
+                <div style={{ border: '1px solid #E2E8F0', borderRadius: 8, maxHeight: 240, overflowY: 'auto' }}>
+                  {filteredGroups.length === 0 ? (
+                    <p style={{ padding: '12px 14px', color: '#9CA3AF', fontSize: '0.8rem' }}>No provision points found.</p>
+                  ) : filteredGroups.map((g, gi) => (
+                    <div key={gi}>
+                      <div style={{ padding: '7px 12px', background: '#F7F8FA',
+                        borderBottom: '1px solid #E2E8F0', fontSize: '0.72rem',
+                        fontWeight: 600, color: '#374151', position: 'sticky', top: 0 }}>
+                        {g.domainName}{g.subName ? ` › ${g.subName}` : ''}
+                      </div>
+                      {g.entries.map(e => {
+                        const checked = selectedLinks.has(e.id)
+                        const ppStatus = e.status
+                        const statusStyle = ppStatus === 'in_place' ? { color: '#257A3B', bg: 'rgba(37,122,59,0.10)' }
+                          : ppStatus === 'in_progress' ? { color: '#D4751A', bg: 'rgba(212,117,26,0.10)' }
+                          : { color: '#94a3b8', bg: '#F1F5F9' }
+                        return (
+                          <label key={e.id} style={{
+                            display: 'flex', alignItems: 'center', gap: 10,
+                            padding: '8px 14px', cursor: 'pointer',
+                            background: checked ? 'rgba(27,54,93,0.04)' : '#fff',
+                            borderBottom: '0.5px solid #F1F5F9',
+                          }}>
+                            <input type="checkbox" checked={checked} onChange={() => toggleLink(e.id)}
+                              style={{ flexShrink: 0 }} />
+                            <span style={{ flex: 1, fontSize: '0.8rem', color: '#1A202C' }}>
+                              {e.provision_points?.label ?? 'Untitled'}
+                            </span>
+                            {ppStatus && (
+                              <span style={{ fontSize: '0.65rem', fontWeight: 600, padding: '1px 7px',
+                                borderRadius: 20, background: statusStyle.bg, color: statusStyle.color,
+                                whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                {STATUS_LABELS[ppStatus] ?? ppStatus}
+                              </span>
+                            )}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  ))}
+                </div>
+                {selectedLinks.size > 0 && (
+                  <p style={{ fontSize: '0.73rem', color: '#1B365D', marginTop: 5, fontWeight: 500 }}>
+                    {selectedLinks.size} point{selectedLinks.size !== 1 ? 's' : ''} selected
+                  </p>
+                )}
+              </div>
+
+              {/* Date fields */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <label style={lbl}>Date identified (optional)</label>
+                  <input type="date" value={form.date_identified ?? ''} onChange={e => setField('date_identified', e.target.value || null)}
+                    style={inp} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <label style={lbl}>Next evaluate &amp; sustain date</label>
+                  <input type="date" value={form.next_review_due ?? ''} onChange={e => setField('next_review_due', e.target.value || null)}
+                    style={inp} />
+                </div>
+              </div>
+
+              {saveError && (
+                <p style={{ fontSize: '0.78rem', color: '#DC2626', marginBottom: 10 }}>{saveError}</p>
+              )}
+            </div>
+
+            {/* Modal footer */}
+            <div style={{ padding: '14px 24px', borderTop: '1px solid #E2E8F0',
+              display: 'flex', justifyContent: 'flex-end', gap: 8, flexShrink: 0 }}>
+              <button type="button" onClick={closeModal} style={{
+                padding: '8px 18px', border: '1px solid #E2E8F0', borderRadius: 7,
+                background: '#fff', fontSize: '0.83rem', cursor: 'pointer', fontFamily: 'inherit', color: '#374151',
+              }}>Cancel</button>
+              <button type="button" onClick={handleSave} disabled={saving} style={{
+                padding: '8px 18px', border: 'none', borderRadius: 7,
+                background: saving ? '#94a3b8' : '#1B365D', color: '#fff',
+                fontSize: '0.83rem', fontWeight: 600, cursor: saving ? 'default' : 'pointer', fontFamily: 'inherit',
+              }}>{saving ? 'Saving…' : editBarrier ? 'Save changes' : 'Add barrier'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -2654,7 +3343,7 @@ export default function App() {
   }, [selectedSchool])
 
   useEffect(() => {
-    if (!selectedSchool || !selectedDomain || selectedDomain === 'analytics' || selectedDomain === 'team' || selectedDomain === 'report-builder') {
+    if (!selectedSchool || !selectedDomain || selectedDomain === 'analytics' || selectedDomain === 'team' || selectedDomain === 'report-builder' || selectedDomain === 'barriers') {
       setSubDomains([])
       setEntries({})
       setEvidenceEntries({})
@@ -3743,7 +4432,15 @@ export default function App() {
           />
         )}
 
-        {view !== 'mat' && selectedSchool && selectedDomain && selectedDomain !== 'analytics' && selectedDomain !== 'report-builder' && selectedDomain !== 'team' && (
+        {view !== 'mat' && selectedSchool && selectedDomain === 'barriers' && (
+          <BarriersView
+            school={selectedSchool}
+            supabase={supabase}
+            domains={domains}
+          />
+        )}
+
+        {view !== 'mat' && selectedSchool && selectedDomain && selectedDomain !== 'analytics' && selectedDomain !== 'report-builder' && selectedDomain !== 'team' && selectedDomain !== 'barriers' && (
           loading ? (
             <p className="state-msg">Loading…</p>
           ) : subDomains.length === 0 ? (
