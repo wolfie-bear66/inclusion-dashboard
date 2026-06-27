@@ -1126,107 +1126,187 @@ function ProvisionDepth({ analyticsEntries, domains, onNavigateToCategory }) {
   )
 }
 
-function FundingCost({ fundingDomainData, fundingSourceData, totalCost, schoolCtx }) {
-  const [showFundingInputs, setShowFundingInputs] = useState(false)
-  const [fundingReceived, setFundingReceived] = useState({})
+const FUNDING_FULL_LABELS = {
+  pupil_premium:             'Pupil Premium',
+  send_budget:               'SEND Budget',
+  inclusive_mainstream_fund: 'Inclusive Mainstream Fund',
+  sport_premium:             'Sport Premium',
+  school_general_budget:     'School General Budget',
+}
 
-  const equitySpend = fundingDomainData.find(d => d.fullName?.includes('Equity'))?.value ?? 0
-  const sendSpend   = fundingDomainData.find(d => d.fullName?.includes('SEND'))?.value ?? 0
-  const perPupil    = schoolCtx.totalPupils ? Math.round(totalCost / schoolCtx.totalPupils) : null
-  const perPP       = schoolCtx.ppCount     ? Math.round(equitySpend / schoolCtx.ppCount)   : null
-  const perSEND     = schoolCtx.sendCount   ? Math.round(sendSpend   / schoolCtx.sendCount) : null
+const FUNDING_SOURCE_ORDER = [
+  'pupil_premium',
+  'send_budget',
+  'inclusive_mainstream_fund',
+  'sport_premium',
+  'school_general_budget',
+]
 
-  if (totalCost === 0) return (
-    <ACard>
-      <ASectionTitle sub="Annual cost of provision grouped by funding source and domain">Funding & Cost</ASectionTitle>
-      <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No cost data recorded yet.</p>
-    </ACard>
-  )
+function FundingCost({ analyticsEntries }) {
+  // ── Derive Panel 1: funding source breakdown ──────────────────────
+  const sourceMap = {}  // key → { ppIds: Set, cost: number }
+  for (const entry of analyticsEntries) {
+    const ppId = entry.provision_point_id
+    for (const ev of entry.evidence_entries ?? []) {
+      if (!ev.funding_source) continue
+      const k = ev.funding_source
+      if (!sourceMap[k]) sourceMap[k] = { ppIds: new Set(), cost: 0 }
+      sourceMap[k].ppIds.add(ppId)
+      sourceMap[k].cost += Number(ev.cost) || 0
+    }
+  }
+
+  const sourceData = FUNDING_SOURCE_ORDER
+    .filter(k => sourceMap[k])
+    .map(k => ({
+      key:   k,
+      label: FUNDING_FULL_LABELS[k] ?? k,
+      short: k === 'inclusive_mainstream_fund' ? 'IMF'
+           : k === 'school_general_budget'     ? 'General Budget'
+           : FUNDING_FULL_LABELS[k] ?? k,
+      count: sourceMap[k].ppIds.size,
+      cost:  sourceMap[k].cost,
+    }))
+
+  const hasAnyFunding = sourceData.length > 0
+
+  // ── Derive Panel 2: IMF by principle ─────────────────────────────
+  const imfByPrinciple = {}  // principle → { ppIds: Set, cost: number }
+  for (const entry of analyticsEntries) {
+    const ppId     = entry.provision_point_id
+    const principle = entry.provision_points?.principle
+    if (!principle) continue
+    for (const ev of entry.evidence_entries ?? []) {
+      if (ev.funding_source !== 'inclusive_mainstream_fund') continue
+      if (!imfByPrinciple[principle]) imfByPrinciple[principle] = { ppIds: new Set(), cost: 0 }
+      imfByPrinciple[principle].ppIds.add(ppId)
+      imfByPrinciple[principle].cost += Number(ev.cost) || 0
+    }
+  }
+
+  const imfPrincipleData = PRINCIPLES.map(p => ({
+    principle: p,
+    count: imfByPrinciple[p]?.ppIds.size ?? 0,
+    cost:  imfByPrinciple[p]?.cost ?? 0,
+  }))
+  const imfTotal     = imfPrincipleData.reduce((s, r) => s + r.count, 0)
+  const imfCostTotal = imfPrincipleData.reduce((s, r) => s + r.cost, 0)
+  const hasImf       = imfTotal > 0
+
+  // chart data: short label so axis fits
+  const chartData = sourceData.map(s => ({ name: s.short, count: s.count, cost: s.cost }))
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-        {[
-          { label: 'Total spend',    value: `£${totalCost.toLocaleString()}` },
-          { label: 'Per pupil',      value: perPupil  ? `£${perPupil.toLocaleString()}`  : '—' },
-          { label: 'Per PP pupil',   value: perPP     ? `£${perPP.toLocaleString()}`     : '—' },
-          { label: 'Per SEND pupil', value: perSEND   ? `£${perSEND.toLocaleString()}`   : '—' },
-        ].map((s, i) => (
-          <ACard key={i}>
-            <p style={{ fontSize: '1.5rem', fontWeight: 700, color: '#1A202C' }}>{s.value}</p>
-            <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 4 }}>{s.label}</p>
-          </ACard>
-        ))}
-      </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <ACard>
-          <ASectionTitle sub="Annual spend by domain">By Domain</ASectionTitle>
-          {fundingDomainData.length === 0
-            ? <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No domain cost data.</p>
-            : (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={fundingDomainData} layout="vertical" barCategoryGap="30%" margin={{ left: 0 }}>
-                  <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={v => `£${v.toLocaleString()}`} />
-                  <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={72} />
-                  <Tooltip formatter={v => `£${Number(v).toLocaleString()}`} />
-                  <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                    {fundingDomainData.map((d, idx) => <Cell key={idx} fill={d.colour} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            )
-          }
-        </ACard>
+      {/* ── Panel 1 ── */}
+      <ACard>
+        <ASectionTitle sub="Count of provision points and total cost per funding stream">Provision by Funding Source</ASectionTitle>
 
-        <ACard>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div>
-              <p style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1A202C' }}>Funding Streams</p>
-              <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Spend proportion by source</p>
+        {!hasAnyFunding ? (
+          <p style={{ color: '#9CA3AF', fontSize: '0.85rem' }}>
+            No funding data recorded yet. Add funding sources when evidencing provision points.
+          </p>
+        ) : (
+          <>
+            <ResponsiveContainer width="100%" height={Math.max(200, chartData.length * 60)}>
+              <BarChart data={chartData} layout="vertical" barCategoryGap="25%" barGap={4}
+                margin={{ top: 20, right: 16, left: 0, bottom: 4 }}>
+                <XAxis xAxisId="count" type="number" allowDecimals={false}
+                  tick={{ fontSize: 10 }} tickFormatter={v => String(v)} />
+                <XAxis xAxisId="cost" type="number" orientation="top"
+                  tick={{ fontSize: 10 }} tickFormatter={v => v === 0 ? '' : `£${(v/1000).toFixed(0)}k`} />
+                <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 10 }} />
+                <Tooltip
+                  formatter={(value, name) =>
+                    name === 'Provisions'
+                      ? [`${value} provision${value !== 1 ? 's' : ''}`, 'Provisions']
+                      : [`£${Number(value).toLocaleString()}`, 'Total Cost']
+                  }
+                />
+                <Bar xAxisId="count" dataKey="count" name="Provisions" fill="#1B365D" radius={[0,3,3,0]} barSize={10} />
+                <Bar xAxisId="cost"  dataKey="cost"  name="Total Cost"  fill="#5B7FA6" radius={[0,3,3,0]} barSize={10} />
+              </BarChart>
+            </ResponsiveContainer>
+
+            {/* Summary table */}
+            <div style={{ overflowX: 'auto', marginTop: 8 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #E2E8F0' }}>
+                    <th style={{ textAlign: 'left', padding: '7px 10px', color: '#64748b', fontWeight: 600 }}>Funding Source</th>
+                    <th style={{ textAlign: 'center', padding: '7px 10px', color: '#64748b', fontWeight: 600 }}>Provisions</th>
+                    <th style={{ textAlign: 'right', padding: '7px 10px', color: '#64748b', fontWeight: 600 }}>Total Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sourceData.map((s, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid #F1F5F9', background: i % 2 === 0 ? '#fff' : '#F7F8FA' }}>
+                      <td style={{ padding: '8px 10px', color: '#1A202C', fontWeight: 500 }}>{s.label}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'center', color: '#1B365D', fontWeight: 600 }}>{s.count}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: '#1A202C' }}>
+                        {s.cost > 0 ? `£${s.cost.toLocaleString()}` : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <button type="button" onClick={() => setShowFundingInputs(v => !v)}
-              style={{ fontSize: '0.75rem', color: '#1B365D', background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
-              {showFundingInputs ? 'Hide' : 'Add funding received'}
-            </button>
+          </>
+        )}
+      </ACard>
+
+      {/* ── Divider ── */}
+      <div style={{ borderTop: '1px solid #E2E8F0' }} />
+
+      {/* ── Panel 2 ── */}
+      <ACard>
+        <ASectionTitle sub="The IMF is tied to the 7 DfE Principles of Inclusion. This breakdown shows how your IMF-funded provision is distributed across each principle.">
+          Inclusive Mainstream Fund — Spend by Principle
+        </ASectionTitle>
+
+        {!hasImf ? (
+          <p style={{ color: '#9CA3AF', fontSize: '0.85rem' }}>
+            No Inclusive Mainstream Fund spend recorded yet. Tag evidence entries with 'Inclusive Mainstream Fund' as the funding source to track spend here.
+          </p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #E2E8F0' }}>
+                  <th style={{ textAlign: 'left', padding: '7px 10px', color: '#64748b', fontWeight: 600 }}>Principle</th>
+                  <th style={{ textAlign: 'center', padding: '7px 10px', color: '#64748b', fontWeight: 600 }}>IMF Provisions</th>
+                  <th style={{ textAlign: 'right', padding: '7px 10px', color: '#64748b', fontWeight: 600 }}>IMF Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {imfPrincipleData.map((row, i) => {
+                  const muted = row.count === 0
+                  return (
+                    <tr key={i} style={{ borderBottom: '1px solid #F1F5F9', background: i % 2 === 0 ? '#fff' : '#F7F8FA' }}>
+                      <td style={{ padding: '8px 10px', color: muted ? '#9CA3AF' : '#1A202C', fontWeight: muted ? 400 : 500 }}>{row.principle}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'center', color: muted ? '#9CA3AF' : '#1B365D', fontWeight: muted ? 400 : 600 }}>
+                        {muted ? '—' : row.count}
+                      </td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: muted ? '#9CA3AF' : '#1A202C' }}>
+                        {row.cost > 0 ? `£${row.cost.toLocaleString()}` : '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
+                <tr style={{ borderTop: '2px solid #E2E8F0', background: 'rgba(27,54,93,0.04)' }}>
+                  <td style={{ padding: '8px 10px', fontWeight: 700, color: '#1A202C' }}>Total IMF</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: '#1B365D' }}>{imfTotal}</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: '#1A202C' }}>
+                    {imfCostTotal > 0 ? `£${imfCostTotal.toLocaleString()}` : '—'}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {fundingSourceData.map((fs, i) => {
-              const pct      = totalCost ? Math.round((fs.value / totalCost) * 100) : 0
-              const received = Number(fundingReceived[fs.name] ?? 0)
-              const diff     = received - fs.value
-              return (
-                <div key={i}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <span style={{ fontSize: '0.78rem', color: '#475569' }}>{fs.name}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {received > 0 && (
-                        <span style={{ fontSize: '0.7rem', fontWeight: 600, color: diff >= 0 ? '#16a34a' : '#dc2626' }}>
-                          {diff >= 0 ? `+£${diff.toLocaleString()}` : `-£${Math.abs(diff).toLocaleString()}`}
-                        </span>
-                      )}
-                      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1A202C' }}>£{fs.value.toLocaleString()}</span>
-                    </div>
-                  </div>
-                  <div style={{ height: 7, borderRadius: 4, background: '#E2E8F0', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${pct}%`, borderRadius: 4, background: '#1B365D', transition: 'width 0.4s' }} />
-                  </div>
-                  {showFundingInputs && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                      <label style={{ fontSize: '0.7rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>Received £</label>
-                      <input type="number" min="0"
-                        style={{ flex: 1, padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: '0.8rem' }}
-                        value={fundingReceived[fs.name] ?? ''}
-                        onChange={e => setFundingReceived(prev => ({ ...prev, [fs.name]: e.target.value }))}
-                      />
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </ACard>
-      </div>
+        )}
+      </ACard>
+
     </div>
   )
 }
@@ -2052,7 +2132,7 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
       {activeTab === 'readiness'  && <DomainReadiness readinessData={readinessData} upcomingReviews={upcomingReviews} />}
       {activeTab === 'principle'  && <PrincipleCoverage principleData={principleData} />}
       {activeTab === 'equity'     && <ProvisionDepth analyticsEntries={analyticsEntries} domains={domains} onNavigateToCategory={onNavigateToCategory} />}
-      {activeTab === 'funding'    && <FundingCost fundingDomainData={fundingDomainData} fundingSourceData={fundingSourceData} totalCost={totalCost} schoolCtx={schoolCtx} />}
+      {activeTab === 'funding'    && <FundingCost analyticsEntries={analyticsEntries} />}
       {activeTab === 'outcomes'   && <OutcomesImpact allEvidence={allEvidence} domains={domains} analyticsEntries={analyticsEntries} />}
     </div>
   )

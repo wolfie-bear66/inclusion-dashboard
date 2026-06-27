@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 27 June 2026 (Session 25 — Principle Coverage analytics tab + Inclusion Strategy PDF export)
+Last updated: 27 June 2026 (Session 26 — Funding & Cost tab rebuild with IMF principle breakdown)
 
 ---
 
@@ -372,6 +372,7 @@ Never rewrite existing query logic in same session as any migration.
 
 - [x] **Founder admin view (private)** — `/admin` route built in `src/pages/AdminView.jsx`. UUID guard on mount redirects non-founders to `/`. Table shows per school: MAT, total evidence entries, entries in last 30 days, last entry date, team members, unassigned points, domain coverage % (colour-coded cells), reports (n/a). Separate Supabase queries assembled in JS. Session 24.
 - [x] **Session 25 — Principle Coverage analytics tab** — New "Principle Coverage" tab added to Analytics after Domain Readiness. Horizontal stacked bar chart (Recharts) shows RAG breakdown per DfE principle. Summary table below chart with totals and % complete. Data: fetches all active provision_points with principle column; cross-joins with entries status map; points with no entry count as not_in_place. PRINCIPLES constant defines fixed order of 7 principles. RAG_COLOURS constant added at module level.
+- [x] **Session 26 — Funding & Cost tab rebuild** — `FundingCost` component fully replaced. Panel 1 "Provision by Funding Source": derives data from `analyticsEntries` directly (no computed props); groups evidence_entries by funding_source; counts distinct provision_point_ids per source; sums cost; displays as grouped horizontal bar chart (dual x-axis: count bottom, cost £k top) plus summary table (Funding Source / Provisions / Total Cost, dash for zero cost). Panel 2 "Inclusive Mainstream Fund — Spend by Principle": filters for `inclusive_mainstream_fund`, groups by `provision_points.principle`, shows all 7 principles in fixed DfE order (muted text for zero rows), totals row. Both panels show neutral empty states if no data. `FUNDING_FULL_LABELS` and `FUNDING_SOURCE_ORDER` constants added at component scope. `FundingCost` now takes `analyticsEntries` prop only — old computed funding props removed from call site.
 - [x] **Session 25 — Inclusion Strategy PDF export** — New `generateInclusionStrategy` export in `generateReport.js`. Portrait A4 layout. Cover page (navy background, school name, "Inclusion Strategy [academic year]", date generated). Per-principle sections: principle heading band, "X of N provision points in place" sub-heading, each in-place/in-progress point with status badge, label, entries.what, entries.evidence_notes. Excludes not_in_place points. Report Builder now shows two option cards at top: "Working Report" (existing behaviour) and "Inclusion Strategy" (new). Sticky bar description updates to reflect selected type.
 
 ---
