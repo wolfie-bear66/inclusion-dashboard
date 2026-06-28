@@ -1065,11 +1065,13 @@ function MATBarriersView({ barriers, barrierLinks, schools, ppMeta, entries, dom
     })
 
   // ── Build from barrierLinks ─────────────────────────────────────────
-  // barrier_provision_links: { id, barrier_id, entries: { id, provision_point_id, school_id } }
-  const barrierToLinkedEntries = new Map()  // barrierId → [{entryId, ppId, schoolId}]
+  // Build entryId → entry lookup from entries prop
+  const entryById = new Map(entries.map(e => [e.id, e]))
+
+  const barrierToLinkedEntries = new Map()
   const entryIdsWithBarrier    = new Set()
   for (const bl of barrierLinks) {
-    const entry = bl.entries
+    const entry = entryById.get(bl.entry_id)
     if (!entry) continue
     entryIdsWithBarrier.add(entry.id)
     if (!barrierToLinkedEntries.has(bl.barrier_id)) barrierToLinkedEntries.set(bl.barrier_id, [])
@@ -1675,10 +1677,7 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
             `),
           supabase
             .from('barrier_provision_links')
-            .select(`
-              id, barrier_id,
-              entries!inner(id, provision_point_id, school_id)
-            `)
+            .select('id, barrier_id, entry_id')
         ])
 
         if (cancelled) return
