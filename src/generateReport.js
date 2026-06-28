@@ -778,11 +778,24 @@ function applyStrategyHeadersFooters(doc, schoolName, dateStr, ay) {
   }
 }
 
-export function generateInclusionStrategy({ schoolName = '', allEntries = [], activePPs = [] }) {
+// ── Barriers student group keys ───────────────────────────────────────
+const BARRIER_GROUP_KEYS = [
+  { key: 'send', label: 'SEND' },
+  { key: 'pp',   label: 'Pupil Premium' },
+  { key: 'eal',  label: 'EAL' },
+  { key: 'fsm',  label: 'FSM' },
+  { key: 'lac',  label: 'LAC' },
+  { key: 'wwc',  label: 'White Working Class' },
+  { key: 'other',label: 'Other' },
+]
+
+export function generateInclusionStrategy({ schoolName = '', allEntries = [], activePPs = [], barriers = [] }) {
   const doc     = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const dateStr = fmt()
   const ay      = academicYear()
   const safeName = (schoolName || 'School').replace(/[^a-z0-9]/gi, '_')
+
+  const totalBarriers = barriers.length
 
   // ── Cover page ──────────────────────────────────────────────────────
   doc.setFillColor(...NAVY)
@@ -803,13 +816,42 @@ export function generateInclusionStrategy({ schoolName = '', allEntries = [], ac
   doc.setTextColor(180, 200, 220)
   doc.text(`Generated ${dateStr}`, 105, 165, { align: 'center' })
 
+  if (totalBarriers > 0) {
+    doc.setFontSize(9)
+    doc.setTextColor(254, 243, 199)
+    doc.text(`Barriers identified: ${totalBarriers}`, 105, 178, { align: 'center' })
+  }
+
   doc.setFontSize(8)
+  doc.setTextColor(180, 200, 220)
   doc.text('Based on the DfE 7 Principles of Inclusion', 105, 280, { align: 'center' })
 
   // ── Build entry status map ──────────────────────────────────────────
   const entryMap = {}
   for (const e of allEntries) {
     entryMap[e.provision_point_id] = e
+  }
+
+  // ── Build domain-name → set-of-principles map from provision points ─
+  const domainToPrinciples = {}
+  for (const pp of activePPs) {
+    const domName = pp.sub_domains?.domains?.name
+    if (!domName || !pp.principle) continue
+    if (!domainToPrinciples[domName]) domainToPrinciples[domName] = new Set()
+    domainToPrinciples[domName].add(pp.principle)
+  }
+
+  // ── Build principle → barriers list lookup ──────────────────────────
+  const principleBarriers = {}
+  for (const b of barriers) {
+    const domName = b.domains?.name
+    if (!domName) continue
+    const principles = domainToPrinciples[domName]
+    if (!principles) continue
+    for (const p of principles) {
+      if (!principleBarriers[p]) principleBarriers[p] = []
+      principleBarriers[p].push(b)
+    }
   }
 
   const ML_P  = 14
@@ -828,6 +870,7 @@ export function generateInclusionStrategy({ schoolName = '', allEntries = [], ac
     })
 
     const inPlaceCount = pps.filter(pp => entryMap[pp.id]?.status === 'in_place').length
+    const prinBarriers = principleBarriers[principle] ?? []
 
     doc.addPage()
     let y = 14
@@ -841,14 +884,150 @@ export function generateInclusionStrategy({ schoolName = '', allEntries = [], ac
     doc.text(principle, ML_P, y + 8)
     y += 12
 
-    // Sub-heading: in place count
+    // Sub-heading: in place count + optional barrier count
+    const subText = prinBarriers.length > 0
+      ? `${inPlaceCount} of ${pps.length} provision points in place · ${prinBarriers.length} barrier${prinBarriers.length === 1 ? '' : 's'} identified`
+      : `${inPlaceCount} of ${pps.length} provision points in place`
     doc.setFillColor(240, 244, 248)
     doc.rect(0, y, 210, 9, 'F')
     doc.setTextColor(...DARK)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(9)
-    doc.text(`${inPlaceCount} of ${pps.length} provision points in place`, ML_P, y + 6)
+    doc.text(subText, ML_P, y + 6)
     y += 9 + 6
+
+    // ── Barriers block ────────────────────────────────────────────────
+    if (prinBarriers.length > 0) {
+      // Block header band
+      doc.setFillColor(254, 243, 199)
+      doc.rect(ML_P, y, CW_P, 8, 'F')
+      doc.setFillColor(212, 117, 26)
+      doc.rect(ML_P, y, 4, 8, 'F')
+      doc.setTextColor(122, 74, 10)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(9)
+      doc.text('IDENTIFIED BARRIERS', ML_P + 7, y + 5.5)
+      y += 8 + 3
+
+      for (let bi = 0; bi < prinBarriers.length; bi++) {
+        const b = prinBarriers[bi]
+
+        // Estimate barrier row height
+        const descLines  = doc.splitTextToSize(b.description ?? '', CW_P - 4).length
+        const hasActions = b.actions && b.actions.trim()
+        const actLines   = hasActions ? doc.splitTextToSize(`Actions: ${b.actions}`, CW_P - 4).length : 0
+        const rowH = descLines * 4.5 + 5 + 5 + (hasActions ? actLines * 4 + 3 : 0) + 4
+
+        if (y + rowH > MAX_YP) {
+          doc.addPage()
+          y = 14
+          doc.setFillColor(...NAVY)
+          doc.rect(0, 0, 210, 10, 'F')
+          doc.setTextColor(...WHITE)
+          doc.setFont('helvetica', 'bold')
+          doc.setFontSize(9)
+          doc.text(`${principle} (continued)`, ML_P, 6.5)
+          y = 14
+        }
+
+        // Description
+        const descWrapped = doc.splitTextToSize(b.description ?? '', CW_P - 4)
+        doc.setTextColor(26, 26, 46)
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(10)
+        doc.text(descWrapped, ML_P + 2, y + 4.5)
+        y += descWrapped.length * 4.5 + 2
+
+        // Domain / Sub-domain line
+        const domLabel = b.sub_domains?.name
+          ? `${b.domains?.name ?? ''} — ${b.sub_domains.name}`
+          : (b.domains?.name ?? '')
+        doc.setTextColor(107, 114, 128)
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(8.5)
+        doc.text(domLabel, ML_P + 2, y + 4)
+        y += 5
+
+        // Tags row — status, scale, student groups
+        let tagX = ML_P + 2
+
+        // Status tag
+        const isActive = b.status === 'active'
+        const statusBg  = isActive ? [254, 226, 226] : [254, 243, 199]
+        const statusFg  = isActive ? [153,  27,  27] : [146,  64,  14]
+        const statusTxt = isActive ? 'Active' : 'Being addressed'
+        const statusW   = doc.getTextWidth(statusTxt) + 4
+        doc.setFillColor(...statusBg)
+        doc.roundedRect(tagX, y, statusW, 5, 1, 1, 'F')
+        doc.setTextColor(...statusFg)
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(7)
+        doc.text(statusTxt, tagX + 2, y + 3.5)
+        tagX += statusW + 2
+
+        // Scale tag
+        if (b.scale) {
+          const scaleLabels = { individual: 'Individual', group: 'Group', whole_school: 'Whole school' }
+          const scaleTxt = scaleLabels[b.scale] ?? b.scale
+          const scaleW = doc.getTextWidth(scaleTxt) + 4
+          doc.setFillColor(243, 244, 246)
+          doc.roundedRect(tagX, y, scaleW, 5, 1, 1, 'F')
+          doc.setTextColor(55, 65, 81)
+          doc.setFont('helvetica', 'normal')
+          doc.setFontSize(7)
+          doc.text(scaleTxt, tagX + 2, y + 3.5)
+          tagX += scaleW + 2
+        }
+
+        // Student group tags
+        const activeGroups = BARRIER_GROUP_KEYS.filter(g => b.student_groups?.[g.key])
+        for (const grp of activeGroups) {
+          const grpW = doc.getTextWidth(grp.label) + 4
+          if (tagX + grpW > ML_P + CW_P - 2) break  // don't overflow
+          doc.setFillColor(219, 234, 254)
+          doc.roundedRect(tagX, y, grpW, 5, 1, 1, 'F')
+          doc.setTextColor(30, 64, 175)
+          doc.setFont('helvetica', 'normal')
+          doc.setFontSize(7)
+          doc.text(grp.label, tagX + 2, y + 3.5)
+          tagX += grpW + 2
+        }
+        y += 6
+
+        // Actions line
+        if (hasActions) {
+          const actionText = `Actions: ${b.actions}`
+          const actionLines = doc.splitTextToSize(actionText, CW_P - 4)
+          doc.setFont('helvetica', 'normal')
+          doc.setFontSize(8.5)
+          doc.setTextColor(55, 65, 81)
+          // Bold "Actions:" prefix
+          doc.setFont('helvetica', 'bold')
+          doc.text('Actions:', ML_P + 2, y + 3.5)
+          const prefixW = doc.getTextWidth('Actions: ')
+          doc.setFont('helvetica', 'normal')
+          // For multi-line, render full wrapped text after label
+          const firstLine = actionLines[0]
+          doc.text(firstLine.replace(/^Actions:\s*/, ''), ML_P + 2 + prefixW, y + 3.5)
+          if (actionLines.length > 1) {
+            const rest = actionLines.slice(1)
+            doc.text(rest, ML_P + 2, y + 3.5 + rest.length * 0 + 4)
+            y += rest.length * 4
+          }
+          y += 5
+        }
+
+        // Separator rule (except after last barrier)
+        if (bi < prinBarriers.length - 1) {
+          doc.setDrawColor(229, 231, 235)
+          doc.setLineWidth(0.5)
+          doc.line(ML_P, y, ML_P + CW_P, y)
+          y += 3
+        }
+      }
+
+      y += 5  // gap before provision points
+    }
 
     if (includedPPs.length === 0) {
       doc.setTextColor(...MID)

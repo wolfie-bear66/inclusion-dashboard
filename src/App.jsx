@@ -528,13 +528,18 @@ function ReportBuilder({ schoolName = '', allSubDomains = [], supabase: sb, scho
     setGenError(null)
     try {
       if (reportType === 'strategy') {
-        const [entriesRes, ppsRes] = await Promise.all([
+        const [entriesRes, ppsRes, barriersRes] = await Promise.all([
           sb.from('entries')
             .select('id, provision_point_id, status, what, evidence_notes')
             .eq('school_id', school),
           sb.from('provision_points')
             .select('id, label, principle, display_order, sub_domain_id, sub_domains(name, domains(name))')
             .eq('active', true),
+          sb.from('barriers')
+            .select('id, description, status, actions, scale, student_groups, domain_id, sub_domain_id, domains(name), sub_domains(name)')
+            .eq('school_id', school)
+            .neq('status', 'resolved')
+            .order('domain_id'),
         ])
         if (entriesRes.error) throw new Error(`Entries fetch failed: ${entriesRes.error.message}`)
         if (ppsRes.error)     throw new Error(`Provision points fetch failed: ${ppsRes.error.message}`)
@@ -542,6 +547,7 @@ function ReportBuilder({ schoolName = '', allSubDomains = [], supabase: sb, scho
           schoolName,
           allEntries: entriesRes.data ?? [],
           activePPs:  ppsRes.data ?? [],
+          barriers:   barriersRes.data ?? [],
         })
         return
       }
