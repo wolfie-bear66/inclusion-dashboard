@@ -1687,6 +1687,9 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
         console.log('[MAT Barriers Debug]', {
           barriersDataLength: barriersRes.data?.length,
           barriersDataError: barriersRes.error,
+          barrierLinksLength: barrierLinksRes.data?.length,
+          barrierLinksError: barrierLinksRes.error,
+          barrierLinksRaw: barrierLinksRes.data,
           schoolIds: schoolIds,
           barriersRaw: barriersRes.data
         })
