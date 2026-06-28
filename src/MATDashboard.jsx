@@ -25,12 +25,29 @@ function ragColour(pct) {
 
 // ── Sidebar ───────────────────────────────────────────────────────────
 const SIDEBAR_ITEMS = [
-  { id: 'home',       icon: 'ti-home',         label: 'Home' },
-  { id: 'schools',    icon: 'ti-building',      label: 'Schools' },
-  { id: 'domains',    icon: 'ti-layout-grid',   label: 'Domains' },
-  { id: 'categories', icon: 'ti-tag',           label: 'Categories' },
-  { id: 'analytics',  icon: 'ti-chart-bar',     label: 'Analytics' },
+  { id: 'home',       icon: 'ti-home',           label: 'Home' },
+  { id: 'schools',    icon: 'ti-building',        label: 'Schools' },
+  { id: 'domains',    icon: 'ti-layout-grid',     label: 'Domains' },
+  { id: 'categories', icon: 'ti-tag',             label: 'Categories' },
+  { id: 'barriers',   icon: 'ti-alert-triangle',  label: 'Barriers' },
+  { id: 'analytics',  icon: 'ti-chart-bar',       label: 'Analytics' },
 ]
+
+const BARRIER_GROUP_LABELS = {
+  send:  'SEND',
+  pp:    'Pupil Premium',
+  eal:   'EAL',
+  fsm:   'FSM',
+  lac:   'LAC',
+  wwc:   'White Working Class',
+  other: 'Other',
+}
+
+function barrierStatusBadge(status) {
+  if (status === 'active')          return { bg: '#FEF3C7', text: '#92400E', label: 'Active' }
+  if (status === 'being_addressed') return { bg: '#DBEAFE', text: '#1E3A8A', label: 'Being Addressed' }
+  return { bg: '#DCFCE7', text: '#166534', label: 'Resolved' }
+}
 
 function MatSidebar({ activeView, setActiveView, matName, onNavClick }) {
   const [hovered, setHovered] = useState(null)
@@ -1024,6 +1041,418 @@ function AnalyticsView({ schools, domains, matrix, ppMeta, ppEvCountMap, activeP
   )
 }
 
+// ── MAT Barriers Intelligence view ───────────────────────────────────
+function MATBarriersView({ barriers, barrierLinks, schools, ppMeta, entries, domains, subDomains }) {
+  const [activeDomain, setActiveDomain] = useState('all')
+  const [activeStatus, setActiveStatus] = useState('all')
+  const [expandedPP,   setExpandedPP]   = useState(null)
+  const [showMoreMap,  setShowMoreMap]   = useState({})
+  const [showAllGaps,  setShowAllGaps]   = useState({})
+
+  // ── Lookups ─────────────────────────────────────────────────────────
+  const ppIdToLabel      = new Map(ppMeta.map(pp => [pp.id, pp.label]))
+  const ppIdToDomainId   = new Map(ppMeta.map(pp => [pp.id, pp.domain_id]))
+  const domainIdToName   = new Map(domains.map(d => [d.id, d.name]))
+  const subDomainIdToName = new Map(subDomains.map(sd => [sd.id, sd.name]))
+  const schoolIdToName   = new Map(schools.map(s => [s.id, s.name]))
+
+  // Domain names in display order (those that have provision points in ppMeta)
+  const domainNamesOrdered = domains
+    .map(d => d.name)
+    .filter(n => {
+      const did = domains.find(d => d.name === n)?.id
+      return ppMeta.some(pp => pp.domain_id === did)
+    })
+
+  // ── Build from barrierLinks ─────────────────────────────────────────
+  // barrier_provision_links: { id, barrier_id, entries: { id, provision_point_id, school_id } }
+  const barrierToLinkedEntries = new Map()  // barrierId → [{entryId, ppId, schoolId}]
+  const entryIdsWithBarrier    = new Set()
+  for (const bl of barrierLinks) {
+    const entry = bl.entries
+    if (!entry) continue
+    entryIdsWithBarrier.add(entry.id)
+    if (!barrierToLinkedEntries.has(bl.barrier_id)) barrierToLinkedEntries.set(bl.barrier_id, [])
+    barrierToLinkedEntries.get(bl.barrier_id).push({
+      entryId:  entry.id,
+      ppId:     entry.provision_point_id,
+      schoolId: entry.school_id,
+    })
+  }
+
+  // ── Apply domain + status filters to barriers ───────────────────────
+  const filteredBarriers = barriers.filter(b => {
+    if (activeStatus !== 'all' && b.status !== activeStatus) return false
+    if (activeDomain !== 'all' && domainIdToName.get(b.domain_id) !== activeDomain) return false
+    return true
+  })
+
+  // ── Panel 1 data ────────────────────────────────────────────────────
+  // ppId → [{barrier, schoolId, entryId}]
+  const ppToBarrierRows = new Map()
+  for (const b of filteredBarriers) {
+    for (const le of (barrierToLinkedEntries.get(b.id) ?? [])) {
+      if (!ppToBarrierRows.has(le.ppId)) ppToBarrierRows.set(le.ppId, [])
+      ppToBarrierRows.get(le.ppId).push({ barrier: b, schoolId: le.schoolId, entryId: le.entryId })
+    }
+  }
+  const ppsWithBarriers = [...ppToBarrierRows.keys()]
+    .sort((a, b) => (ppIdToLabel.get(a) ?? '').localeCompare(ppIdToLabel.get(b) ?? ''))
+
+  // entry existence by ppId+schoolId for chip logic
+  const entryKeySet = new Set(entries.map(e => `${e.provision_point_id}:${e.school_id}`))
+
+  // ── Panel 2 data ────────────────────────────────────────────────────
+  // Per school: not_in_place entries with no barrier, grouped by domain
+  const schoolGapData = {}  // schoolId → { name, domains: { domainName → [{ ppId, label }] } }
+  const schoolHasAnyNIP = {}  // schoolId → bool (any NIP entry passing domain filter)
+
+  for (const e of entries) {
+    if (e.status !== 'not_in_place') continue
+    if (activeDomain !== 'all') {
+      const dName = domainIdToName.get(ppIdToDomainId.get(e.provision_point_id))
+      if (dName !== activeDomain) continue
+    }
+    schoolHasAnyNIP[e.school_id] = true
+    if (entryIdsWithBarrier.has(e.id)) continue  // has a barrier — skip for panel 2
+
+    const sId   = e.school_id
+    const dName = domainIdToName.get(ppIdToDomainId.get(e.provision_point_id)) ?? 'Unknown domain'
+    if (!schoolGapData[sId]) schoolGapData[sId] = { name: schoolIdToName.get(sId) ?? '', domains: {} }
+    if (!schoolGapData[sId].domains[dName]) schoolGapData[sId].domains[dName] = []
+    schoolGapData[sId].domains[dName].push({ ppId: e.provision_point_id, label: ppIdToLabel.get(e.provision_point_id) ?? '—' })
+  }
+
+  // ── Panel 3 data ────────────────────────────────────────────────────
+  const patternMap = {}
+  for (const b of filteredBarriers) {
+    const key = `${b.domain_id}|${b.sub_domain_id ?? ''}`
+    if (!patternMap[key]) patternMap[key] = { domain_id: b.domain_id, sub_domain_id: b.sub_domain_id, barriers: [] }
+    patternMap[key].barriers.push(b)
+  }
+  const sharedPatterns = Object.values(patternMap)
+    .filter(g => new Set(g.barriers.map(b => b.school_id)).size >= 2)
+    .sort((a, b) => b.barriers.length - a.barriers.length)
+
+  // ── Shared styles ───────────────────────────────────────────────────
+  function filterPill(active) {
+    return {
+      padding: '5px 12px', borderRadius: 20,
+      border: `1.5px solid ${active ? '#1B365D' : '#E2E8F0'}`,
+      background: active ? '#1B365D' : '#fff',
+      color: active ? '#fff' : '#64748b',
+      fontSize: '0.78rem', fontWeight: active ? 600 : 400,
+      cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.12s',
+    }
+  }
+
+  const panelStyle = {
+    background: '#fff', border: '1px solid #E5E7EB',
+    borderRadius: 12, overflow: 'hidden',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+  }
+  const panelHeadStyle = {
+    padding: '16px 22px', borderBottom: '1px solid #F1F5F9',
+    fontSize: '0.95rem', fontWeight: 700, color: '#1B365D', margin: 0,
+  }
+
+  // ── Empty state ─────────────────────────────────────────────────────
+  if (barriers.length === 0) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1B365D', margin: 0 }}>Barriers Intelligence</h2>
+        <div style={{ ...panelStyle, padding: '36px 28px', textAlign: 'center' }}>
+          <p style={{ fontSize: '0.9rem', color: '#94a3b8', lineHeight: 1.6 }}>
+            No barriers have been recorded across the trust yet. As schools identify barriers to learning, the intelligence view will populate here.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1B365D', margin: 0 }}>Barriers Intelligence</h2>
+
+      {/* Filter row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <button style={filterPill(activeDomain === 'all')} onClick={() => setActiveDomain('all')}>All domains</button>
+        {domainNamesOrdered.map(dn => (
+          <button key={dn} style={filterPill(activeDomain === dn)} onClick={() => setActiveDomain(dn)}>{dn}</button>
+        ))}
+        <span style={{ color: '#94a3b8', margin: '0 6px', fontSize: '0.85rem' }}>|</span>
+        {[
+          { value: 'all',             label: 'All' },
+          { value: 'active',          label: 'Active' },
+          { value: 'being_addressed', label: 'Being Addressed' },
+          { value: 'resolved',        label: 'Resolved' },
+        ].map(s => (
+          <button key={s.value} style={filterPill(activeStatus === s.value)} onClick={() => setActiveStatus(s.value)}>
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Panel 1: Provision Point Barrier Lens ────────────────────── */}
+      <div style={panelStyle}>
+        <h3 style={panelHeadStyle}>Where barriers have been identified — and how they were addressed</h3>
+        {ppsWithBarriers.length === 0 ? (
+          <p style={{ padding: '24px 22px', fontSize: '0.85rem', color: '#94a3b8' }}>No barriers match the current filters.</p>
+        ) : ppsWithBarriers.map(ppId => {
+          const rows   = ppToBarrierRows.get(ppId) ?? []
+          const isOpen = expandedPP === ppId
+          const label  = ppIdToLabel.get(ppId) ?? ppId
+
+          return (
+            <div key={ppId} style={{ borderBottom: '1px solid #F1F5F9' }}>
+              {/* Collapsed header row */}
+              <div
+                onClick={() => setExpandedPP(isOpen ? null : ppId)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '11px 22px', cursor: 'pointer',
+                  background: isOpen ? '#F8FAFC' : '#fff',
+                }}
+              >
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1A202C', flex: 1 }}>{label}</span>
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                  {schools.map(s => {
+                    const schoolRows  = rows.filter(r => r.schoolId === s.id)
+                    const hasActive   = schoolRows.some(r => r.barrier.status === 'active' || r.barrier.status === 'being_addressed')
+                    const hasResolved = schoolRows.some(r => r.barrier.status === 'resolved')
+                    const hasEntry    = entryKeySet.has(`${ppId}:${s.id}`)
+
+                    if (!hasEntry && schoolRows.length === 0) return null
+
+                    let bg = '#E5E7EB', color = '#6B7280'
+                    if (hasActive)            { bg = '#D4751A'; color = '#fff' }
+                    else if (hasResolved)     { bg = '#1B365D'; color = '#fff' }
+
+                    return (
+                      <span key={s.id} style={{
+                        display: 'inline-block', padding: '2px 9px', borderRadius: 20,
+                        background: bg, color, fontSize: '0.7rem', fontWeight: 600, whiteSpace: 'nowrap',
+                      }}>
+                        {s.name}
+                      </span>
+                    )
+                  })}
+                </div>
+                <span style={{ fontSize: '0.72rem', color: '#94a3b8', flexShrink: 0 }}>{isOpen ? '▼' : '▶'}</span>
+              </div>
+
+              {/* Expanded school cards */}
+              {isOpen && (
+                <div style={{ padding: '8px 22px 16px', background: '#F8FAFC', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {schools.map(s => {
+                    const schoolRows = rows.filter(r => r.schoolId === s.id)
+                    const hasEntry   = entryKeySet.has(`${ppId}:${s.id}`)
+                    if (!hasEntry && schoolRows.length === 0) return null
+
+                    if (schoolRows.length === 0) {
+                      return (
+                        <p key={s.id} style={{ fontSize: '0.78rem', color: '#94a3b8', fontStyle: 'italic', padding: '4px 0' }}>
+                          {s.name} — no barrier recorded for this point.
+                        </p>
+                      )
+                    }
+
+                    return schoolRows.map(({ barrier }, bi) => {
+                      const dc = domainColour(domainIdToName.get(barrier.domain_id) ?? '')
+                      const { bg, text, label: sLbl } = barrierStatusBadge(barrier.status)
+                      const activeGroups = Object.entries(barrier.student_groups ?? {}).filter(([, v]) => v)
+                      return (
+                        <div key={`${s.id}-${bi}`} style={{
+                          background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8,
+                          borderLeft: `3px solid ${dc}`, padding: '11px 14px',
+                          display: 'flex', flexDirection: 'column', gap: 6,
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1B365D', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                              {s.name}
+                            </span>
+                            <span style={{ display: 'inline-block', padding: '2px 9px', borderRadius: 20, background: bg, color: text, fontSize: '0.7rem', fontWeight: 600 }}>
+                              {sLbl}
+                            </span>
+                          </div>
+                          <p style={{ fontSize: '0.85rem', color: '#1A202C', lineHeight: 1.5 }}>{barrier.description}</p>
+                          {barrier.actions && (
+                            <div>
+                              <p style={{ fontSize: '0.7rem', color: '#94a3b8', marginBottom: 2 }}>What was done:</p>
+                              <p style={{ fontSize: '0.82rem', color: '#374151', lineHeight: 1.5 }}>{barrier.actions}</p>
+                            </div>
+                          )}
+                          {activeGroups.length > 0 && (
+                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                              {activeGroups.map(([key]) => (
+                                <span key={key} style={{ padding: '2px 8px', borderRadius: 12, background: '#F0F2F5', color: '#475569', fontSize: '0.7rem', fontWeight: 500 }}>
+                                  {BARRIER_GROUP_LABELS[key] ?? key}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {(barrier.scale || barrier.source) && (
+                            <p style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                              {[barrier.scale, barrier.source].filter(Boolean).join(' · ')}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* ── Panel 2: Gaps without a named barrier ────────────────────── */}
+      <div style={panelStyle}>
+        <h3 style={panelHeadStyle}>Provision points not in place — with no barrier identified</h3>
+        <div style={{ padding: '16px 22px', display: 'flex', flexDirection: 'column', gap: 22 }}>
+          {schools.map(s => {
+            if (!schoolHasAnyNIP[s.id]) return null
+            const gapData = schoolGapData[s.id]
+
+            if (!gapData) {
+              return (
+                <div key={s.id}>
+                  <p style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1A202C', marginBottom: 4 }}>{s.name}</p>
+                  <p style={{ fontSize: '0.82rem', color: '#257A3B' }}>✓ All gaps have a barrier identified</p>
+                </div>
+              )
+            }
+
+            const allPtsFlat = Object.entries(gapData.domains).flatMap(([dName, pts]) => pts.map(p => ({ dName, ...p })))
+            const total      = allPtsFlat.length
+            const showAll    = showAllGaps[s.id]
+            const displayed  = showAll ? allPtsFlat : allPtsFlat.slice(0, 10)
+            const byDomain   = {}
+            for (const p of displayed) {
+              if (!byDomain[p.dName]) byDomain[p.dName] = []
+              byDomain[p.dName].push(p)
+            }
+
+            return (
+              <div key={s.id}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+                  <p style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1A202C' }}>{s.name}</p>
+                  <p style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+                    {total} provision point{total !== 1 ? 's' : ''} not in place with no barrier recorded
+                  </p>
+                </div>
+                {Object.entries(byDomain).map(([dName, pts]) => (
+                  <div key={dName} style={{ marginBottom: 10 }}>
+                    <p style={{ fontSize: '0.68rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                      {dName}
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      {pts.map(pt => (
+                        <p key={pt.ppId} style={{ fontSize: '0.82rem', color: '#475569', paddingLeft: 8 }}>• {pt.label}</p>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                {total > 10 && !showAll && (
+                  <button
+                    onClick={() => setShowAllGaps(prev => ({ ...prev, [s.id]: true }))}
+                    style={{ background: 'none', border: 'none', color: '#1B365D', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}
+                  >
+                    Show all {total} →
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* ── Panel 3: Shared barrier patterns ─────────────────────────── */}
+      <div style={panelStyle}>
+        <h3 style={panelHeadStyle}>Barriers appearing across multiple schools</h3>
+        <div style={{ padding: '16px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {sharedPatterns.length === 0 ? (
+            <p style={{ fontSize: '0.85rem', color: '#94a3b8', lineHeight: 1.6 }}>
+              No shared barrier patterns across schools yet. As more schools add barriers, common themes will appear here.
+            </p>
+          ) : sharedPatterns.map((g, gi) => {
+            const dName   = domainIdToName.get(g.domain_id) ?? 'Unknown domain'
+            const sdName  = g.sub_domain_id ? (subDomainIdToName.get(g.sub_domain_id) ?? '') : ''
+            const dc      = domainColour(dName)
+            const groupKey = `${g.domain_id}|${g.sub_domain_id ?? ''}`
+            const distinctSchools = new Set(g.barriers.map(b => b.school_id)).size
+
+            return (
+              <div key={gi} style={{ border: '1px solid #E5E7EB', borderRadius: 10, borderLeft: `4px solid ${dc}`, overflow: 'hidden' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid #F1F5F9' }}>
+                  <p style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1A202C' }}>
+                    {dName}{sdName ? ` — ${sdName}` : ''}
+                  </p>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {g.barriers.map((b, bi) => {
+                    const { bg, text, label: sLbl } = barrierStatusBadge(b.status)
+                    const sName     = schoolIdToName.get(b.school_id) ?? 'Unknown'
+                    const moreKey   = `${groupKey}-${bi}`
+                    const showMore  = showMoreMap[moreKey]
+
+                    return (
+                      <div key={bi} style={{
+                        padding: '10px 16px',
+                        borderBottom: bi < g.barriers.length - 1 ? '1px solid #F1F5F9' : 'none',
+                        display: 'flex', flexDirection: 'column', gap: 6,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span style={{ padding: '2px 9px', borderRadius: 20, background: '#F3F4F6', color: '#475569', fontSize: '0.7rem', fontWeight: 600 }}>
+                            {sName}
+                          </span>
+                          <span style={{ display: 'inline-block', padding: '2px 9px', borderRadius: 20, background: bg, color: text, fontSize: '0.7rem', fontWeight: 600 }}>
+                            {sLbl}
+                          </span>
+                        </div>
+                        <p style={{ fontSize: '0.82rem', color: '#374151', lineHeight: 1.5 }}>{b.description}</p>
+                        {b.actions && (
+                          <div>
+                            <p style={{
+                              fontSize: '0.78rem', color: '#374151', lineHeight: 1.5,
+                              ...(showMore ? {} : {
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden',
+                              }),
+                            }}>
+                              {b.actions}
+                            </p>
+                            {!showMore && (
+                              <button
+                                onClick={() => setShowMoreMap(prev => ({ ...prev, [moreKey]: true }))}
+                                style={{ background: 'none', border: 'none', color: '#1B365D', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', padding: 0, fontFamily: 'inherit', marginTop: 2 }}
+                              >
+                                Show more
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+                <div style={{ padding: '8px 16px', background: '#F8FAFC', borderTop: '1px solid #F1F5F9' }}>
+                  <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                    {distinctSchools} school{distinctSchools !== 1 ? 's' : ''} ha{distinctSchools === 1 ? 's' : 've'} identified barriers in this area
+                  </p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Stub panel ────────────────────────────────────────────────────────
 function StubView({ title }) {
   return (
@@ -1053,6 +1482,9 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
   const [reviewsDue,          setReviewsDue]          = useState(null)
   const [reviewsDueBySchool,  setReviewsDueBySchool]  = useState({})
   const [loading,             setLoading]             = useState(true)
+  const [entries,             setEntries]             = useState([])
+  const [barriers,            setBarriers]            = useState([])
+  const [barrierLinks,        setBarrierLinks]        = useState([])
 
   // Mobile sidebar
   const [isMobile,    setIsMobile]    = useState(window.innerWidth < 768)
@@ -1189,6 +1621,7 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
       setPpEntryMap(ppEntry)
       setPpEvCountMap(ppEvCount)
       setLastActivity(lastUpd)
+      setEntries(entriesRes.data ?? [])
 
       // Step 3: reviews due within 30 days
       try {
@@ -1234,6 +1667,21 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
       } catch {
         setReviewsDue(null)
       }
+
+      // Step 4: barriers + barrier_provision_links
+      const [barriersRes, barrierLinksRes] = await Promise.all([
+        supabase
+          .from('barriers')
+          .select('id, school_id, domain_id, sub_domain_id, description, student_groups, scale, source, status, actions, date_identified, next_review_due')
+          .in('school_id', schoolIds),
+        supabase
+          .from('barrier_provision_links')
+          .select('id, barrier_id, entries!inner(id, provision_point_id, school_id)'),
+      ])
+      if (cancelled) return
+
+      if (!barriersRes.error)     setBarriers(barriersRes.data ?? [])
+      if (!barrierLinksRes.error) setBarrierLinks(barrierLinksRes.data ?? [])
 
       if (!cancelled) setLoading(false)
     }
@@ -1329,6 +1777,17 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
             ppMeta={ppMeta}
             ppEntryMap={ppEntryMap}
             matrix={matrix}
+          />
+        )}
+        {activeView === 'barriers' && (
+          <MATBarriersView
+            barriers={barriers}
+            barrierLinks={barrierLinks}
+            schools={schools}
+            ppMeta={ppMeta}
+            entries={entries}
+            domains={domains}
+            subDomains={subDomains}
           />
         )}
         {activeView === 'analytics' && (
