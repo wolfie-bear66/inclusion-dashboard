@@ -103,7 +103,7 @@ export default function LandingPage() {
     },
     {
       label: '2. Analyse',
-      body: 'As your provision picture builds, the gaps become visible. See where provision is strong and where it\'s thin — and crucially, see which student groups are underserved. FSM, SEND, EAL, care-experienced — the dashboard shows you where support isn\'t reaching the pupils who need it most.',
+      body: 'As your provision picture builds, the gaps become visible. See where provision is strong and where it\'s thin — and crucially, see which student groups are underserved. FSM, SEND, EAL, care-experienced — the dashboard shows you where support isn\'t reaching the pupils who need it most. Inclusion Dashboard is designed around the EEF\'s evidence-informed implementation cycle — starting with barrier identification, building to evidenced provision, and sustained through regular review.',
       imgAlt: 'Analytics screen showing Domain Readiness chart and gap analysis view',
       demoLink: true,
     },
@@ -256,6 +256,9 @@ export default function LandingPage() {
               <li>No spreadsheet archaeology.</li>
               <li>No compliance guesswork.</li>
             </ul>
+            <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: 16, lineHeight: 1.55 }}>
+              Structured around the EEF's implementation guidance and the DfE's Inclusion Strategy requirements.
+            </p>
           </div>
           <img
             src="/images/landing/solution-belonging.png"

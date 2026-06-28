@@ -1253,9 +1253,20 @@ function BarriersView({ school, supabase: sb, domains: domainList }) {
         <p className="state-msg">Loading barriers…</p>
       ) : barriers.length === 0 ? (
         <ACard>
-          <p style={{ color: '#9CA3AF', fontSize: '0.85rem', lineHeight: 1.6 }}>
-            No barriers recorded yet. Use the Add Barrier button to start identifying barriers to learning and participation for your pupils.
+          <p style={{ color: '#1a1a2e', fontSize: '0.9rem', fontWeight: 600, marginBottom: 8 }}>
+            No barriers identified yet.
           </p>
+          <p style={{ color: '#9CA3AF', fontSize: '0.85rem', lineHeight: 1.6, marginBottom: 12 }}>
+            The EEF recommends starting implementation by identifying commonly occurring barriers to learning across your cohort — before designing provision. This is Step 1 in building your Inclusion Strategy.
+          </p>
+          <a
+            href="https://www.gov.uk/guidance/developing-an-inclusion-strategy-using-the-inclusive-mainstream-fund"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: '0.85rem', color: '#1B365D' }}
+          >
+            See the DfE's guidance on identifying barriers →
+          </a>
         </ACard>
       ) : filtered.length === 0 ? (
         <ACard>
@@ -4762,6 +4773,9 @@ export default function App() {
                               <option value="">—</option>
                               {REVIEW_CYCLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                             </select>
+                            <small style={{ fontSize: '0.75rem', color: 'var(--color-text-muted, #94a3b8)', marginTop: 4, lineHeight: 1.5 }}>
+                              Regular evaluation cycles are the foundation of the EEF's Sustain phase — keeping provision active and improving.
+                            </small>
                           </div>
                         </>
                       )}

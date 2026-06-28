@@ -200,6 +200,16 @@ export default function OnboardingPrompt({
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {promptState === 'A' && (
+                  <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted, #94a3b8)', lineHeight: 1.55, marginBottom: 4 }}>
+                    The EEF's Implementation Guide recommends assigning clear ownership before provision is evidenced — this is your planning step.
+                  </p>
+                )}
+                {promptState === 'A' && secondL && (
+                  <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted, #94a3b8)', lineHeight: 1.55, marginBottom: 4 }}>
+                    Evidence-informed implementation works best when ownership is clear from the start.
+                  </p>
+                )}
                 {buttons}
               </div>
             )}
