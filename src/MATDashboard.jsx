@@ -1672,8 +1672,11 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
       const [barriersRes, barrierLinksRes] = await Promise.all([
         supabase
           .from('barriers')
-          .select('id, school_id, domain_id, sub_domain_id, description, student_groups, scale, source, status, actions, date_identified, next_review_due')
-          .in('school_id', schoolIds),
+          .select(`
+            id, school_id, domain_id, sub_domain_id,
+            description, student_groups, scale, source,
+            status, actions, date_identified, next_review_due
+          `),
         supabase
           .from('barrier_provision_links')
           .select('id, barrier_id, entries!inner(id, provision_point_id, school_id)'),
