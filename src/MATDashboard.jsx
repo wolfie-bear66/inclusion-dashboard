@@ -1664,27 +1664,37 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
           // TODO: implement reviews due query if schema relationship differs
           setReviewsDue(null)
         }
-      } catch {
+        // Step 4: barriers + barrier_provision_links
+        const [barriersRes, barrierLinksRes] = await Promise.all([
+          supabase
+            .from('barriers')
+            .select(`
+              id, school_id, domain_id, sub_domain_id,
+              description, student_groups, scale, source,
+              status, actions, date_identified, next_review_due
+            `),
+          supabase
+            .from('barrier_provision_links')
+            .select(`
+              id, barrier_id,
+              entries!inner(id, provision_point_id, school_id)
+            `)
+        ])
+
+        if (cancelled) return
+
+        if (!barriersRes.error) setBarriers(barriersRes.data ?? [])
+        if (!barrierLinksRes.error) setBarrierLinks(barrierLinksRes.data ?? [])
+        console.log('[MAT Barriers Debug]', {
+          barriersDataLength: barriersRes.data?.length,
+          barriersDataError: barriersRes.error,
+          schoolIds: schoolIds,
+          barriersRaw: barriersRes.data
+        })
+      } catch (err) {
+        console.error('[loadData error]', err)
         setReviewsDue(null)
       }
-
-      // Step 4: barriers + barrier_provision_links
-      const [barriersRes, barrierLinksRes] = await Promise.all([
-        supabase
-          .from('barriers')
-          .select(`
-            id, school_id, domain_id, sub_domain_id,
-            description, student_groups, scale, source,
-            status, actions, date_identified, next_review_due
-          `),
-        supabase
-          .from('barrier_provision_links')
-          .select('id, barrier_id, entries!inner(id, provision_point_id, school_id)'),
-      ])
-      if (cancelled) return
-
-      if (!barriersRes.error)     setBarriers(barriersRes.data ?? [])
-      if (!barrierLinksRes.error) setBarrierLinks(barrierLinksRes.data ?? [])
 
       if (!cancelled) setLoading(false)
     }
