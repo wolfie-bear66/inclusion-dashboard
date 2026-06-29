@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 27 June 2026 (Session 28 — Barriers to learning feature — list view, add/edit modal, provision linking)
+Last updated: 29 June 2026 (Session 32 — Landing page: four-step structure, Identify step, updated copy and image refs)
 
 ---
 
@@ -383,6 +383,7 @@ Never rewrite existing query logic in same session as any migration.
 - [x] **Session 25 — Inclusion Strategy PDF export** — New `generateInclusionStrategy` export in `generateReport.js`. Portrait A4 layout. Cover page (navy background, school name, "Inclusion Strategy [academic year]", date generated). Per-principle sections: principle heading band, "X of N provision points in place" sub-heading, each in-place/in-progress point with status badge, label, entries.what, entries.evidence_notes. Excludes not_in_place points. Report Builder now shows two option cards at top: "Working Report" (existing behaviour) and "Inclusion Strategy" (new). Sticky bar description updates to reflect selected type.
 - [x] **MAT Barriers Intelligence view** — Three-panel view: Provision Point Barrier Lens (school chips per point, expanded barrier detail with actions), Gaps without a named barrier (not_in_place entries with no barrier linked, grouped by school and domain), Shared barrier patterns (domain+subdomain groups appearing across 2+ schools). Domain and status filters. Sidebar nav item between Categories and Analytics. 28 June 2026.
 - [x] **Improvement 6 — EEF Implementation Guide references** — Copy-only changes — landing page How It Works and Solution sections, onboarding prompt States A/C/D, Barriers empty state with GOV.UK link, E&S cycle helper text. 28 June 2026.
+- [x] **Session 32 — Landing page four-step restructure** — How It Works section restructured from three tabs to four. New Step 2 "Identify" added with barrier identification copy (EEF implementation cycle framing), heading, and `/barriers-dashboard.png` image. Step 3 "Analyse" image updated to `/analysis-dashboard.png`. Step 4 "Report" image updated to `/report-dashboard.png`. Section heading updated to "four steps". Eyebrow pill updated to "Inclusion Strategy deadline: 31 Dec 2026 · Full statutory compliance: 2028–29". Problem section heading changed to "The challenge schools are navigating" with new body paragraph (7 principles framing). Hero image ref updated to `/hero-dashboard.png`. MAT section image ref updated to `/mat-dashboard.png`. 29 June 2026.
 - [x] **Session 29 — Connect barriers to Inclusion Strategy PDF** — `generateInclusionStrategy` now accepts `barriers` param (fetched in App.jsx alongside entries/pps, excluding resolved). Domain→principle map derived from provision points data. Each principle section: amber barriers block (header band, per-barrier rows with description, domain/sub-domain, status/scale/group tags, actions) shown before provision evidence; sub-heading updated to "X of N provision points in place · Y barrier(s) identified" when barriers present. Cover page shows "Barriers identified: N" in amber when N > 0. Principles with no barriers render unchanged. Working Report export untouched. 28 June 2026.
 
 ---

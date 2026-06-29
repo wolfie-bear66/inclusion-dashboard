@@ -102,15 +102,23 @@ export default function LandingPage() {
       imgAlt: 'Evidence modal showing data entry fields for evidence, cost, outcomes, and document links',
     },
     {
-      label: '2. Analyse',
+      label: '2. Identify',
+      heading: 'Identify barriers. Act on them. Track whether it worked.',
+      body: 'Effective inclusion starts with understanding what\'s getting in the way. Inclusion Dashboard follows the EEF\'s evidence-informed implementation cycle — beginning with barrier identification. Log the barriers preventing students from full participation, record what actions are being taken to remove them and set review dates to track whether they\'ve worked. At trust level, barriers surface across all schools so leaders can spot shared patterns and spread what\'s working.',
+      img: '/barriers-dashboard.png',
+      imgAlt: 'Barriers view',
+    },
+    {
+      label: '3. Analyse',
       body: 'As your provision picture builds, the gaps become visible. See where provision is strong and where it\'s thin — and crucially, see which student groups are underserved. FSM, SEND, EAL, care-experienced — the dashboard shows you where support isn\'t reaching the pupils who need it most. Inclusion Dashboard is designed around the EEF\'s evidence-informed implementation cycle — starting with barrier identification, building to evidenced provision, and sustained through regular review.',
+      img: '/analysis-dashboard.png',
       imgAlt: 'Analytics screen showing Domain Readiness chart and gap analysis view',
       demoLink: true,
     },
     {
-      label: '3. Report',
+      label: '4. Report',
       body: 'Generate a formatted PDF export ready to use as the foundation of your statutory Inclusion Strategy. Scope your report for different audiences — a full compliance document for governors, a focused summary for a specific domain, or a funding breakdown for your trust.',
-      img: '/images/landing/howitworks-report.png',
+      img: '/report-dashboard.png',
       imgAlt: 'PDF export preview showing landscape layout with school context and domain readiness',
     },
   ]
@@ -170,7 +178,7 @@ export default function LandingPage() {
 
       {/* ── Section 1: Hero ── */}
       <section className="lp-hero">
-        <div className="lp-hero__eyebrow-pill">Ahead of the 2028–29 statutory deadline</div>
+        <div className="lp-hero__eyebrow-pill">Inclusion Strategy deadline: 31 Dec 2026 · Full statutory compliance: 2028–29</div>
         <h1 className="lp-hero__h1">Inclusion,<br />evidenced in full.</h1>
         <p className="lp-hero__sub">
           See the gaps, act on them, report with confidence.
@@ -185,7 +193,7 @@ export default function LandingPage() {
         <div style={{ position: 'relative', maxWidth: '1100px', margin: '3rem auto 0' }}>
           <a href="/demo" style={{ display: 'block', position: 'relative', cursor: 'pointer' }}>
             <img
-              src="/images/landing/hero-dashboard.png"
+              src="/hero-dashboard.png"
               alt="Inclusion Dashboard — MAT and school dashboards side by side"
               style={{ width: '100%', borderRadius: '12px', display: 'block' }}
             />
@@ -200,14 +208,11 @@ export default function LandingPage() {
       <section className="lp-problem">
         <p className="lp-problem__eyebrow">The problem</p>
         <h2 className="lp-problem__h2">
-          Inclusion now spans SEND, attendance, enrichment, belonging, wellbeing, and disadvantage.
-          Most schools can't tell you what they've got across all six.
+          The challenge schools are navigating
         </h2>
         <div className="lp-problem__body">
           <p>
-            The Every Child Achieving and Thriving white paper doesn't just reform SEND. It reframes
-            inclusion across attendance, enrichment, belonging, wellbeing, and disadvantage — and a
-            statutory Inclusion Strategy is due by 2028–29.
+            The DfE's new framework asks schools to evidence inclusion across 7 principles — from adaptive teaching and enriching provision to belonging, wellbeing, and family partnerships. That's a genuinely broad picture, and most schools are still working out what they have, where the gaps are, and how to show it.
           </p>
           <p>
             Right now, most schools are managing this across a dozen spreadsheets, last year's SEN
@@ -272,7 +277,7 @@ export default function LandingPage() {
       {/* ── Section 5: How It Works ── */}
       <section className="lp-how" id="how-it-works">
         <h2 className="lp-how__headline">
-          From scattered provision to statutory confidence — in three steps
+          From scattered provision to statutory confidence — in four steps
         </h2>
         <div className="lp-how__tabs">
           <div className="lp-how__tab-list">
@@ -287,6 +292,9 @@ export default function LandingPage() {
             ))}
           </div>
           <div className="lp-how__tab-panel">
+            {tabs[activeTab].heading && (
+              <h3 className="lp-how__tab-heading">{tabs[activeTab].heading}</h3>
+            )}
             <p className="lp-how__tab-body">{tabs[activeTab].body}</p>
             {tabs[activeTab].img && (
               <img
@@ -358,7 +366,7 @@ export default function LandingPage() {
             </div>
           </div>
           <img
-            src="/images/landing/mat-dashboard-screenshot.png"
+            src="/mat-dashboard.png"
             alt="MAT dashboard showing RAG status across all schools in the trust"
             style={{ width: '100%', borderRadius: 12, display: 'block' }}
           />
