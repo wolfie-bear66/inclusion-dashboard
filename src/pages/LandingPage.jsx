@@ -103,7 +103,6 @@ export default function LandingPage() {
     },
     {
       label: '2. Identify',
-      heading: 'Identify barriers. Act on them. Track whether it worked.',
       body: 'Effective inclusion starts with understanding what\'s getting in the way. Inclusion Dashboard follows the EEF\'s evidence-informed implementation cycle — beginning with barrier identification. Log the barriers preventing students from full participation, record what actions are being taken to remove them and set review dates to track whether they\'ve worked. At trust level, barriers surface across all schools so leaders can spot shared patterns and spread what\'s working.',
       img: '/barriers-dashboard.png',
       imgAlt: 'Barriers view',
