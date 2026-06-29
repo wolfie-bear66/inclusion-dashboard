@@ -114,6 +114,7 @@
   margin-bottom: 1.75rem;
 }
 .lp-hero__h1 {
+  font-family: 'Playfair Display', Georgia, serif;
   font-size: clamp(2.5rem, 5vw, 4rem);
   font-weight: 700;
   color: var(--text-primary);
