@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import './LandingPage.css'
 
 const DEMO_URL = 'https://inclusion-dashboard.vercel.app/demo'
@@ -93,13 +93,6 @@ function ContactForm({ enquiryType, btnClass, btnLabel }) {
 
 export default function LandingPage() {
   const [activeTab, setActiveTab] = useState(0)
-
-  useEffect(() => {
-    const link = document.createElement('link')
-    link.rel = 'stylesheet'
-    link.href = 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap'
-    document.head.appendChild(link)
-  }, [])
 
   const tabs = [
     {
@@ -202,7 +195,7 @@ export default function LandingPage() {
         <h1 className="lp-hero__h1" style={{
           fontFamily: "'Playfair Display', Georgia, serif",
           fontWeight: 700,
-          fontSize: '58px',
+          fontSize: '72px',
           lineHeight: 1.05,
           letterSpacing: '-0.01em',
         }}>
