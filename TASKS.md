@@ -23,7 +23,7 @@ Last updated: 27 June 2026 (Session 28 — Barriers to learning feature — list
 - [x] **Domain navigation** — six domains with status buttons and evidence modal
 - [x] **Evidence modal** — costs, outcomes, document links, student group reach, intended outcomes
 - [x] **Analytics** — Domain Readiness, Enrichment Equity, Funding & Cost, Outcomes & Impact, Group Reach tabs
-- [x] **PDF export** — 3-page landscape report (school context, domain readiness, enrichment equity, funding, outcomes)
+- [x] **PDF export** — rebuilt report generator (Session 32). New `generateEvidenceReport` function: portrait A4, cover page, 8 conditional sections, 4 purpose modes (Full Strategy Statement / Domain Focus / Compliance Snapshot / Outcomes Summary), domain scope pills, student group filter, provision view toggle (By Domain / By DfE Principle), Appendix B toggle. Fixes: "DfE" typo, footer → "Inclusion Dashboard · inclusiondashboard.co.uk", reviews window → overdue + 28 days only, Group Reach removed, Enrichment Equity moved into Section 5, date dynamic. New Report Builder panel replaces old section toggles. **Deferred pending pilot feedback:** Appendix B toggle default-on option; multi-year strategy narrative text field.
 - [x] **School context panel** — migrated to Supabase `school_context` table with RLS
 - [x] **By domain / by category toggle** — overview shows domain cards or category cards
 - [x] **MAT dashboard** — RAG school pills, domain comparison, compliance forecast, funding accordion, spider diagram

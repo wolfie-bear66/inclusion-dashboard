@@ -9,7 +9,7 @@ import OnboardingPrompt from './components/OnboardingPrompt'
 import SetPasswordPage from './pages/SetPasswordPage'
 import AdminView from './pages/AdminView'
 import './App.css'
-import { generateReport, generateInclusionStrategy } from './generateReport'
+import { generateEvidenceReport, generateReport, generateInclusionStrategy } from './generateReport'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts'
 
 // ── Invite-link detection ─────────────────────────────────────────────
@@ -480,186 +480,126 @@ function RBChartToggle({ options, value, onChange }) {
   )
 }
 
-function ReportBuilder({ schoolName = '', allSubDomains = [], supabase: sb, school, schoolCtx = {} }) {
-  const [reportType,      setReportType]      = useState('working')
-  const [includeEquity,   setIncludeEquity]   = useState(true)
-  const [equityChart,     setEquityChart]     = useState('table')
-  const [includeFunding,  setIncludeFunding]  = useState(true)
-  const [fundingChart,    setFundingChart]    = useState('bar')
-  const [includeOutcomes, setIncludeOutcomes] = useState(true)
-  const [outcomeMode,     setOutcomeMode]     = useState('all')
-  const [outcomeSelected, setOutcomeSelected] = useState([])
-  const [includeReach,    setIncludeReach]    = useState(false)
-  const [reachChart,      setReachChart]      = useState('table')
+// Domain UUIDs from SCHEMA_REFERENCE.md (verified 28 June 2026)
+const REPORT_DOMAIN_OPTIONS = [
+  { id: '11111111-0000-0000-0000-000000000001', label: 'SEND Support & Needs' },
+  { id: '11111111-0000-0000-0000-000000000002', label: 'Equity & Disadvantage' },
+  { id: '11111111-0000-0000-0000-000000000003', label: 'Attendance & Engagement' },
+  { id: '11111111-0000-0000-0000-000000000004', label: 'Enrichment' },
+  { id: '11111111-0000-0000-0000-000000000005', label: 'Belonging' },
+  { id: '11111111-0000-0000-0000-000000000006', label: 'Wellbeing' },
+]
+const REPORT_GROUP_OPTIONS = ['Pupil Premium', 'SEND', 'FSM', 'EAL', 'LAC', 'White Working Class']
+const REPORT_PURPOSE_OPTIONS = [
+  {
+    id: 'full_strategy',
+    icon: 'ti-certificate',
+    title: 'Full Strategy Statement',
+    desc: 'All sections. For governors, Ofsted, or website publication.',
+  },
+  {
+    id: 'domain_focus',
+    icon: 'ti-layout-columns',
+    title: 'Domain Focus',
+    desc: 'Scoped to one or more domains. For a SEND, attendance, or equity meeting.',
+  },
+  {
+    id: 'compliance_snapshot',
+    icon: 'ti-report-analytics',
+    title: 'Compliance Snapshot',
+    desc: 'Readiness, gaps, and upcoming reviews only. For a quick briefing.',
+  },
+  {
+    id: 'outcomes_summary',
+    icon: 'ti-target',
+    title: 'Outcomes Summary',
+    desc: "Barriers and impact evidence only. For reviewing what's working.",
+  },
+]
+
+function ReportBuilder({ schoolName = '', supabase: sb, school, schoolCtx = {} }) {
+  const [purpose,         setPurpose]         = useState('full_strategy')
+  const [selectedDomains, setSelectedDomains] = useState([])   // empty = all domains
+  const [selectedGroups,  setSelectedGroups]  = useState([])   // empty = all groups
+  const [provisionView,   setProvisionView]   = useState('domain')
+  const [includeAppendixB, setIncludeAppendixB] = useState(false)
   const [generating,      setGenerating]      = useState(false)
   const [genError,        setGenError]        = useState(null)
 
-  const domainPills    = ['SEND Support & Needs', 'Equity & Disadvantage', 'Attendance & Engagement', 'Enrichment', 'Belonging', 'Wellbeing']
-  const groupPills     = ['Pupil Premium', 'SEND', 'FSM', 'EAL', 'LAC', 'White Working Class']
-  const subDomainPills = [...new Set(allSubDomains.map(sd => sd.name))].sort()
+  function toggleDomain(id) {
+    setSelectedDomains(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+  function toggleGroup(g) {
+    setSelectedGroups(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g])
+  }
 
-  function changeMode(mode) { setOutcomeMode(mode); setOutcomeSelected([]) }
-  function togglePill(val)  { setOutcomeSelected(prev => prev.includes(val) ? prev.filter(x => x !== val) : [...prev, val]) }
+  const showProvisionToggle = purpose === 'full_strategy' || purpose === 'domain_focus'
+  const showAppendixB       = purpose === 'full_strategy'
 
-  const pillOptions = outcomeMode === 'domain' ? domainPills : outcomeMode === 'group' ? groupPills : outcomeMode === 'subdomain' ? subDomainPills : []
+  // Domain Focus requires at least one domain selected
+  const generateEnabled = !(purpose === 'domain_focus' && selectedDomains.length === 0)
 
-  const outcomesPreview = (() => {
-    if (outcomeMode === 'all') return 'Report will include all outcomes across all domains'
-    const noun = outcomeMode === 'domain' ? 'domains' : outcomeMode === 'group' ? 'student groups' : 'sub-domains'
-    if (outcomeSelected.length === 0) return `Select one or more ${noun}`
-    return `Report will include outcomes for ${outcomeSelected.join(', ')}`
-  })()
-
-  const outcomeSuffix = outcomeMode !== 'all' && outcomeSelected.length > 0 ? ` (${outcomeSelected.join(', ')})` : ''
-  const includedSections = [
-    'domain readiness',
-    ...(includeEquity   ? ['enrichment equity']               : []),
-    ...(includeFunding  ? ['funding & cost']                   : []),
-    ...(includeOutcomes ? [`outcomes & impact${outcomeSuffix}`]: []),
-    ...(includeReach    ? ['group reach']                      : []),
-  ]
+  // Filter summary line shown beneath controls
+  const purposeLabel  = REPORT_PURPOSE_OPTIONS.find(p => p.id === purpose)?.title ?? purpose
+  const domainLabel   = selectedDomains.length === 0
+    ? 'All domains'
+    : REPORT_DOMAIN_OPTIONS.filter(d => selectedDomains.includes(d.id)).map(d => d.label).join(', ')
+  const groupLabel    = selectedGroups.length === 0 ? 'All groups' : selectedGroups.join(' + ')
+  const filterSummary = `${purposeLabel} · ${domainLabel} · ${groupLabel}`
 
   async function handleGeneratePdf() {
     if (!sb || !school) {
       setGenError('School data not available. Please reload and try again.')
       return
     }
+    if (!generateEnabled) {
+      setGenError('Please select at least one domain for Domain Focus.')
+      return
+    }
     setGenerating(true)
     setGenError(null)
     try {
-      if (reportType === 'strategy') {
-        const [entriesRes, ppsRes, barriersRes] = await Promise.all([
-          sb.from('entries')
-            .select('id, provision_point_id, status, what, evidence_notes')
-            .eq('school_id', school),
-          sb.from('provision_points')
-            .select('id, label, principle, display_order, sub_domain_id, sub_domains(name, domains(name))')
-            .eq('active', true),
-          sb.from('barriers')
-            .select('id, description, status, actions, scale, student_groups, domain_id, sub_domain_id, domains(name), sub_domains(name)')
-            .eq('school_id', school)
-            .neq('status', 'resolved')
-            .order('domain_id'),
-        ])
-        if (entriesRes.error) throw new Error(`Entries fetch failed: ${entriesRes.error.message}`)
-        if (ppsRes.error)     throw new Error(`Provision points fetch failed: ${ppsRes.error.message}`)
-        generateInclusionStrategy({
-          schoolName,
-          allEntries: entriesRes.data ?? [],
-          activePPs:  ppsRes.data ?? [],
-          barriers:   barriersRes.data ?? [],
-        })
-        return
-      }
+      const userRes  = await sb.auth.getUser()
+      const userId   = userRes.data?.user?.id
 
-      const [entriesRes, domainsRes] = await Promise.all([
+      const [entriesRes, domainsRes, barriersRes, profileRes] = await Promise.all([
         sb.from('entries')
           .select(`
             id, provision_point_id, status,
-            grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other,
-            provision_points(*, sub_domains(*, domains(id, name))),
-            evidence_entries(id, provision_name, indicator_type, provision_category, funding_source, cost, next_review_due,
-              evidence_notes, intended_outcomes, impact_on_outcomes, supporting_document_link,
-              reach_total, reach_send, reach_pp, reach_eal, reach_fsm, reach_lac, reach_wwc, reach_other,
-              grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other)
+            provision_points(
+              id, label, principle, universal_or_targeted, display_order, active,
+              sub_domains(id, name, display_order, domain_id, domains(id, name, display_order))
+            ),
+            evidence_entries(
+              id, entry_id, intended_outcomes, impact_on_outcomes, next_review_due,
+              funding_source, cost, grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc
+            )
           `)
           .eq('school_id', school),
         sb.from('domains').select('id, name, display_order').order('display_order'),
+        sb.from('barriers')
+          .select('id, description, status, actions, scale, student_groups, domain_id, sub_domain_id, next_review_due, domains(name), sub_domains(name)')
+          .eq('school_id', school),
+        userId
+          ? sb.from('profiles').select('first_name, last_name, job_title').eq('id', userId).single()
+          : Promise.resolve({ data: null, error: null }),
       ])
 
-      if (entriesRes.error) throw new Error(`Entries fetch failed: ${entriesRes.error.message}`)
-      if (domainsRes.error) throw new Error(`Domains fetch failed: ${domainsRes.error.message}`)
+      if (entriesRes.error) throw new Error(`Entries: ${entriesRes.error.message}`)
+      if (domainsRes.error) throw new Error(`Domains: ${domainsRes.error.message}`)
 
-      const analyticsEntries = entriesRes.data ?? []
-      const fetchedDomains   = domainsRes.data ?? []
-
-      // Domain readiness
-      const readinessData = fetchedDomains.map((d, idx) => {
-        const de = analyticsEntries.filter(e => e.provision_points?.sub_domains?.domains?.id === d.id)
-        return {
-          name:       d.name.length > 14 ? d.name.split(/[&\s]/)[0] : d.name,
-          fullName:   d.name,
-          colour:     aDomainColour(d.name, idx),
-          inPlace:    de.filter(e => e.status === 'in_place').length,
-          inProgress: de.filter(e => e.status === 'in_progress').length,
-          notInPlace: de.filter(e => e.status === 'not_in_place').length,
-          total:      de.length,
-        }
-      })
-
-      // Flatten all evidence entries with domain context
-      const allEvidence = analyticsEntries.flatMap(e =>
-        (e.evidence_entries ?? []).map(ev => ({
-          ...ev,
-          entryLabel:    e.provision_points?.label ?? '',
-          domainId:      e.provision_points?.sub_domains?.domains?.id,
-          domainName:    e.provision_points?.sub_domains?.domains?.name ?? '',
-          subDomainName: e.provision_points?.sub_domains?.name ?? '',
-        }))
-      )
-
-      // Upcoming reviews (next 60 days)
-      const today = new Date()
-      const upcomingReviews = allEvidence
-        .filter(ev => ev.next_review_due)
-        .map(ev => {
-          const daysLeft = Math.ceil((new Date(ev.next_review_due) - today) / 86400000)
-          return { ...ev, daysLeft, urgency: daysLeft <= 7 ? 'urgent' : daysLeft <= 21 ? 'soon' : 'upcoming' }
-        })
-        .filter(ev => ev.daysLeft <= 60)
-        .sort((a, b) => a.daysLeft - b.daysLeft)
-
-      // Funding
-      const fundingBySource = {}
-      const fundingByDomain = {}
-      for (const ev of allEvidence) {
-        const cost = Number(ev.cost)
-        if (!cost) continue
-        if (ev.funding_source) {
-          const label = FUNDING_LABELS_MAP[ev.funding_source] ?? ev.funding_source
-          fundingBySource[label] = (fundingBySource[label] ?? 0) + cost
-        }
-        if (ev.domainName) {
-          fundingByDomain[ev.domainName] = (fundingByDomain[ev.domainName] ?? 0) + cost
-        }
-      }
-      const fundingSourceData = Object.entries(fundingBySource).map(([name, value]) => ({ name, value }))
-      const fundingDomainData = Object.entries(fundingByDomain).map(([name, value], idx) => ({
-        name: name.length > 14 ? name.split(/[&\s]/)[0] : name,
-        fullName: name, value,
-        colour: aDomainColour(name, idx),
-      }))
-      const totalCost = fundingSourceData.reduce((s, d) => s + d.value, 0)
-
-      // Enrichment equity
-      const enrichBySubDomain = {}
-      for (const e of analyticsEntries.filter(e => {
-        const dn = e.provision_points?.sub_domains?.domains?.name ?? ''
-        return dn.toLowerCase().includes('enrichment')
-      })) {
-        const sub = e.provision_points?.sub_domains?.name ?? 'Unknown'
-        ;(enrichBySubDomain[sub] = enrichBySubDomain[sub] ?? []).push(e)
-      }
-      const equityData = Object.entries(enrichBySubDomain).map(([subDomain, es]) => ({
-        subDomain, total: es.length,
-        groups: A_GROUPS.map(g => {
-          const count = es.filter(e => (e.evidence_entries ?? []).some(ev => !!ev[g.key])).length
-          return { label: g.label, count, pct: es.length ? Math.round((count / es.length) * 100) : 0 }
-        }),
-      }))
-
-      generateReport({
+      generateEvidenceReport({
+        purpose,
+        selectedDomains,
+        selectedGroups,
+        provisionView,
+        includeAppendixB,
+        entries:     entriesRes.data  ?? [],
+        domains:     domainsRes.data  ?? [],
+        barriers:    barriersRes.data ?? [],
         schoolCtx,
-        readinessData,
-        upcomingReviews,
-        equityData,
-        fundingSourceData,
-        fundingDomainData,
-        totalCost,
-        allEvidence,
-        domains: fetchedDomains,
         schoolName,
-        options: { includeEquity, equityChart, includeFunding, fundingChart, includeOutcomes, outcomeMode, outcomeSelected, includeReach, reachChart },
+        userProfile: profileRes.data  ?? null,
       })
     } catch (err) {
       console.error('[ReportBuilder] generation error:', err)
@@ -668,177 +608,145 @@ function ReportBuilder({ schoolName = '', allSubDomains = [], supabase: sb, scho
     setGenerating(false)
   }
 
-  const card = { background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '14px 18px', marginBottom: 10 }
-  const row  = { display: 'flex', alignItems: 'center', gap: 12 }
-  const body = { marginTop: 14, paddingTop: 14, borderTop: '1px solid #f1f5f9' }
+  const card     = { background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '16px 18px', marginBottom: 12 }
+  const cardHead = { fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }
+  const pill     = (active) => ({
+    padding: '5px 13px', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit',
+    border: `1.5px solid ${active ? '#1B365D' : '#e2e8f0'}`,
+    background: active ? 'rgba(27,54,93,0.10)' : '#fff',
+    color:      active ? '#1B365D' : '#64748b',
+    fontSize: '0.78rem', fontWeight: active ? 600 : 400,
+  })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
       {/* Header */}
       <div style={{ paddingBottom: 16, borderBottom: '1px solid #e2e8f0', marginBottom: 20 }}>
-        <h1 style={{ fontSize: 15, fontWeight: 500, color: '#1A202C', marginBottom: 4 }}>Report builder</h1>
-        <p style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5 }}>Choose what to include and how to present it. School context and domain readiness are always included.</p>
+        <h1 style={{ fontSize: 15, fontWeight: 600, color: '#1A202C', marginBottom: 4 }}>Generate Report</h1>
+        <p style={{ fontSize: '0.78rem', color: '#94a3b8', lineHeight: 1.5 }}>
+          Choose a purpose, scope by domain and student group, then generate your PDF.
+        </p>
       </div>
 
-      {/* Report type selector */}
-      <div style={{ marginBottom: 20 }}>
-        <p style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Report type</p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          {[
-            { id: 'working', icon: 'ti-layout-list', title: 'Working Report', desc: 'Provision points grouped by domain and sub-domain. Includes equity, funding, and outcomes.' },
-            { id: 'strategy', icon: 'ti-certificate', title: 'Inclusion Strategy', desc: 'Grouped by DfE Principle of Inclusion. Shows in-place and in-progress evidence for each principle.' },
-          ].map(opt => {
-            const active = reportType === opt.id
-            return (
-              <button key={opt.id} type="button" onClick={() => setReportType(opt.id)} style={{
-                textAlign: 'left', padding: '14px 16px', border: `2px solid ${active ? '#1B365D' : '#e2e8f0'}`,
-                borderRadius: 10, cursor: 'pointer', background: active ? 'rgba(27,54,93,0.05)' : '#fff',
-                fontFamily: 'inherit', transition: 'all 0.15s',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <i className={`ti ${opt.icon}`} style={{ color: active ? '#1B365D' : '#94a3b8', fontSize: '1rem' }} />
-                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: active ? '#1B365D' : '#1A202C' }}>{opt.title}</span>
-                  {active && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', fontWeight: 600, background: '#1B365D', color: '#fff', padding: '2px 8px', borderRadius: 20 }}>Selected</span>}
-                </div>
-                <p style={{ fontSize: '0.75rem', color: '#64748b', lineHeight: 1.4, margin: 0 }}>{opt.desc}</p>
-              </button>
-            )
-          })}
-        </div>
-      </div>
+      <div style={{ flex: 1, paddingBottom: 100 }}>
 
-      {/* Section cards */}
-      <div style={{ flex: 1, paddingBottom: 72 }}>
-
-        {/* 1. Domain Readiness */}
+        {/* Filter 1 — Report Purpose */}
         <div style={card}>
-          <div style={row}>
-            <RBIconBox bg="rgba(27,54,93,0.10)" color="#1B365D" icon="ti-circle-check" />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1A202C' }}>Domain Readiness</p>
-              <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Overall % readiness, by-domain breakdown, upcoming reviews</p>
-            </div>
-            <RBBadge text="Always included" />
-          </div>
-        </div>
-
-        {/* 2. Enrichment Equity */}
-        <div style={card}>
-          <div style={row}>
-            <RBIconBox bg="rgba(27,54,93,0.10)" color="#1B365D" icon="ti-scale" />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1A202C' }}>Enrichment Equity</p>
-              <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Group coverage across enrichment sub-domains</p>
-            </div>
-            <RBBadge text={includeEquity ? 'Included' : 'Not included'} included={includeEquity} />
-            <RBToggle value={includeEquity} onChange={setIncludeEquity} />
-          </div>
-          {includeEquity && (
-            <div style={body}>
-              <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 8 }}>Chart style</p>
-              <RBChartToggle options={[{value:'table',label:'Table'},{value:'radar',label:'Radar'}]} value={equityChart} onChange={setEquityChart} />
-            </div>
-          )}
-        </div>
-
-        {/* 3. Funding & Cost */}
-        <div style={card}>
-          <div style={row}>
-            <RBIconBox bg="#E6F1FB" color="#185FA5" icon="ti-currency-pound" />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1A202C' }}>Funding & Cost</p>
-              <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Total spend, per-pupil costs, by domain and funding stream</p>
-            </div>
-            <RBBadge text={includeFunding ? 'Included' : 'Not included'} included={includeFunding} />
-            <RBToggle value={includeFunding} onChange={setIncludeFunding} />
-          </div>
-          {includeFunding && (
-            <div style={body}>
-              <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 8 }}>Chart style</p>
-              <RBChartToggle options={[{value:'bar',label:'Bar chart'},{value:'table',label:'Table'}]} value={fundingChart} onChange={setFundingChart} />
-            </div>
-          )}
-        </div>
-
-        {/* 4. Outcomes & Impact */}
-        <div style={card}>
-          <div style={row}>
-            <RBIconBox bg="#FAEEDA" color="#854F0B" icon="ti-target" />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1A202C' }}>Outcomes & Impact</p>
-              <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Intended outcomes and evidence of impact</p>
-            </div>
-            <RBBadge text={includeOutcomes ? 'Included' : 'Not included'} included={includeOutcomes} />
-            <RBToggle value={includeOutcomes} onChange={setIncludeOutcomes} />
-          </div>
-          {includeOutcomes && (
-            <div style={body}>
-              <div style={{ marginBottom: 14 }}>
-                <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 8 }}>Filter by</p>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {[['all','All'],['domain','Domain'],['group','Student group'],['subdomain','Sub-domain']].map(([mode, label]) => {
-                    const active = outcomeMode === mode
-                    return (
-                      <button key={mode} type="button" onClick={() => changeMode(mode)} style={{
-                        padding: '5px 12px', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit',
-                        border: `1.5px solid ${active ? '#1B365D' : '#e2e8f0'}`,
-                        background: active ? 'rgba(27,54,93,0.10)' : '#fff',
-                        color:      active ? '#1B365D' : '#64748b',
-                        fontSize: '0.78rem', fontWeight: active ? 600 : 400,
-                      }}>{label}</button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {outcomeMode !== 'all' && pillOptions.length > 0 && (
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-                    {pillOptions.map(opt => {
-                      const sel = outcomeSelected.includes(opt)
-                      return (
-                        <button key={opt} type="button" onClick={() => togglePill(opt)} style={{
-                          padding: '4px 11px', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit',
-                          border: `1.5px solid ${sel ? '#1B365D' : '#e2e8f0'}`,
-                          background: sel ? 'rgba(27,54,93,0.10)' : '#fff',
-                          color:      sel ? '#1B365D' : '#475569',
-                          fontSize: '0.75rem', fontWeight: sel ? 600 : 400,
-                        }}>{opt}</button>
-                      )
-                    })}
+          <p style={cardHead}>Report Purpose</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {REPORT_PURPOSE_OPTIONS.map(opt => {
+              const active = purpose === opt.id
+              return (
+                <button key={opt.id} type="button" onClick={() => setPurpose(opt.id)} style={{
+                  textAlign: 'left', padding: '13px 15px',
+                  border: `2px solid ${active ? '#1B365D' : '#e2e8f0'}`,
+                  borderRadius: 10, cursor: 'pointer',
+                  background: active ? 'rgba(27,54,93,0.05)' : '#fff',
+                  fontFamily: 'inherit', transition: 'border-color 0.12s',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                    <i className={`ti ${opt.icon}`} style={{ color: active ? '#1B365D' : '#94a3b8', fontSize: '1rem' }} />
+                    <span style={{ fontSize: '0.83rem', fontWeight: 700, color: active ? '#1B365D' : '#1A202C' }}>{opt.title}</span>
+                    {active && (
+                      <span style={{ marginLeft: 'auto', fontSize: '0.68rem', fontWeight: 600, background: '#1B365D', color: '#fff', padding: '2px 8px', borderRadius: 20 }}>
+                        Selected
+                      </span>
+                    )}
                   </div>
-                  <button type="button" onClick={() => setOutcomeSelected([])} style={{
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    fontSize: '0.75rem', color: '#1B365D', padding: 0, fontFamily: 'inherit',
-                  }}>Clear selection</button>
-                </div>
-              )}
+                  <p style={{ fontSize: '0.73rem', color: '#64748b', lineHeight: 1.4, margin: 0 }}>{opt.desc}</p>
+                </button>
+              )
+            })}
+          </div>
+        </div>
 
-              <div style={{ background: '#F0F2F5', borderRadius: 8, padding: '9px 12px', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                <i className="ti ti-info-circle" style={{ color: '#1B365D', fontSize: '0.9rem', flexShrink: 0, marginTop: 1 }} />
-                <p style={{ fontSize: '0.78rem', color: '#475569', lineHeight: 1.5 }}>{outcomesPreview}</p>
-              </div>
-            </div>
+        {/* Filter 2 — Domain Scope */}
+        <div style={card}>
+          <p style={cardHead}>Domain Scope</p>
+          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+            <button type="button"
+              onClick={() => setSelectedDomains([])}
+              style={pill(selectedDomains.length === 0)}>
+              All domains
+            </button>
+            {REPORT_DOMAIN_OPTIONS.map(d => (
+              <button key={d.id} type="button"
+                onClick={() => toggleDomain(d.id)}
+                style={pill(selectedDomains.includes(d.id))}>
+                {d.label}
+              </button>
+            ))}
+          </div>
+          {purpose === 'domain_focus' && selectedDomains.length === 0 && (
+            <p style={{ fontSize: '0.75rem', color: '#D4751A', marginTop: 8 }}>
+              Domain Focus requires at least one domain selected.
+            </p>
           )}
         </div>
 
-        {/* 5. Group Reach */}
+        {/* Filter 3 — Student Group */}
         <div style={card}>
-          <div style={row}>
-            <RBIconBox bg="#FBEAF0" color="#993556" icon="ti-users" />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1A202C' }}>Group Reach</p>
-              <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>Student numbers reached per group across all domains</p>
-            </div>
-            <RBBadge text={includeReach ? 'Included' : 'Not included'} included={includeReach} />
-            <RBToggle value={includeReach} onChange={setIncludeReach} />
+          <p style={cardHead}>Student Group</p>
+          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+            <button type="button"
+              onClick={() => setSelectedGroups([])}
+              style={pill(selectedGroups.length === 0)}>
+              All groups
+            </button>
+            {REPORT_GROUP_OPTIONS.map(g => (
+              <button key={g} type="button"
+                onClick={() => toggleGroup(g)}
+                style={pill(selectedGroups.includes(g))}>
+                {g}
+              </button>
+            ))}
           </div>
-          {includeReach && (
-            <div style={body}>
-              <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 8 }}>Chart style</p>
-              <RBChartToggle options={[{value:'table',label:'Table'},{value:'bar',label:'Bar chart'}]} value={reachChart} onChange={setReachChart} />
+        </div>
+
+        {/* Provision view toggle — Full Strategy or Domain Focus only */}
+        {showProvisionToggle && (
+          <div style={card}>
+            <p style={cardHead}>Organise Provision By</p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[
+                { id: 'domain',    label: 'Domain' },
+                { id: 'principle', label: 'DfE Principle' },
+              ].map(opt => (
+                <button key={opt.id} type="button"
+                  onClick={() => setProvisionView(opt.id)}
+                  style={pill(provisionView === opt.id)}>
+                  {opt.label}
+                </button>
+              ))}
             </div>
-          )}
+            <p style={{ fontSize: '0.73rem', color: '#94a3b8', marginTop: 8 }}>
+              Controls how provision points are organised in Section 5.
+            </p>
+          </div>
+        )}
+
+        {/* Appendix B toggle — Full Strategy only */}
+        {showAppendixB && (
+          <div style={card}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <RBToggle value={includeAppendixB} onChange={setIncludeAppendixB} />
+              <div>
+                <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1A202C' }}>
+                  Appendix B: Full Provision Checklist
+                </p>
+                <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>
+                  All active provision points with status, organised by domain and sub-domain.
+                  Off by default — adds significant length to the report.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Filter summary */}
+        <div style={{ background: '#F0F2F5', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 12 }}>
+          <i className="ti ti-filter" style={{ color: '#1B365D', fontSize: '0.9rem', flexShrink: 0, marginTop: 1 }} />
+          <p style={{ fontSize: '0.8rem', color: '#475569', lineHeight: 1.5, fontWeight: 500 }}>{filterSummary}</p>
         </div>
 
       </div>
@@ -853,19 +761,22 @@ function ReportBuilder({ schoolName = '', allSubDomains = [], supabase: sb, scho
           <p style={{ fontSize: '0.78rem', color: '#dc2626', margin: 0 }}>{genError}</p>
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
-          <p style={{ fontSize: '0.8rem', color: '#64748b', flex: 1, minWidth: 0 }}>
-            {reportType === 'strategy'
-              ? 'Inclusion Strategy — 7 DfE principles, in-place and in-progress points only'
-              : `Includes ${includedSections.length} section${includedSections.length !== 1 ? 's' : ''} — ${includedSections.join(', ')}`}
+          <p style={{ fontSize: '0.78rem', color: '#64748b', flex: 1, minWidth: 0 }}>
+            {purpose === 'full_strategy' ? 'Inclusion Strategy Statement' : 'Inclusion Evidence Report'}
+            {' — '}
+            {domainLabel}
+            {selectedGroups.length > 0 ? ` · ${groupLabel}` : ''}
           </p>
-          <button type="button" onClick={handleGeneratePdf} disabled={generating} style={{
+          <button type="button" onClick={handleGeneratePdf} disabled={generating || !generateEnabled} style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
             padding: '9px 18px', borderRadius: 8, border: 'none',
-            background: generating ? '#94a3b8' : '#1B365D', color: '#fff',
-            fontSize: '0.85rem', fontWeight: 600, cursor: generating ? 'default' : 'pointer', flexShrink: 0, fontFamily: 'inherit',
+            background: (generating || !generateEnabled) ? '#94a3b8' : '#1B365D',
+            color: '#fff', fontSize: '0.85rem', fontWeight: 600,
+            cursor: (generating || !generateEnabled) ? 'default' : 'pointer',
+            flexShrink: 0, fontFamily: 'inherit',
           }}>
             <i className="ti ti-download" style={{ fontSize: '0.9rem', lineHeight: 1 }} />
-            {generating ? 'Generating…' : 'Generate PDF'}
+            {generating ? 'Generating…' : 'Generate Report'}
           </button>
         </div>
       </div>
@@ -4415,7 +4326,6 @@ export default function App() {
         {view !== 'mat' && selectedSchool && selectedDomain === 'report-builder' && (
           <ReportBuilder
             schoolName={schoolName}
-            allSubDomains={allSubDomains}
             supabase={supabase}
             school={selectedSchool}
             schoolCtx={schoolCtx}
