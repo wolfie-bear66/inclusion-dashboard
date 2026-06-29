@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './LandingPage.css'
 
 const DEMO_URL = 'https://inclusion-dashboard.vercel.app/demo'
@@ -94,6 +94,13 @@ function ContactForm({ enquiryType, btnClass, btnLabel }) {
 export default function LandingPage() {
   const [activeTab, setActiveTab] = useState(0)
 
+  useEffect(() => {
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap'
+    document.head.appendChild(link)
+  }, [])
+
   const tabs = [
     {
       label: '1. Record',
@@ -177,9 +184,32 @@ export default function LandingPage() {
 
       {/* ── Section 1: Hero ── */}
       <section className="lp-hero">
-        <div className="lp-hero__eyebrow-pill">Inclusion Strategy deadline: 31 Dec 2026 · Full statutory compliance: 2028–29</div>
-        <h1 className="lp-hero__h1">Inclusion,<br />evidenced in full.</h1>
-        <p className="lp-hero__sub">
+        <div style={{
+          display: 'inline-block',
+          fontSize: '11px',
+          fontWeight: 600,
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+          padding: '6px 14px',
+          borderRadius: '20px',
+          background: '#FDF3E3',
+          border: '1px solid #EF9F27',
+          color: '#854F0B',
+          marginBottom: '28px',
+        }}>
+          Inclusion Strategy Deadline: 31 December 2026
+        </div>
+        <h1 className="lp-hero__h1" style={{
+          fontFamily: "'Playfair Display', Georgia, serif",
+          fontWeight: 700,
+          fontSize: '58px',
+          lineHeight: 1.05,
+          letterSpacing: '-0.01em',
+        }}>
+          <span style={{ color: '#1B365D' }}>Inclusion,</span><br />
+          <span style={{ color: '#C45C1A' }}>evidenced in full.</span>
+        </h1>
+        <p className="lp-hero__sub" style={{ fontSize: '19px', lineHeight: 1.65 }}>
           See the gaps, act on them, report with confidence.
         </p>
 
