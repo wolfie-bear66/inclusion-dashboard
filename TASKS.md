@@ -95,7 +95,7 @@ Last updated: 29 June 2026 (Session 32 — Landing page: four-step structure, Id
 - [x] **Fix MAT Analytics Provision Depth data** — Root cause: `ppMeta` did not include `domain_id`, so `heatGroupsForCategory` filtered out all provision points (`pp.domain_id` falsy → 0 groups). Fix: added `domain_id: pp.sub_domains?.domain_id ?? null` to ppMeta build in load function. Data and domain ID lookups all verified correct via diagnostic logs. Session 19.
 - [ ] **MAT dashboard Analytics — expand Provision Depth and Trust Trajectory based on pilot user feedback**
 - [ ] **Review full MAT dashboard with pilot school before next feature build**
-- [ ] **MAT dashboard — add phase filter to Schools table once schools.phase column exists** — `// TODO` comment already in `SchoolsView` in `MATDashboard.jsx`.
+- [x] **MAT dashboard — phase filter on Schools table** — `phase TEXT CHECK (primary/secondary/all_through/special)` added to `schools` via `step8_school_phase.sql`; demo schools backfilled by name. `SchoolsView` gains pill filter row (All / Primary / Secondary / All-through / Special); null-phase schools appear under All only; client-side filter applied before sort. Schools fetch updated to include `phase`.
 
 ### Pilot and validation
 

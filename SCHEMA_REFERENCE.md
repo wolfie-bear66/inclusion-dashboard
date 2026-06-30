@@ -87,6 +87,7 @@ Child rows of `entries`. Each entry can have multiple evidence records.
 | step6a_onboarding_v2.sql | Adds `second_login_or_later` to `onboarding_state` default |
 | step6b_welcomed.sql | Adds `welcomed` boolean column to profiles |
 | step7_job_title.sql | Adds `job_title` text column to profiles |
+| step8_school_phase.sql | Adds `phase` text column to schools (CHECK: primary / secondary / all_through / special) |
 
 ---
 

@@ -311,11 +311,11 @@ function HomeView({ matName, schools, domains, matrix, activePpCount, reviewsDue
 }
 
 // ── Schools view ──────────────────────────────────────────────────────
-// TODO: add phase filter when schools.phase column exists
 function SchoolsView({ schools, domains, matrix, activePpCount, lastActivity, reviewsDueBySchool, onSchoolClick }) {
-  const [sortCol, setSortCol]  = useState('pct')
-  const [sortDir, setSortDir]  = useState('desc')
+  const [sortCol, setSortCol]   = useState('pct')
+  const [sortDir, setSortDir]   = useState('desc')
   const [expanded, setExpanded] = useState(null)
+  const [phaseFilter, setPhaseFilter] = useState('all')
 
   function schoolStats(s) {
     const inPlace = domains.reduce((sum, d) => sum + (matrix[s.id]?.[d.id]?.inPlace ?? 0), 0)
@@ -334,7 +334,18 @@ function SchoolsView({ schools, domains, matrix, activePpCount, lastActivity, re
     return 0
   }
 
-  const sorted = [...schools].sort((a, b) => {
+  const PHASES = [
+    { value: 'primary',   label: 'Primary' },
+    { value: 'secondary', label: 'Secondary' },
+    { value: 'all_through', label: 'All-through' },
+    { value: 'special',   label: 'Special' },
+  ]
+
+  const filtered = phaseFilter === 'all'
+    ? schools
+    : schools.filter(s => s.phase === phaseFilter)
+
+  const sorted = [...filtered].sort((a, b) => {
     const av = getSortVal(a), bv = getSortVal(b)
     if (av < bv) return sortDir === 'asc' ? -1 : 1
     if (av > bv) return sortDir === 'asc' ? 1 : -1
@@ -358,9 +369,27 @@ function SchoolsView({ schools, domains, matrix, activePpCount, lastActivity, re
     cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap',
   }
 
+  function filterPillStyle(active) {
+    return {
+      padding: '5px 12px', borderRadius: 20,
+      border: `1.5px solid ${active ? '#1B365D' : '#E2E8F0'}`,
+      background: active ? '#1B365D' : '#fff',
+      color: active ? '#fff' : '#64748b',
+      fontSize: '0.78rem', fontWeight: active ? 600 : 400,
+      cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.12s',
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1B365D', margin: 0 }}>Schools</h2>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button style={filterPillStyle(phaseFilter === 'all')} onClick={() => setPhaseFilter('all')}>All</button>
+        {PHASES.map(p => (
+          <button key={p.value} style={filterPillStyle(phaseFilter === p.value)} onClick={() => setPhaseFilter(p.value)}>{p.label}</button>
+        ))}
+      </div>
 
       <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
         <div style={{ overflowX: 'auto' }}>
@@ -1508,7 +1537,7 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
       // Step 1: mat name, schools, domains in parallel
       const [matRes, schoolsRes, domainsRes] = await Promise.all([
         supabase.from('mats').select('name').eq('id', matId).single(),
-        supabase.from('schools').select('id, name').eq('mat_id', matId).order('name'),
+        supabase.from('schools').select('id, name, phase').eq('mat_id', matId).order('name'),
         supabase.from('domains').select('id, name, display_order').order('display_order'),
       ])
       if (cancelled) return
