@@ -3243,23 +3243,31 @@ export default function App() {
       .then(({ data }) => setTeamMembers(data ?? []))
   }, [selectedSchool, userRole])
 
-  // Lightweight load: statuses + evidence counts + friction flags for all domains, current school
+  // School-level load: statuses, evidence counts, full evidence detail, and friction flags
+  // Fetching at school level (not per-domain) ensures evidenceEntries is populated for
+  // both the Domain view and the Category view.
   useEffect(() => {
-    if (!selectedSchool) { setAllStatuses({}); setAllEvidenceCounts({}); setFlaggedPoints(new Set()); return }
+    if (!selectedSchool) { setAllStatuses({}); setAllEvidenceCounts({}); setEntries({}); setEvidenceEntries({}); setFlaggedPoints(new Set()); return }
     supabase
       .from('entries')
-      .select('provision_point_id, status, evidence_entries(id)')
+      .select(ENTRY_SELECT)
       .eq('school_id', selectedSchool)
       .then(({ data, error }) => {
         if (error) { console.error('Error loading school data:', error); return }
         const statusMap = {}
+        const countMap = {}
+        const entryMap = {}
         const evidenceMap = {}
-        for (const e of data ?? []) {
-          statusMap[e.provision_point_id] = e.status
-          evidenceMap[e.provision_point_id] = (e.evidence_entries ?? []).length
+        for (const { provision_point_id, evidence_entries: evList, ...rest } of data ?? []) {
+          statusMap[provision_point_id] = rest.status
+          countMap[provision_point_id] = (evList ?? []).length
+          entryMap[provision_point_id] = rest
+          evidenceMap[provision_point_id] = evList ?? []
         }
         setAllStatuses(statusMap)
-        setAllEvidenceCounts(evidenceMap)
+        setAllEvidenceCounts(countMap)
+        setEntries(entryMap)
+        setEvidenceEntries(evidenceMap)
       })
     supabase
       .from('friction_logs')
@@ -3273,8 +3281,6 @@ export default function App() {
   useEffect(() => {
     if (!selectedSchool || !selectedDomain || selectedDomain === 'analytics' || selectedDomain === 'team' || selectedDomain === 'report-builder' || selectedDomain === 'barriers') {
       setSubDomains([])
-      setEntries({})
-      setEvidenceEntries({})
       setExpandedSDs(new Set())
       setUtFilter('all')
       return
@@ -3283,37 +3289,22 @@ export default function App() {
     setLoading(true)
     setUtFilter('all')
 
-    Promise.all([
-      supabase
-        .from('sub_domains')
-        .select('id, name, provision_points(id, label, display_order, universal_or_targeted)')
-        .eq('domain_id', selectedDomain)
-        .order('name'),
-      supabase
-        .from('entries')
-        .select(ENTRY_SELECT)
-        .eq('school_id', selectedSchool),
-    ]).then(([subDomainsRes, entriesRes]) => {
-      if (subDomainsRes.error) console.error('Error loading sub_domains:', subDomainsRes.error)
-      if (entriesRes.error) console.error('Error loading entries:', entriesRes.error)
+    supabase
+      .from('sub_domains')
+      .select('id, name, provision_points(id, label, display_order, universal_or_targeted)')
+      .eq('domain_id', selectedDomain)
+      .order('name')
+      .then(subDomainsRes => {
+        if (subDomainsRes.error) console.error('Error loading sub_domains:', subDomainsRes.error)
 
-      const grouped = (subDomainsRes.data ?? []).map(sd => ({
-        ...sd,
-        provision_points: (sd.provision_points ?? []).sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0)),
-      }))
+        const grouped = (subDomainsRes.data ?? []).map(sd => ({
+          ...sd,
+          provision_points: (sd.provision_points ?? []).sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0)),
+        }))
 
-      const entryMap = {}
-      const evidenceMap = {}
-      for (const { provision_point_id, evidence_entries: evList, ...rest } of entriesRes.data ?? []) {
-        entryMap[provision_point_id] = rest
-        evidenceMap[provision_point_id] = evList ?? []
-      }
-
-      setSubDomains(grouped)
-      setEntries(entryMap)
-      setEvidenceEntries(evidenceMap)
-      setLoading(false)
-    })
+        setSubDomains(grouped)
+        setLoading(false)
+      })
   }, [selectedSchool, selectedDomain])
 
   useEffect(() => { setExpandedCatDomains(new Set()) }, [selectedCategory])
