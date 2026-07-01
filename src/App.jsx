@@ -5,6 +5,7 @@ import LandingPage from './pages/LandingPage'
 import AboutPage from './pages/AboutPage'
 import PrivacyPage from './pages/PrivacyPage'
 import TeamPage from './pages/TeamPage'
+import InclusionStrategyWizard from './pages/InclusionStrategyWizard'
 import OnboardingPrompt from './components/OnboardingPrompt'
 import SetPasswordPage from './pages/SetPasswordPage'
 import AdminView from './pages/AdminView'
@@ -393,6 +394,14 @@ function Sidebar({
           onClick: () => { setSelectedDomain('barriers'); setAnalyticsTabRequest(null); onClose() },
         })}
 
+        {/* Create Inclusion Strategy */}
+        {navBtn({
+          id: 'inclusion-strategy', icon: 'ti-clipboard-text',
+          label: 'Create Inclusion Strategy',
+          active: selectedDomain === 'inclusion-strategy',
+          onClick: () => { setSelectedDomain('inclusion-strategy'); setAnalyticsTabRequest(null); onClose() },
+        })}
+
         {/* Divider */}
         <div style={{ height: '0.5px', background: '#e2e8f0', margin: '6px 0' }} />
 
@@ -517,7 +526,7 @@ const REPORT_PURPOSE_OPTIONS = [
   },
 ]
 
-function ReportBuilder({ schoolName = '', supabase: sb, school, schoolCtx = {} }) {
+function ReportBuilder({ schoolName = '', supabase: sb, school, schoolCtx = {}, onCreateInclusionStrategy }) {
   const [purpose,         setPurpose]         = useState('full_strategy')
   const [selectedDomains, setSelectedDomains] = useState([])   // empty = all domains
   const [selectedGroups,  setSelectedGroups]  = useState([])   // empty = all groups
@@ -629,6 +638,26 @@ function ReportBuilder({ schoolName = '', supabase: sb, school, schoolCtx = {} }
       </div>
 
       <div style={{ flex: 1, paddingBottom: 100 }}>
+
+        {/* Secondary entry point — Create Inclusion Strategy wizard */}
+        {onCreateInclusionStrategy && (
+          <button type="button" onClick={onCreateInclusionStrategy} style={{
+            display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left',
+            padding: '13px 15px', marginBottom: 12, borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit',
+            border: '1.5px dashed #1B365D', background: 'rgba(27,54,93,0.04)',
+          }}>
+            <i className="ti ti-clipboard-text" style={{ color: '#1B365D', fontSize: '1.1rem', flexShrink: 0 }} />
+            <span style={{ flex: 1 }}>
+              <span style={{ display: 'block', fontSize: '0.83rem', fontWeight: 700, color: '#1B365D' }}>
+                New: draft your full Inclusion Strategy statement
+              </span>
+              <span style={{ display: 'block', fontSize: '0.73rem', color: '#64748b', marginTop: 2 }}>
+                A guided, step-by-step builder — separate from the report exports below.
+              </span>
+            </span>
+            <i className="ti ti-arrow-right" style={{ color: '#1B365D', fontSize: '0.9rem', flexShrink: 0 }} />
+          </button>
+        )}
 
         {/* Filter 1 — Report Purpose */}
         <div style={card}>
@@ -3279,7 +3308,7 @@ export default function App() {
   }, [selectedSchool])
 
   useEffect(() => {
-    if (!selectedSchool || !selectedDomain || selectedDomain === 'analytics' || selectedDomain === 'team' || selectedDomain === 'report-builder' || selectedDomain === 'barriers') {
+    if (!selectedSchool || !selectedDomain || selectedDomain === 'analytics' || selectedDomain === 'team' || selectedDomain === 'report-builder' || selectedDomain === 'barriers' || selectedDomain === 'inclusion-strategy') {
       setSubDomains([])
       setExpandedSDs(new Set())
       setUtFilter('all')
@@ -4320,6 +4349,7 @@ export default function App() {
             supabase={supabase}
             school={selectedSchool}
             schoolCtx={schoolCtx}
+            onCreateInclusionStrategy={() => setSelectedDomain('inclusion-strategy')}
           />
         )}
 
@@ -4358,7 +4388,16 @@ export default function App() {
           />
         )}
 
-        {view !== 'mat' && selectedSchool && selectedDomain && selectedDomain !== 'analytics' && selectedDomain !== 'report-builder' && selectedDomain !== 'team' && selectedDomain !== 'barriers' && (
+        {view !== 'mat' && selectedSchool && selectedDomain === 'inclusion-strategy' && (
+          <InclusionStrategyWizard
+            school={selectedSchool}
+            schoolName={schoolName}
+            supabase={supabase}
+            domains={domains}
+          />
+        )}
+
+        {view !== 'mat' && selectedSchool && selectedDomain && selectedDomain !== 'analytics' && selectedDomain !== 'report-builder' && selectedDomain !== 'team' && selectedDomain !== 'barriers' && selectedDomain !== 'inclusion-strategy' && (
           loading ? (
             <p className="state-msg">Loading…</p>
           ) : subDomains.length === 0 ? (
