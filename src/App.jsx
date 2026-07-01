@@ -9,6 +9,8 @@ import InclusionStrategyWizard from './pages/InclusionStrategyWizard'
 import OnboardingPrompt from './components/OnboardingPrompt'
 import SetPasswordPage from './pages/SetPasswordPage'
 import AdminView from './pages/AdminView'
+import { useIsReadOnlyView } from './hooks/useIsReadOnlyView'
+import ReadOnlyBanner from './components/ReadOnlyBanner'
 import './App.css'
 import { generateEvidenceReport, generateReport, generateInclusionStrategy } from './generateReport'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts'
@@ -846,7 +848,7 @@ const BARRIER_STATUS_STYLE = {
   resolved:        { bg: 'rgba(37,122,59,0.10)',  color: '#257A3B' },
 }
 
-function BarriersView({ school, supabase: sb, domains: domainList }) {
+function BarriersView({ school, supabase: sb, domains: domainList, readOnly = false }) {
   const [barriers,      setBarriers]      = useState([])
   const [subDomainMap,  setSubDomainMap]  = useState({})  // domainId → [{id,name}]
   const [allEntries,    setAllEntries]    = useState([])  // for linking provision points
@@ -989,6 +991,7 @@ function BarriersView({ school, supabase: sb, domains: domainList }) {
   }
 
   async function handleSave() {
+    if (readOnly) return
     const errors = {}
     if (!form.description?.trim()) errors.description = 'Description is required'
     if (!form.domain_id) errors.domain_id = 'Domain is required'
@@ -1016,7 +1019,7 @@ function BarriersView({ school, supabase: sb, domains: domainList }) {
         if (error) throw error
         barrierId = editBarrier.id
       } else {
-        const { data, error } = await sb.from('barriers').insert({ ...payload }).select('id').single()
+        const { data, error } = await sb.from('barriers').insert({ ...payload, school_id: school }).select('id').single()
         if (error) throw error
         barrierId = data.id
       }
@@ -1039,6 +1042,7 @@ function BarriersView({ school, supabase: sb, domains: domainList }) {
   }
 
   async function handleDelete(barrier) {
+    if (readOnly) return
     if (!window.confirm('Delete this barrier? This cannot be undone.')) return
     setDeleting(true)
     await sb.from('barriers').delete().eq('id', barrier.id)
@@ -1145,15 +1149,17 @@ function BarriersView({ school, supabase: sb, domains: domainList }) {
             Identify and track barriers affecting your pupils. Link each barrier to the provision you have in place to address it.
           </p>
         </div>
-        <button type="button" onClick={openAdd} style={{
-          padding: '9px 18px', borderRadius: 8, border: 'none',
-          background: '#1B365D', color: '#fff',
-          fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0, fontFamily: 'inherit',
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-        }}>
-          <i className="ti ti-plus" style={{ fontSize: '0.9rem' }} />
-          Add Barrier
-        </button>
+        {!readOnly && (
+          <button type="button" onClick={openAdd} style={{
+            padding: '9px 18px', borderRadius: 8, border: 'none',
+            background: '#1B365D', color: '#fff',
+            fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0, fontFamily: 'inherit',
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+          }}>
+            <i className="ti ti-plus" style={{ fontSize: '0.9rem' }} />
+            Add Barrier
+          </button>
+        )}
       </div>
 
       {/* Filter bar */}
@@ -1283,16 +1289,18 @@ function BarriersView({ school, supabase: sb, domains: domainList }) {
                   </div>
 
                   {/* Actions row */}
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-                    <button type="button" onClick={() => openEdit(b)} style={{
-                      padding: '5px 12px', border: '1px solid #E2E8F0', borderRadius: 6,
-                      background: '#fff', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit', color: '#374151',
-                    }}>Edit</button>
-                    <button type="button" onClick={() => handleDelete(b)} disabled={deleting} style={{
-                      padding: '5px 12px', border: '1px solid #FCA5A5', borderRadius: 6,
-                      background: '#FEF2F2', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit', color: '#DC2626',
-                    }}>Delete</button>
-                  </div>
+                  {!readOnly && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                      <button type="button" onClick={() => openEdit(b)} style={{
+                        padding: '5px 12px', border: '1px solid #E2E8F0', borderRadius: 6,
+                        background: '#fff', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit', color: '#374151',
+                      }}>Edit</button>
+                      <button type="button" onClick={() => handleDelete(b)} disabled={deleting} style={{
+                        padding: '5px 12px', border: '1px solid #FCA5A5', borderRadius: 6,
+                        background: '#FEF2F2', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit', color: '#DC2626',
+                      }}>Delete</button>
+                    </div>
+                  )}
                 </div>
               </div>
             )
@@ -2417,7 +2425,7 @@ function DemoAutoLogin() {
   return <LoadingScreen />
 }
 
-function SchoolContextPanel({ schoolCtx, onSave, ctxLoading }) {
+function SchoolContextPanel({ schoolCtx, onSave, ctxLoading, readOnly = false }) {
   const [editingCtx, setEditingCtx] = useState(false)
   const [ctxDraft, setCtxDraft] = useState({})
 
@@ -2443,24 +2451,26 @@ function SchoolContextPanel({ schoolCtx, onSave, ctxLoading }) {
             ))}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={async () => {
-            if (editingCtx) {
-              const updated = { ...ctxDraft }
-              setEditingCtx(false)
-              await onSave(updated)
-            } else {
-              setCtxDraft({ ...schoolCtx })
-              setEditingCtx(true)
-            }
-          }}
-          style={{ fontSize: '0.78rem', color: '#1B365D', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', flexShrink: 0 }}
-        >
-          {editingCtx ? 'Done' : 'Edit'}
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={async () => {
+              if (editingCtx) {
+                const updated = { ...ctxDraft }
+                setEditingCtx(false)
+                await onSave(updated)
+              } else {
+                setCtxDraft({ ...schoolCtx })
+                setEditingCtx(true)
+              }
+            }}
+            style={{ fontSize: '0.78rem', color: '#1B365D', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', flexShrink: 0 }}
+          >
+            {editingCtx ? 'Done' : 'Edit'}
+          </button>
+        )}
       </div>
-      {editingCtx && (
+      {editingCtx && !readOnly && (
         <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px 16px' }}>
           {[
             { key: 'totalPupils', label: 'Total pupils' },
@@ -2580,7 +2590,7 @@ function PrincipleCoverage({ principleData }) {
   )
 }
 
-function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = null, schoolCtx, onSave, ctxLoading, onNavigateToCategory }) {
+function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = null, schoolCtx, onSave, ctxLoading, onNavigateToCategory, readOnly = false }) {
   const [analyticsEntries, setAnalyticsEntries] = useState([])
   const [domains, setDomains] = useState([])
   const [allActivePPs, setAllActivePPs] = useState([])
@@ -2749,7 +2759,7 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* School context panel */}
-      <SchoolContextPanel schoolCtx={schoolCtx} onSave={onSave} ctxLoading={ctxLoading} />
+      <SchoolContextPanel schoolCtx={schoolCtx} onSave={onSave} ctxLoading={ctxLoading} readOnly={readOnly} />
 
       {/* Inner tab bar + Generate Report button */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -2853,25 +2863,27 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, on
               Add Evidence
             </button>
           )}
-          <button
-            type="button"
-            aria-label="Flag an issue with this provision point"
-            onClick={() => setFlagOpen(v => !v)}
-            style={{
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              padding: '4px 6px',
-              border: `0.5px solid ${isFlagged ? '#EA4335' : '#e2e8f0'}`,
-              borderRadius: 6,
-              background: isFlagged ? '#FCEBEB' : '#fff',
-              color: isFlagged ? '#EA4335' : '#94a3b8',
-              cursor: 'pointer', lineHeight: 1,
-              transition: 'color 0.15s, border-color 0.15s, background 0.15s',
-            }}
-            onMouseEnter={e => { if (!isFlagged) { e.currentTarget.style.borderColor = '#EA4335'; e.currentTarget.style.color = '#EA4335' } }}
-            onMouseLeave={e => { if (!isFlagged) { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = '#94a3b8' } }}
-          >
-            <i className={`ti ${isFlagged ? 'ti-flag-filled' : 'ti-flag'}`} style={{ fontSize: 14 }} />
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              aria-label="Flag an issue with this provision point"
+              onClick={() => setFlagOpen(v => !v)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                padding: '4px 6px',
+                border: `0.5px solid ${isFlagged ? '#EA4335' : '#e2e8f0'}`,
+                borderRadius: 6,
+                background: isFlagged ? '#FCEBEB' : '#fff',
+                color: isFlagged ? '#EA4335' : '#94a3b8',
+                cursor: 'pointer', lineHeight: 1,
+                transition: 'color 0.15s, border-color 0.15s, background 0.15s',
+              }}
+              onMouseEnter={e => { if (!isFlagged) { e.currentTarget.style.borderColor = '#EA4335'; e.currentTarget.style.color = '#EA4335' } }}
+              onMouseLeave={e => { if (!isFlagged) { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = '#94a3b8' } }}
+            >
+              <i className={`ti ${isFlagged ? 'ti-flag-filled' : 'ti-flag'}`} style={{ fontSize: 14 }} />
+            </button>
+          )}
         </div>
       </div>
       {evidenceList.length > 0 && (
@@ -3003,6 +3015,7 @@ export default function App() {
   // MAT / role state
   const [userRole, setUserRole] = useState('contributor')
   const [userMatId, setUserMatId] = useState(null)
+  const [ownSchoolId, setOwnSchoolId] = useState(null) // the logged-in user's own school_id, per their profile — distinct from selectedSchool, which is whatever school is currently being viewed
   // 'school' | 'mat' | 'school_readonly'
   const [view, setView] = useState('school')
 
@@ -3109,6 +3122,7 @@ export default function App() {
       setSidebarFlashTeam(false)
       setWelcomed(true)
       setUserMatId(null)
+      setOwnSchoolId(null)
       setView('school')
       setBrowsingSchoolName('')
       setAuthLoading(false)
@@ -3139,6 +3153,7 @@ export default function App() {
         setUserRole(role)
         setViewMode(role === 'contributor' ? 'personal' : 'whole_school')
         setUserMatId(data.mat_id ?? null)
+        setOwnSchoolId(data.school_id ?? null)
         setFirstName(data.first_name ?? '')
         const os = data.onboarding_state ?? {}
         setOnboardingState(os)
@@ -3478,8 +3493,8 @@ export default function App() {
   }
 
   async function handleCtxSave(updated) {
-    setSchoolCtx(updated)
-    await supabase.from('school_context').upsert({
+    if (readOnly) return
+    const { error } = await supabase.from('school_context').upsert({
       school_id:    selectedSchool,
       total_pupils: updated.totalPupils,
       pp_count:     updated.ppCount,
@@ -3490,9 +3505,12 @@ export default function App() {
       wwc_count:    updated.wwcCount,
       updated_at:   new Date().toISOString(),
     }, { onConflict: 'school_id' })
+    if (error) { console.error('Error saving school context:', error); return }
+    setSchoolCtx(updated)
   }
 
   async function handleFlag(ppId, note) {
+    if (readOnly) return false
     const info = ppInfoMap[ppId]
     const { error } = await supabase.from('friction_logs').insert([{
       school_id:          selectedSchool,
@@ -3612,7 +3630,11 @@ export default function App() {
     if (modalRef.current && !modalRef.current.contains(e.target)) closeModal()
   }
 
-  const readOnly = view === 'school_readonly'
+  // Read-only whenever a MAT admin is viewing a school that isn't their own — RLS is the real backstop,
+  // this only controls whether the UI shows write controls. Not tied to `view` alone: a MAT admin's own
+  // affiliated school (per their profile) stays editable even when reached via the MAT dashboard.
+  const readOnly = useIsReadOnlyView(userRole, ownSchoolId, selectedSchool)
+  const viewedSchoolName = browsingSchoolName || schoolName
   const isDemoMode = sessionStorage.getItem('isDemoMode') === 'true'
 
   const allPoints = subDomains.flatMap(sd => sd.provision_points)
@@ -3886,17 +3908,8 @@ export default function App() {
           </div>
         )}
 
-        {readOnly && !(isDemoMode) && (
-          <div style={{
-            background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10,
-            padding: '12px 18px', display: 'flex', alignItems: 'center', gap: 10,
-            marginBottom: 4,
-          }}>
-            <span style={{ fontSize: '1rem' }}>👁</span>
-            <p style={{ fontSize: '0.85rem', color: '#1d4ed8', fontWeight: 500 }}>
-              Viewing <strong>{browsingSchoolName}</strong> — read only. Changes cannot be made from the MAT dashboard.
-            </p>
-          </div>
+        {readOnly && !isDemoMode && (
+          <ReadOnlyBanner schoolName={viewedSchoolName} />
         )}
 
         {view !== 'mat' && selectedSchool && !selectedDomain && (() => {
@@ -4338,7 +4351,7 @@ export default function App() {
         })()}
 
         {view !== 'mat' && selectedSchool && selectedDomain === 'analytics' && (
-          <AnalyticsView school={selectedSchool} supabase={supabase} schoolName={schoolName} tabRequest={analyticsTabRequest} schoolCtx={schoolCtx} onSave={handleCtxSave} ctxLoading={ctxLoading}
+          <AnalyticsView school={selectedSchool} supabase={supabase} schoolName={schoolName} tabRequest={analyticsTabRequest} schoolCtx={schoolCtx} onSave={handleCtxSave} ctxLoading={ctxLoading} readOnly={readOnly}
             onNavigateToCategory={cat => { setSelectedDomain(''); setAnalyticsTabRequest(null); setOverviewMode('category'); setSelectedCategory(cat) }}
           />
         )}
@@ -4359,6 +4372,7 @@ export default function App() {
             currentUserId={session.user.id}
             supabase={supabase}
             onInviteUser={openInviteModal}
+            readOnly={readOnly}
           />
         )}
 
@@ -4385,6 +4399,7 @@ export default function App() {
             school={selectedSchool}
             supabase={supabase}
             domains={domains}
+            readOnly={readOnly}
           />
         )}
 
@@ -4394,6 +4409,7 @@ export default function App() {
             schoolName={schoolName}
             supabase={supabase}
             domains={domains}
+            readOnly={readOnly}
           />
         )}
 

@@ -118,7 +118,7 @@ function SaveIndicator({ status }) {
 }
 
 // ── Step 1: Setup ─────────────────────────────────────────────────────
-function Step1Setup({ form, setField }) {
+function Step1Setup({ form, setField, readOnly }) {
   return (
     <div style={cardStyle}>
       <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1A202C', marginBottom: 4 }}>Setup</h3>
@@ -128,18 +128,18 @@ function Step1Setup({ form, setField }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 420 }}>
         <div>
           <label style={labelStyle}>Academic year label</label>
-          <input type="text" style={inp} value={form.academic_year_label ?? ''}
+          <input type="text" style={inp} value={form.academic_year_label ?? ''} disabled={readOnly}
             placeholder="e.g. 2026/27"
             onChange={e => setField('academic_year_label', e.target.value)} />
         </div>
         <div>
           <label style={labelStyle}>Review date</label>
-          <input type="date" style={inp} value={form.review_date ?? ''}
+          <input type="date" style={inp} value={form.review_date ?? ''} disabled={readOnly}
             onChange={e => setField('review_date', e.target.value)} />
         </div>
         <div>
           <label style={labelStyle}>Authorised by</label>
-          <input type="text" style={inp} value={form.authorised_by ?? ''}
+          <input type="text" style={inp} value={form.authorised_by ?? ''} disabled={readOnly}
             placeholder="Name of the person authorising this statement"
             onChange={e => setField('authorised_by', e.target.value)} />
         </div>
@@ -148,7 +148,7 @@ function Step1Setup({ form, setField }) {
   )
 }
 
-function SelectAllRow({ barriers, barrierIds, onSelectAll }) {
+function SelectAllRow({ barriers, barrierIds, onSelectAll, readOnly }) {
   const checkboxRef = useRef(null)
   const selectedCount = barriers.filter(b => barrierIds.includes(b.id)).length
   const allChecked = selectedCount === barriers.length
@@ -159,9 +159,9 @@ function SelectAllRow({ barriers, barrierIds, onSelectAll }) {
   }, [someChecked])
 
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, cursor: 'pointer' }}>
-      <input ref={checkboxRef} type="checkbox" checked={allChecked}
-        onChange={e => onSelectAll(e.target.checked)} style={{ cursor: 'pointer' }} />
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, cursor: readOnly ? 'default' : 'pointer' }}>
+      <input ref={checkboxRef} type="checkbox" checked={allChecked} disabled={readOnly}
+        onChange={e => onSelectAll(e.target.checked)} style={{ cursor: readOnly ? 'default' : 'pointer' }} />
       <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155' }}>
         Select all ({selectedCount} of {barriers.length} selected)
       </span>
@@ -170,7 +170,7 @@ function SelectAllRow({ barriers, barrierIds, onSelectAll }) {
 }
 
 // ── Step 2: Barriers ──────────────────────────────────────────────────
-function Step2Barriers({ school, supabase: sb, domains, barrierIds, toggleBarrier, onSelectAll, barriers, setBarriers }) {
+function Step2Barriers({ school, supabase: sb, domains, barrierIds, toggleBarrier, onSelectAll, barriers, setBarriers, readOnly }) {
   const [addOpen,   setAddOpen]   = useState(false)
   const [addForm,   setAddForm]   = useState({ description: '', domain_id: '' })
   const [addSaving, setAddSaving] = useState(false)
@@ -179,11 +179,13 @@ function Step2Barriers({ school, supabase: sb, domains, barrierIds, toggleBarrie
   const [editSaving,setEditSaving]= useState(false)
 
   function startEdit(b) {
+    if (readOnly) return
     setEditId(b.id)
     setEditForm({ description: b.description, domain_id: b.domain_id, status: b.status })
   }
 
   async function saveEdit() {
+    if (readOnly) return
     if (!editForm.description?.trim() || !editForm.domain_id) return
     setEditSaving(true)
     const payload = { description: editForm.description.trim(), domain_id: editForm.domain_id, status: editForm.status }
@@ -198,6 +200,7 @@ function Step2Barriers({ school, supabase: sb, domains, barrierIds, toggleBarrie
   }
 
   async function addBarrier() {
+    if (readOnly) return
     if (!addForm.description.trim() || !addForm.domain_id) return
     setAddSaving(true)
     const { data, error } = await sb.from('barriers').insert({
@@ -228,13 +231,13 @@ function Step2Barriers({ school, supabase: sb, domains, barrierIds, toggleBarrie
       )}
 
       {barriers.length > 0 && (
-        <SelectAllRow barriers={barriers} barrierIds={barrierIds} onSelectAll={onSelectAll} />
+        <SelectAllRow barriers={barriers} barrierIds={barrierIds} onSelectAll={onSelectAll} readOnly={readOnly} />
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
         {barriers.map(b => {
           const checked = barrierIds.includes(b.id)
-          const isEditing = editId === b.id
+          const isEditing = editId === b.id && !readOnly
           if (isEditing) {
             return (
               <div key={b.id} style={{ border: `1px solid ${BORDER}`, borderRadius: 10, padding: 12, background: '#F7F8FA' }}>
@@ -269,8 +272,8 @@ function Step2Barriers({ school, supabase: sb, domains, barrierIds, toggleBarrie
               border: `1px solid ${checked ? NAVY : BORDER}`, borderRadius: 10,
               background: checked ? 'rgba(27,54,93,0.04)' : '#fff',
             }}>
-              <input type="checkbox" checked={checked} onChange={() => toggleBarrier(b.id, !checked)}
-                style={{ marginTop: 3, cursor: 'pointer' }} />
+              <input type="checkbox" checked={checked} disabled={readOnly} onChange={() => !readOnly && toggleBarrier(b.id, !checked)}
+                style={{ marginTop: 3, cursor: readOnly ? 'default' : 'pointer' }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontSize: '0.84rem', color: '#1A202C' }}>{b.description}</p>
                 <div style={{ display: 'flex', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
@@ -286,13 +289,15 @@ function Step2Barriers({ school, supabase: sb, domains, barrierIds, toggleBarrie
                   }}>{b.status === 'resolved' ? 'Resolved' : b.status === 'being_addressed' ? 'Being addressed' : 'Active'}</span>
                 </div>
               </div>
-              <button type="button" style={smallBtn} onClick={() => startEdit(b)}>Edit</button>
+              {!readOnly && (
+                <button type="button" style={smallBtn} onClick={() => startEdit(b)}>Edit</button>
+              )}
             </div>
           )
         })}
       </div>
 
-      {addOpen ? (
+      {readOnly ? null : addOpen ? (
         <div style={{ border: `1px dashed ${BORDER}`, borderRadius: 10, padding: 12 }}>
           <textarea rows={2} style={{ ...inp, resize: 'vertical', marginBottom: 8 }}
             placeholder="Describe the barrier to learning or participation"
@@ -320,20 +325,22 @@ function Step2Barriers({ school, supabase: sb, domains, barrierIds, toggleBarrie
 }
 
 // ── Step 3: Priorities & Activity ─────────────────────────────────────
-function PriorityRow({ priority, onUpdate, onRemove }) {
+function PriorityRow({ priority, onUpdate, onRemove, readOnly }) {
   const [local, setLocal] = useState(priority)
 
   return (
     <div style={{ border: `1px solid ${BORDER}`, borderRadius: 10, padding: 12, background: '#F7F8FA', display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-        <input type="text" style={{ ...inp, fontWeight: 600 }}
+        <input type="text" style={{ ...inp, fontWeight: 600 }} disabled={readOnly}
           value={local.point_description ?? ''}
           placeholder="Priority description"
           onChange={e => setLocal(prev => ({ ...prev, point_description: e.target.value }))}
           onBlur={e => onUpdate(priority.id, { point_description: e.target.value })} />
-        <button type="button" style={{ ...smallBtn, flexShrink: 0 }} onClick={() => onRemove(priority.id)}>Remove</button>
+        {!readOnly && (
+          <button type="button" style={{ ...smallBtn, flexShrink: 0 }} onClick={() => onRemove(priority.id)}>Remove</button>
+        )}
       </div>
-      <textarea rows={2} style={{ ...inp, resize: 'vertical' }}
+      <textarea rows={2} style={{ ...inp, resize: 'vertical' }} disabled={readOnly}
         placeholder="What activity will happen this academic year?"
         value={local.activity_description ?? ''}
         onChange={e => setLocal(prev => ({ ...prev, activity_description: e.target.value }))}
@@ -341,13 +348,13 @@ function PriorityRow({ priority, onUpdate, onRemove }) {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <div style={{ flex: '0 0 140px' }}>
           <label style={{ ...labelStyle, fontSize: '0.7rem', marginBottom: 3 }}>Budgeted cost (£)</label>
-          <input type="number" style={inp} value={local.budgeted_cost ?? ''}
+          <input type="number" style={inp} disabled={readOnly} value={local.budgeted_cost ?? ''}
             onChange={e => setLocal(prev => ({ ...prev, budgeted_cost: e.target.value }))}
             onBlur={e => onUpdate(priority.id, { budgeted_cost: e.target.value === '' ? null : Number(e.target.value) })} />
         </div>
         <div style={{ flex: '0 0 220px' }}>
           <label style={{ ...labelStyle, fontSize: '0.7rem', marginBottom: 3 }}>Funding source</label>
-          <select style={inp} value={local.funding_source ?? ''}
+          <select style={inp} disabled={readOnly} value={local.funding_source ?? ''}
             onChange={e => { const v = e.target.value || null; setLocal(prev => ({ ...prev, funding_source: v })); onUpdate(priority.id, { funding_source: v }) }}>
             <option value="">None specified</option>
             {FUNDING_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
@@ -358,7 +365,7 @@ function PriorityRow({ priority, onUpdate, onRemove }) {
   )
 }
 
-function PrincipleSection({ principle, isOpen, onToggle, points, entryStatusMap, priorities, onAddFromPoint, onAddManual, onUpdatePriority, onRemovePriority }) {
+function PrincipleSection({ principle, isOpen, onToggle, points, entryStatusMap, priorities, onAddFromPoint, onAddManual, onUpdatePriority, onRemovePriority, readOnly }) {
   const addedSourceIds = new Set(priorities.filter(p => p.source_point_id).map(p => p.source_point_id))
   const withStatus = points.map(p => ({ ...p, _status: entryStatusMap[p.id] ?? 'none' }))
   const notStarted = withStatus.filter(p => p._status === 'none')
@@ -384,7 +391,7 @@ function PrincipleSection({ principle, isOpen, onToggle, points, entryStatusMap,
 
       {isOpen && (
         <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {suggestions.length > 0 && (
+          {suggestions.length > 0 && !readOnly && (
             <div>
               <p style={{ fontSize: '0.74rem', color: '#94a3b8', marginBottom: 8 }}>Suggested from provision gaps:</p>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -406,21 +413,23 @@ function PrincipleSection({ principle, isOpen, onToggle, points, entryStatusMap,
           {priorities.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {priorities.map(p => (
-                <PriorityRow key={p.id} priority={p} onUpdate={onUpdatePriority} onRemove={onRemovePriority} />
+                <PriorityRow key={p.id} priority={p} onUpdate={onUpdatePriority} onRemove={onRemovePriority} readOnly={readOnly} />
               ))}
             </div>
           )}
 
-          <button type="button" style={ghostBtn} onClick={() => onAddManual(principle)}>
-            + Add priority manually
-          </button>
+          {!readOnly && (
+            <button type="button" style={ghostBtn} onClick={() => onAddManual(principle)}>
+              + Add priority manually
+            </button>
+          )}
         </div>
       )}
     </div>
   )
 }
 
-function Step3Priorities({ provisionPoints, entryStatusMap, priorities, openPrinciples, togglePrinciple, onAddFromPoint, onAddManual, onUpdatePriority, onRemovePriority }) {
+function Step3Priorities({ provisionPoints, entryStatusMap, priorities, openPrinciples, togglePrinciple, onAddFromPoint, onAddManual, onUpdatePriority, onRemovePriority, readOnly }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {DFE_PRINCIPLES.map(principle => (
@@ -436,6 +445,7 @@ function Step3Priorities({ provisionPoints, entryStatusMap, priorities, openPrin
           onAddManual={onAddManual}
           onUpdatePriority={onUpdatePriority}
           onRemovePriority={onRemovePriority}
+          readOnly={readOnly}
         />
       ))}
     </div>
@@ -443,7 +453,7 @@ function Step3Priorities({ provisionPoints, entryStatusMap, priorities, openPrin
 }
 
 // ── Step 4: Statement of Intent ───────────────────────────────────────
-function Step4Intent({ form, setField }) {
+function Step4Intent({ form, setField, readOnly }) {
   const text = form.statement_of_intent ?? ''
   const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0
   return (
@@ -452,7 +462,7 @@ function Step4Intent({ form, setField }) {
       <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: 16 }}>
         A short statement setting out your school's overall approach and commitment to inclusion.
       </p>
-      <textarea rows={12} style={{ ...inp, resize: 'vertical' }}
+      <textarea rows={12} style={{ ...inp, resize: 'vertical' }} disabled={readOnly}
         value={text} onChange={e => setField('statement_of_intent', e.target.value)} />
       <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between' }}>
         <span style={{ fontSize: '0.72rem', color: wordCount > 500 ? '#D4751A' : '#94a3b8' }}>
@@ -469,7 +479,7 @@ function Step4Intent({ form, setField }) {
 }
 
 // ── Step 5: Intended Outcomes ─────────────────────────────────────────
-function Step5Outcomes({ form, setField }) {
+function Step5Outcomes({ form, setField, readOnly }) {
   return (
     <div style={cardStyle}>
       <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1A202C', marginBottom: 4 }}>Intended outcomes</h3>
@@ -481,7 +491,7 @@ function Step5Outcomes({ form, setField }) {
           <li key={p} style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 4, fontStyle: 'italic' }}>{p}</li>
         ))}
       </ul>
-      <textarea rows={10} style={{ ...inp, resize: 'vertical' }}
+      <textarea rows={10} style={{ ...inp, resize: 'vertical' }} disabled={readOnly}
         value={form.intended_outcomes ?? ''} onChange={e => setField('intended_outcomes', e.target.value)} />
     </div>
   )
@@ -566,7 +576,7 @@ function Preview({ form, schoolName, barriers, priorities }) {
   )
 }
 
-function Step6FurtherAndPreview({ form, setField, schoolName, barriers, priorities }) {
+function Step6FurtherAndPreview({ form, setField, schoolName, barriers, priorities, readOnly }) {
   const [generating, setGenerating] = useState(false)
 
   function handleGeneratePdf() {
@@ -584,7 +594,7 @@ function Step6FurtherAndPreview({ form, setField, schoolName, barriers, prioriti
       <div style={cardStyle}>
         <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1A202C', marginBottom: 4 }}>Further information</h3>
         <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: 16 }}>Optional — anything else you want to include.</p>
-        <textarea rows={5} style={{ ...inp, resize: 'vertical' }}
+        <textarea rows={5} style={{ ...inp, resize: 'vertical' }} disabled={readOnly}
           value={form.further_information ?? ''} onChange={e => setField('further_information', e.target.value)} />
       </div>
 
@@ -600,7 +610,7 @@ function Step6FurtherAndPreview({ form, setField, schoolName, barriers, prioriti
 }
 
 // ── Main wizard ───────────────────────────────────────────────────────
-export default function InclusionStrategyWizard({ school, schoolName, supabase: sb, domains }) {
+export default function InclusionStrategyWizard({ school, schoolName, supabase: sb, domains, readOnly = false }) {
   const [loading, setLoading]   = useState(true)
   const [draftId, setDraftId]   = useState(null)
   const [form, setForm]         = useState({})
@@ -636,7 +646,7 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
       if (cancelled) return
 
       let draft = draftRes.data?.[0] ?? null
-      if (!draft) {
+      if (!draft && !readOnly) {
         let defaultAuthorisedBy = ''
         const userId = userRes.data?.user?.id
         if (userId) {
@@ -690,7 +700,7 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
   }
 
   async function persistDraft(fields) {
-    if (!draftId) return
+    if (!draftId || readOnly) return
     setSaveStatus('saving')
     await sb.from('inclusion_strategy_drafts').update(fields).eq('id', draftId)
     setSaveStatus('saved')
@@ -712,6 +722,7 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
   }
 
   function toggleBarrier(barrierId, checked) {
+    if (readOnly) return
     const next = checked
       ? [...new Set([...(form.barrier_ids ?? []), barrierId])]
       : (form.barrier_ids ?? []).filter(id => id !== barrierId)
@@ -720,6 +731,7 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
   }
 
   function setAllBarriers(checked) {
+    if (readOnly) return
     const next = checked ? barriers.map(b => b.id) : []
     setField('barrier_ids', next)
     persistDraft({ barrier_ids: next })
@@ -735,6 +747,7 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
   }
 
   async function addFromPoint(point, principle) {
+    if (readOnly) return
     const count = priorities.filter(p => p.principle === principle).length
     const { data, error } = await sb.from('inclusion_strategy_priorities').insert({
       strategy_id: draftId,
@@ -747,6 +760,7 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
   }
 
   async function addManual(principle) {
+    if (readOnly) return
     const count = priorities.filter(p => p.principle === principle).length
     const { data, error } = await sb.from('inclusion_strategy_priorities').insert({
       strategy_id: draftId,
@@ -758,11 +772,13 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
   }
 
   async function updatePriority(id, fields) {
+    if (readOnly) return
     setPriorities(prev => prev.map(p => p.id === id ? { ...p, ...fields } : p))
     await sb.from('inclusion_strategy_priorities').update(fields).eq('id', id)
   }
 
   async function removePriority(id) {
+    if (readOnly) return
     setPriorities(prev => prev.filter(p => p.id !== id))
     await sb.from('inclusion_strategy_priorities').delete().eq('id', id)
   }
@@ -779,11 +795,11 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
         <StepIndicator step={step} maxVisited={maxVisited} onJump={goToStep} />
       </div>
 
-      {step === 1 && <Step1Setup form={form} setField={setField} />}
+      {step === 1 && <Step1Setup form={form} setField={setField} readOnly={readOnly} />}
       {step === 2 && (
         <Step2Barriers school={school} supabase={sb} domains={domains}
           barrierIds={form.barrier_ids ?? []} toggleBarrier={toggleBarrier} onSelectAll={setAllBarriers}
-          barriers={barriers} setBarriers={setBarriers} />
+          barriers={barriers} setBarriers={setBarriers} readOnly={readOnly} />
       )}
       {step === 3 && (
         <Step3Priorities
@@ -791,13 +807,14 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
           openPrinciples={openPrinciples} togglePrinciple={togglePrinciple}
           onAddFromPoint={addFromPoint} onAddManual={addManual}
           onUpdatePriority={updatePriority} onRemovePriority={removePriority}
+          readOnly={readOnly}
         />
       )}
-      {step === 4 && <Step4Intent form={form} setField={setField} />}
-      {step === 5 && <Step5Outcomes form={form} setField={setField} />}
+      {step === 4 && <Step4Intent form={form} setField={setField} readOnly={readOnly} />}
+      {step === 5 && <Step5Outcomes form={form} setField={setField} readOnly={readOnly} />}
       {step === 6 && (
         <Step6FurtherAndPreview form={form} setField={setField} schoolName={schoolName}
-          barriers={barriers} priorities={priorities} />
+          barriers={barriers} priorities={priorities} readOnly={readOnly} />
       )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 6 }}>
