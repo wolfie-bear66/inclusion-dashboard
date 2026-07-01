@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 1 July 2026 (Session 36 — academic year boundary fix)
+Last updated: 1 July 2026 (Session 37 — report shows resolved barriers)
 
 ---
 
@@ -18,6 +18,8 @@ Last updated: 1 July 2026 (Session 36 — academic year boundary fix)
 ---
 
 ## Completed
+
+- [x] **Session 37 — Report shows resolved barriers** — `drawBarriers()` in `src/generateReport.js` was silently filtering out any barrier with `status === 'resolved'` before it ever reached the table, so resolved barriers never appeared in generated PDF reports even when explicitly selected/relevant. Removed that filter (`let filtered = barriers ?? []`, domain/group filtering left untouched) so all barriers are now included regardless of status. `statusMap` gained a `resolved: 'Resolved'` label, and `didParseCell` gained a third branch rendering resolved rows in green (`GREEN`, `#257A3B`) for RAG consistency with the existing active=red/being_addressed=amber colouring.
 
 - [x] **Session 36 — Academic year boundary fix** — Closes the date bug flagged in Session 33. `academicYear()` (`src/generateReport.js`) and its near-identical duplicate `defaultAcademicYearLabel()` (`src/pages/InclusionStrategyWizard.jsx`) both used `getMonth() >= 7` as the academic-year rollover boundary — 0-indexed month 7 is August, one month early against the correct UK Sept–Aug academic year. In practice this only ever affected dates falling in August: every August, the label jumped to the next academic year (e.g. "2026/27") a full month before the actual September 1 rollover, when it should still have read the previous year's label (e.g. "2025/26"). All other months were unaffected, since `>= 7` and the correct `>= 8` agree everywhere except at that single boundary month — confirmed via a console check comparing old vs. fixed output across September, December, January, July, and August, before changing any code. Fixed by changing the threshold to `getMonth() >= 8` (September) in both places. Label format (`"YYYY/YY"`, e.g. "2026/27") was already consistent between both implementations and untouched. Two other call sites of the same buggy logic (`generateReport()` landscape export and the legacy unused `generateInclusionStrategy()`, both already dead code per the Session 33 note) were left as-is, since they're not reachable from the UI. No changes to the Inclusion Strategy wizard's data model, RLS, invite-user permission logic, or anything else in the PDF export beyond the boundary calculation.
 

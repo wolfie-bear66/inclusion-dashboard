@@ -287,7 +287,7 @@ function drawBarriers(doc, y, { barriers, selectedDomains, selectedGroups }) {
   y = sectionBar(doc, y, '2 — Identified Barriers')
   y += 4
 
-  let filtered = (barriers ?? []).filter(b => b.status !== 'resolved')
+  let filtered = barriers ?? []
 
   if (selectedDomains.length > 0) {
     filtered = filtered.filter(b => selectedDomains.includes(b.domain_id))
@@ -319,7 +319,7 @@ function drawBarriers(doc, y, { barriers, selectedDomains, selectedGroups }) {
   }
 
   const scaleMap = { individual: 'Individual', group: 'Group', whole_school: 'Whole school' }
-  const statusMap = { active: 'Active', being_addressed: 'Being addressed' }
+  const statusMap = { active: 'Active', being_addressed: 'Being addressed', resolved: 'Resolved' }
 
   const body = filtered.map(b => {
     const domLabel = b.sub_domains?.name
@@ -370,6 +370,7 @@ function drawBarriers(doc, y, { barriers, selectedDomains, selectedGroups }) {
       data.cell.styles.fontStyle = 'bold'
       if (b.status === 'active') data.cell.styles.textColor = RED
       else if (b.status === 'being_addressed') data.cell.styles.textColor = AMBER
+      else if (b.status === 'resolved') data.cell.styles.textColor = GREEN
     },
   })
 
