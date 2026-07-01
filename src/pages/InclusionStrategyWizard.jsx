@@ -41,8 +41,8 @@ const OUTCOME_PROMPTS = [
 
 function defaultAcademicYearLabel() {
   const now = new Date()
-  const y = now.getFullYear(), m = now.getMonth() // 0-indexed, Aug = 7
-  return m >= 7 ? `${y}/${String(y + 1).slice(2)}` : `${y - 1}/${String(y).slice(2)}`
+  const y = now.getFullYear(), m = now.getMonth() // 0-indexed, Sep = 8
+  return m >= 8 ? `${y}/${String(y + 1).slice(2)}` : `${y - 1}/${String(y).slice(2)}`
 }
 
 const inp = {

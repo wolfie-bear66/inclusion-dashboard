@@ -70,8 +70,8 @@ function fmt() {
   return new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 function academicYear() {
-  const now = new Date(), y = now.getFullYear(), m = now.getMonth()
-  return m >= 7 ? `${y}/${String(y + 1).slice(2)}` : `${y - 1}/${String(y).slice(2)}`
+  const now = new Date(), y = now.getFullYear(), m = now.getMonth() // 0-indexed, Sep = 8
+  return m >= 8 ? `${y}/${String(y + 1).slice(2)}` : `${y - 1}/${String(y).slice(2)}`
 }
 function statusLabel(s) {
   if (s === 'in_place')    return 'In Place'
