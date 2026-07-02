@@ -96,29 +96,38 @@ export default function LandingPage() {
 
   const tabs = [
     {
-      label: '1. Record',
-      body: 'Log everything your school does for inclusion — with the evidence behind it, the costs, and the outcomes. Your team can contribute across their areas of responsibility, with an approval layer to ensure accuracy. Review dates are tracked and you\'ll be reminded when they\'re due.',
+      label: '1. Assign',
+      body: 'Your Inclusion Lead identifies ownership of provision across the school, so every point from "Every Child Achieving and Thriving" (2026) has a named person responsible for it from day one — no more provision sitting in nobody\'s inbox.',
+      img: '/images/landing/step1-assign.png',
+      imgAlt: 'Provision ownership assignment screen showing named responsibility for each provision point',
+    },
+    {
+      label: '2. Evidence',
+      body: 'Each contributor evidences their own provision as they go — logging what\'s in place, the costs, and the outcomes, live rather than reconstructed at report time. An approval layer ensures accuracy before anything counts as complete, and review dates are tracked automatically so you\'re reminded when they\'re due.',
       img: '/images/landing/howitworks-evidence.png',
       imgAlt: 'Evidence modal showing data entry fields for evidence, cost, outcomes, and document links',
     },
     {
-      label: '2. Identify',
-      body: 'Effective inclusion starts with understanding what\'s getting in the way. Inclusion Dashboard follows the EEF\'s evidence-informed implementation cycle — beginning with barrier identification. Log the barriers preventing students from full participation, record what actions are being taken to remove them and set review dates to track whether they\'ve worked. At trust level, barriers surface across all schools so leaders can spot shared patterns and spread what\'s working.',
-      img: '/barriers-dashboard.png',
+      label: '3. Identify Barriers',
+      body: 'Inclusion Dashboard follows the EEF\'s evidence-informed implementation cycle — barrier identification sits at its centre. Record what\'s stopping students from full participation, what\'s being done to address it, and set review dates to track whether it\'s worked. At trust level, barriers surface across all schools so leaders can spot shared patterns and spread what\'s working.',
+      img: '/images/landing/barriers-dashboard.png',
       imgAlt: 'Barriers view',
     },
     {
-      label: '3. Analyse',
-      body: 'As your provision picture builds, the gaps become visible. See where provision is strong and where it\'s thin — and crucially, see which student groups are underserved. FSM, SEND, EAL, care-experienced — the dashboard shows you where support isn\'t reaching the pupils who need it most. Inclusion Dashboard is designed around the EEF\'s evidence-informed implementation cycle — starting with barrier identification, building to evidenced provision, and sustained through regular review.',
-      img: '/analysis-dashboard.png',
-      imgAlt: 'Analytics screen showing Domain Readiness chart and gap analysis view',
-      demoLink: true,
+      label: '4. Build the Strategy',
+      body: 'As your evidence builds, your statutory strategy drafts itself — organised by the DfE\'s 7 Principles of Inclusion, not a blank page. Gaps become visible as you go: where provision is strong, where it\'s thin, and which student groups are underserved. FSM, SEND, EAL, care-experienced — you can see where support isn\'t reaching the pupils who need it most.',
+      img: '/images/landing/step4-build-strategy.png',
+      imgAlt: 'Strategy builder screen organised by the DfE\'s 7 Principles of Inclusion',
     },
     {
-      label: '4. Report',
-      body: 'Generate a formatted PDF export ready to use as the foundation of your statutory Inclusion Strategy. Scope your report for different audiences — a full compliance document for governors, a focused summary for a specific domain, or a funding breakdown for your trust.',
-      img: '/report-dashboard.png',
+      label: '5. Report',
+      body: 'Use your live evidence to generate a formatted PDF export ready to use as your statutory Inclusion Strategy. Alternatively, create your own Inclusion Report for different audiences — a full compliance document for governors, a focused summary for a specific domain, or a funding breakdown for your trust.',
+      img: '/images/landing/report-dashboard.png',
       imgAlt: 'PDF export preview showing landscape layout with school context and domain readiness',
+    },
+    {
+      label: '6. Review',
+      body: 'Outcomes are checked against intent, year on year — a comparison, not a rewrite. Next year\'s strategy starts from evidence, not a blank page, closing the loop back to Assign.',
     },
   ]
 
@@ -299,8 +308,13 @@ export default function LandingPage() {
       {/* ── Section 5: How It Works ── */}
       <section className="lp-how" id="how-it-works">
         <h2 className="lp-how__headline">
-          From scattered provision to statutory confidence — in four steps
+          How Inclusion Dashboard works — one continuous cycle
         </h2>
+        <img
+          src="/images/landing/cycle-diagram-six-steps.png"
+          alt="Six-step Inclusion Dashboard cycle diagram: Assign, Evidence, Identify Barriers, Build the Strategy, Report, Review, looping back to Assign"
+          className="lp-how__diagram"
+        />
         <div className="lp-how__tabs">
           <div className="lp-how__tab-list">
             {tabs.map((t, i) => (
