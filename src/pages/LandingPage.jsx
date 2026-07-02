@@ -128,6 +128,8 @@ export default function LandingPage() {
     {
       label: '6. Review',
       body: 'Outcomes are checked against intent, year on year — a comparison, not a rewrite. Next year\'s strategy starts from evidence, not a blank page, closing the loop back to Assign.',
+      img: '/images/landing/cycle-diagram-six-steps.png',
+      imgAlt: 'Six-step Inclusion Dashboard cycle diagram: Assign, Evidence, Identify Barriers, Build the Strategy, Report, Review, looping back to Assign',
     },
   ]
 
@@ -310,11 +312,6 @@ export default function LandingPage() {
         <h2 className="lp-how__headline">
           How Inclusion Dashboard works — one continuous cycle
         </h2>
-        <img
-          src="/images/landing/cycle-diagram-six-steps.png"
-          alt="Six-step Inclusion Dashboard cycle diagram: Assign, Evidence, Identify Barriers, Build the Strategy, Report, Review, looping back to Assign"
-          className="lp-how__diagram"
-        />
         <div className="lp-how__tabs">
           <div className="lp-how__tab-list">
             {tabs.map((t, i) => (
