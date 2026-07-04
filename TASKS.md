@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 1 July 2026 (Session 37 — report shows resolved barriers)
+Last updated: 4 July 2026 (Session 38 — Experts at Hand structured evidence)
 
 ---
 
@@ -18,6 +18,10 @@ Last updated: 1 July 2026 (Session 37 — report shows resolved barriers)
 ---
 
 ## Completed
+
+- [x] **Session 38 — Experts at Hand structured evidence capture** — Adds a generalisable `evidence_type` + `structured_detail` (jsonb) pair to `evidence_entries` (`migrations/step9_expert_engagement_evidence.sql`), rather than one-off columns, so future provision points can reuse the same mechanism. First (and currently only) consumer: "Experts at Hand service accessed and used" (`f8509db3-b3d7-44a8-a061-b6f8a05848f1`, SEND — Specialist Provision). `evidence_type` CHECK: `standard` (default, used everywhere else) / `expert_engagement`. `structured_detail` shape for the latter: `{ professional_type, commissioning_route, activity_type, pupils_reached, report_received }`. Also added `experts_at_hand` to the `evidence_entries.funding_source` CHECK constraint (this is a plain text column with a CHECK, not a Postgres enum — the migration drops and recreates the constraint) and to the `FUNDING_SOURCES` UI list in `App.jsx`, plus a matching `entries.funding_source` FYI note in `SCHEMA_REFERENCE.md` (that column is unused by the app — left untouched). **Evidence modal:** five new inputs (Professional Type, Commissioning Route, Activity Type dropdowns; Pupils Reached number; Written Report Received checkbox) render additively — alongside, not replacing, the existing generic fields — gated purely on `modalPoint.id === EXPERTS_AT_HAND_PP_ID`, independent of the pre-existing `provision_category` (student-facing/policy-structural/whole-school/legacy) branching that drives the rest of the modal. Saved via the existing flat `draft` object / `handleModalSave` upsert path, with `evidence_type: 'expert_engagement'` stamped on only for this point; every other provision point is untouched (`evidence_type` stays `'standard'`, `structured_detail` stays `null`). **Outcomes & Impact tab:** `OutcomesImpact`'s row filter now also includes `evidence_type === 'expert_engagement'` rows (previously required `intended_outcomes`/`impact_on_outcomes`/`evidence_notes` to be non-empty, which would have hidden expert-engagement rows with only structured data filled in); adds one line per matching row in the existing card format, e.g. "Experts at Hand — SALT input Autumn Term — Speech and Language — 11 pupils received direct SALT input". No new tab, no new chart. Verified end-to-end: schema via a rolled-back transactional insert; UI via the live demo (Springwell Academy) — modal renders the new fields only on Experts at Hand and not on other Specialist Provision points; a temporary real row (inserted and deleted via SQL, demo-mode writes are a no-op client-side) confirmed the Outcomes & Impact rendering. `SCHEMA_REFERENCE.md`'s `evidence_entries` table definition also brought up to date with the live schema (~40 columns; the doc previously listed only 4) as part of this session.
+
+  **Deferred:** a dedicated analytics visualisation for specialist/expert engagement (e.g. professional-type breakdown, commissioning-route spend) — parked pending pilot volume from St Augustine. Revisit once there's enough `expert_engagement` evidence data to make a chart meaningful.
 
 - [x] **Session 37 — Report shows resolved barriers** — `drawBarriers()` in `src/generateReport.js` was silently filtering out any barrier with `status === 'resolved'` before it ever reached the table, so resolved barriers never appeared in generated PDF reports even when explicitly selected/relevant. Removed that filter (`let filtered = barriers ?? []`, domain/group filtering left untouched) so all barriers are now included regardless of status. `statusMap` gained a `resolved: 'Resolved'` label, and `didParseCell` gained a third branch rendering resolved rows in green (`GREEN`, `#257A3B`) for RAG consistency with the existing active=red/being_addressed=amber colouring.
 
@@ -376,6 +380,8 @@ Never rewrite existing query logic in same session as any migration.
 ---
 
 ## Post-validation / future
+
+- [ ] **Expert engagement analytics visualisation** — dedicated view for `expert_engagement` evidence (professional-type breakdown, commissioning-route spend, pupils reached over time). Parked pending pilot volume from St Augustine — not enough data yet to make a chart meaningful. See Session 38.
 
 - [ ] **Student belonging survey feature** — downloadable template with aggregated score input. Instruments researched: PSSM, BeeWell, Children's Happiness Scale.
 

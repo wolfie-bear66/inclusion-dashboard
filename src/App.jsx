@@ -43,6 +43,7 @@ const FUNDING_SOURCES = [
   { value: 'inclusive_mainstream_fund', label: 'Inclusive Mainstream Fund' },
   { value: 'sport_premium',             label: 'Sport Premium' },
   { value: 'school_general_budget',     label: 'School General Budget' },
+  { value: 'experts_at_hand',           label: 'Experts at Hand' },
 ]
 const REVIEW_CYCLES = [
   { value: 'weekly',      label: 'Weekly' },
@@ -92,11 +93,45 @@ const EV_GROUPS = [
   { value: 'grp_other', label: 'Other' },
 ]
 
+// Provision point that gets the structured expert-engagement evidence fields
+// (in addition to, not instead of, the generic evidence fields above).
+const EXPERTS_AT_HAND_PP_ID = 'f8509db3-b3d7-44a8-a061-b6f8a05848f1'
+const EXPERT_PROFESSIONAL_TYPES = [
+  { value: 'salt',                     label: 'Speech and Language Therapist (SALT)' },
+  { value: 'ot',                       label: 'Occupational Therapist (OT)' },
+  { value: 'educational_psychologist', label: 'Educational Psychologist' },
+  { value: 'qtod_qtvi',                label: 'QToD / QTVI' },
+  { value: 'camhs_mhst',               label: 'CAMHS / MHST' },
+  { value: 'other',                    label: 'Other' },
+]
+const EXPERT_COMMISSIONING_ROUTES = [
+  { value: 'nhs_icb',           label: 'NHS / ICB' },
+  { value: 'local_authority',   label: 'Local Authority' },
+  { value: 'school_funded',     label: 'School Funded' },
+  { value: 'mat_commissioned',  label: 'MAT Commissioned' },
+]
+const EXPERT_ACTIVITY_TYPES = [
+  { value: 'individual_casework',  label: 'Individual Casework' },
+  { value: 'group_work',           label: 'Group Work' },
+  { value: 'whole_setting_audit',  label: 'Whole Setting Audit' },
+  { value: 'staff_cpd',            label: 'Staff CPD' },
+]
+// Short forms used in the Outcomes & Impact summary sentence, e.g.
+// "Experts at Hand — Speech and Language ... 11 pupils received direct SALT input"
+const EXPERT_PROFESSIONAL_REPORT_LABEL = {
+  salt:                     { name: 'Speech and Language',   input: 'SALT input' },
+  ot:                       { name: 'Occupational Therapy',  input: 'OT input' },
+  educational_psychologist: { name: 'Educational Psychology', input: 'EP input' },
+  qtod_qtvi:                { name: 'QToD / QTVI',           input: 'QToD/QTVI input' },
+  camhs_mhst:               { name: 'CAMHS / MHST',          input: 'CAMHS/MHST input' },
+  other:                    { name: 'Specialist',            input: 'specialist input' },
+}
+
 // entries holds status + group flags; evidence detail lives in evidence_entries (nested)
 const ENTRY_SELECT = [
   'id', 'provision_point_id', 'status',
   'grp_send', 'grp_pp', 'grp_eal', 'grp_fsm', 'grp_lac', 'grp_wwc', 'grp_other',
-  'evidence_entries(id, provision_name, brief_description, indicator_type, provision_category, named_role_policy_document, delivered_by, send_tiers, pupils_reached, reach_total, reach_send, reach_pp, reach_eal, reach_fsm, reach_lac, reach_wwc, reach_other, grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other, date_started, date_last_reviewed, next_review_due, funding_source, cost, review_cycle, evidence_notes, intended_outcomes, impact_on_outcomes, supporting_document_link, notes)',
+  'evidence_entries(id, provision_name, brief_description, indicator_type, provision_category, named_role_policy_document, delivered_by, send_tiers, pupils_reached, reach_total, reach_send, reach_pp, reach_eal, reach_fsm, reach_lac, reach_wwc, reach_other, grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other, date_started, date_last_reviewed, next_review_due, funding_source, cost, review_cycle, evidence_notes, intended_outcomes, impact_on_outcomes, supporting_document_link, notes, evidence_type, structured_detail)',
 ].join(', ')
 
 // ── Analytics sub-components ─────────────────────────────────────
@@ -1970,9 +2005,10 @@ function OutcomesImpact({ allEvidence, domains, analyticsEntries }) {
   const [activeFilters, setActiveFilters] = useState([])
 
   const allItems = allEvidence
-    .filter(ev => ev.intended_outcomes || ev.impact_on_outcomes || ev.evidence_notes)
+    .filter(ev => ev.intended_outcomes || ev.impact_on_outcomes || ev.evidence_notes || ev.evidence_type === 'expert_engagement')
     .map(ev => {
       const dIdx = domains.findIndex(d => d.id === ev.domainId)
+      const isExpertEngagement = ev.evidence_type === 'expert_engagement'
       return {
         name:      ev.provision_name || ev.entryLabel,
         point:     ev.entryLabel,
@@ -1983,6 +2019,7 @@ function OutcomesImpact({ allEvidence, domains, analyticsEntries }) {
         intended:  ev.intended_outcomes,
         impact:    ev.impact_on_outcomes,
         docLink:   ev.supporting_document_link || null,
+        expertEngagement: isExpertEngagement ? ev.structured_detail ?? {} : null,
       }
     })
 
@@ -2119,11 +2156,26 @@ function OutcomesImpact({ allEvidence, domains, analyticsEntries }) {
             </div>
           )}
           {item.impact && (
-            <div style={{ marginBottom: item.docLink ? 10 : 0 }}>
+            <div style={{ marginBottom: item.docLink || item.expertEngagement ? 10 : 0 }}>
               <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Evidence of impact</p>
               <p style={{ fontSize: '0.82rem', color: '#334155', lineHeight: 1.55 }}>{item.impact}</p>
             </div>
           )}
+          {item.expertEngagement && (() => {
+            const { professional_type, pupils_reached } = item.expertEngagement
+            const prof = EXPERT_PROFESSIONAL_REPORT_LABEL[professional_type]
+            if (!prof && !pupils_reached) return null
+            const pupilsPhrase = pupils_reached
+              ? `${pupils_reached} pupil${pupils_reached === 1 ? '' : 's'} received direct ${prof?.input ?? 'specialist input'}`
+              : null
+            return (
+              <div style={{ marginBottom: item.docLink ? 10 : 0 }}>
+                <p style={{ fontSize: '0.82rem', color: '#334155', lineHeight: 1.55 }}>
+                  {item.name}{prof ? ` — ${prof.name}` : ''}{pupilsPhrase ? ` — ${pupilsPhrase}` : ''}
+                </p>
+              </div>
+            )
+          })()}
           {item.docLink && (
             <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
               <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Supporting Document</p>
@@ -2612,7 +2664,7 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
           evidence_entries(id, provision_name, indicator_type, provision_category, funding_source, cost, next_review_due,
             evidence_notes, intended_outcomes, impact_on_outcomes, supporting_document_link,
             reach_total, reach_send, reach_pp, reach_eal, reach_fsm, reach_lac, reach_wwc, reach_other,
-            grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other)
+            grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other, evidence_type, structured_detail)
         `)
         .eq('school_id', school),
       sb.from('domains').select('id, name, display_order').order('display_order'),
@@ -3579,9 +3631,12 @@ export default function App() {
     }
 
     // Step 2: insert or update evidence_entry
+    const evidencePayload = modalPoint.id === EXPERTS_AT_HAND_PP_ID
+      ? { ...draft, evidence_type: 'expert_engagement' }
+      : draft
     const { data: saved, error: saveError } = draftId
-      ? await supabase.from('evidence_entries').update(draft).eq('id', draftId).select().single()
-      : await supabase.from('evidence_entries').insert([{ entry_id: entryRow.id, ...draft }]).select().single()
+      ? await supabase.from('evidence_entries').update(evidencePayload).eq('id', draftId).select().single()
+      : await supabase.from('evidence_entries').insert([{ entry_id: entryRow.id, ...evidencePayload }]).select().single()
 
     setModalSaving(false)
     setModalSaveError(!!saveError)
@@ -4638,6 +4693,52 @@ export default function App() {
                         <label>Delivered By</label>
                         <input type="text" value={draft.delivered_by ?? ''} onChange={e => handleDraftChange('delivered_by', e.target.value)} />
                       </div>
+
+                      {/* ── Experts at Hand: structured expert-engagement detail ── */}
+                      {modalPoint.id === EXPERTS_AT_HAND_PP_ID && (() => {
+                        const detail = draft.structured_detail ?? {}
+                        function handleDetailChange(field, value) {
+                          handleDraftChange('structured_detail', { ...detail, [field]: value })
+                        }
+                        return (
+                          <>
+                            <div className="df df--half">
+                              <label>Professional Type</label>
+                              <select value={detail.professional_type ?? ''} onChange={e => handleDetailChange('professional_type', e.target.value)}>
+                                <option value="">— Select type —</option>
+                                {EXPERT_PROFESSIONAL_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                              </select>
+                            </div>
+                            <div className="df df--half">
+                              <label>Commissioning Route</label>
+                              <select value={detail.commissioning_route ?? ''} onChange={e => handleDetailChange('commissioning_route', e.target.value)}>
+                                <option value="">— Select route —</option>
+                                {EXPERT_COMMISSIONING_ROUTES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                              </select>
+                            </div>
+                            <div className="df df--half">
+                              <label>Activity Type</label>
+                              <select value={detail.activity_type ?? ''} onChange={e => handleDetailChange('activity_type', e.target.value)}>
+                                <option value="">— Select activity —</option>
+                                {EXPERT_ACTIVITY_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+                              </select>
+                            </div>
+                            <div className="df df--quarter">
+                              <label>Pupils Reached</label>
+                              <input type="number" min="0" step="1"
+                                value={detail.pupils_reached ?? ''}
+                                onChange={e => handleDetailChange('pupils_reached', e.target.value === '' ? null : Number(e.target.value))} />
+                            </div>
+                            <div className="df df--quarter" style={{ justifyContent: 'flex-end' }}>
+                              <label className="tier-checkbox-label" style={{ marginTop: 'auto', marginBottom: 6 }}>
+                                <input type="checkbox" checked={detail.report_received ?? false}
+                                  onChange={e => handleDetailChange('report_received', e.target.checked)} />
+                                Written Report Received
+                              </label>
+                            </div>
+                          </>
+                        )
+                      })()}
 
                       {/* ── Student Reach numbers ── */}
                       {showReach && (

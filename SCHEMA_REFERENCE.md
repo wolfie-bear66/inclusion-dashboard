@@ -66,14 +66,46 @@ Unique constraint: `(school_id, provision_point_id)`.
 
 ## evidence_entries
 
-Child rows of `entries`. Each entry can have multiple evidence records.
+Child rows of `entries`. Each entry can have multiple evidence records. This table is much
+wider than earlier versions of this doc suggested — verified against the live schema
+2026-07-04.
 
 | Column | Type | Notes |
 |---|---|---|
-| id | uuid | PK |
+| id | uuid | PK, default `gen_random_uuid()` |
 | entry_id | uuid | FK → entries.id |
 | provision_name | text | Display label for this piece of evidence |
+| brief_description | text | |
+| delivered_by_role | text | |
+| funding_source | text | CHECK: `pupil_premium` / `send_budget` / `inclusive_mainstream_fund` / `sport_premium` / `school_general_budget` / `experts_at_hand`. Plain text + CHECK constraint, **not** a Postgres enum type |
+| review_cycle | text | CHECK: `weekly` / `half_termly` / `termly` / `annual` / `as_needed` |
+| indicator_type | text | |
+| named_role_policy_document | text | |
+| owner | text | |
+| evidence_notes | text | |
+| cost | numeric | |
+| notes | text | |
+| grp_send / grp_pp / grp_eal / grp_fsm / grp_lac / grp_wwc / grp_other | boolean | Default `false` each |
+| created_at | timestamptz | Default `now()` |
+| who_delivers | text | |
+| send_tiers | text[] | Default `'{}'` |
+| delivered_by | text | |
+| pupils_reached | integer | Legacy generic field, used when `provision_category` is unset. Distinct from `structured_detail.pupils_reached` on expert-engagement rows |
+| date_started | date | |
+| date_last_reviewed | date | |
 | next_review_due | date | Used for reviews-due panels |
+| impact_on_outcomes | text | |
+| supporting_document_link | text | |
+| intended_outcomes | text | |
+| provision_category | text | `student_facing` / `policy_structural` / `whole_school`, or empty string for legacy entries. Drives which fields the evidence modal shows |
+| reach_total / reach_send / reach_pp / reach_eal / reach_fsm / reach_lac / reach_wwc / reach_other | integer | Structured reach breakdown, used when `provision_category` is set |
+| updated_at | timestamptz | Default `now()` |
+| evidence_type | text | NOT NULL, default `'standard'`. CHECK: `standard` / `expert_engagement` |
+| structured_detail | jsonb | Nullable. Populated only when `evidence_type = 'expert_engagement'` (currently just the "Experts at Hand service accessed and used" provision point, id `f8509db3-b3d7-44a8-a061-b6f8a05848f1`). Shape: `{ professional_type, commissioning_route, activity_type, pupils_reached, report_received }` |
+
+Note: `entries` also has its own `funding_source` column with an identical CHECK constraint,
+but it is never read or written by the app — `evidence_entries.funding_source` is the one
+actually used.
 
 ---
 
@@ -88,6 +120,7 @@ Child rows of `entries`. Each entry can have multiple evidence records.
 | step6b_welcomed.sql | Adds `welcomed` boolean column to profiles |
 | step7_job_title.sql | Adds `job_title` text column to profiles |
 | step8_school_phase.sql | Adds `phase` text column to schools (CHECK: primary / secondary / all_through / special) |
+| step9_expert_engagement_evidence.sql | Adds `evidence_type` + `structured_detail` (jsonb) to evidence_entries; adds `experts_at_hand` to the funding_source CHECK constraint |
 
 ---
 
