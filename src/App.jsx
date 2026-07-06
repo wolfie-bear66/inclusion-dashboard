@@ -69,6 +69,46 @@ const PROVISION_POINT_CATEGORIES = [
   'External Partnership',
   'Family & Community Engagement',
 ]
+// Static/declarative points: reminder copy names the linked document and asks if it's still current.
+const STATIC_REVIEW_CATEGORIES = ['Named Person', 'Policy / Published Document']
+// Live/cumulative points: reminder copy references the most recent logged entry.
+const LIVE_REVIEW_CATEGORIES = [
+  'Direct Provision for Students', 'Staff Training & CPD', 'External Partnership',
+  'Family & Community Engagement', 'Monitoring & Data',
+]
+
+// Single source of truth for review_cycle → next_review_due. Reused by the
+// "Confirm still current" fast-confirm action so the date math never drifts
+// out of sync with wherever else this gets called from later.
+function calculateNextReviewDue(reviewCycle, fromDateStr) {
+  if (!reviewCycle || reviewCycle === 'as_needed') return null
+  const from = fromDateStr ? new Date(fromDateStr) : new Date()
+  if (Number.isNaN(from.getTime())) return null
+  const d = new Date(from)
+  switch (reviewCycle) {
+    case 'weekly':      d.setDate(d.getDate() + 7); break
+    case 'half_termly': d.setDate(d.getDate() + 42); break // 6 weeks
+    case 'termly':      d.setDate(d.getDate() + 84); break // 12 weeks — flat approximation, not calendar-term-aware
+    case 'annual':      d.setFullYear(d.getFullYear() + 1); break
+    default: return null
+  }
+  return d.toISOString().slice(0, 10)
+}
+
+// Relative "time ago" phrase for review-reminder copy.
+function formatTimeAgo(dateStr) {
+  if (!dateStr) return null
+  const then = new Date(dateStr)
+  if (Number.isNaN(then.getTime())) return null
+  const days = Math.floor((new Date() - then) / 86400000)
+  if (days <= 0) return 'today'
+  if (days === 1) return 'yesterday'
+  if (days < 14) return `${days} days ago`
+  if (days < 60) return `${Math.round(days / 7)} weeks ago`
+  if (days < 365) return `${Math.round(days / 30)} months ago`
+  const years = Math.round(days / 365)
+  return `${years} year${years !== 1 ? 's' : ''} ago`
+}
 const PROVISION_CATEGORIES = [
   { value: 'student_facing',    label: 'Student-Facing Intervention' },
   { value: 'policy_structural', label: 'Policy / Structural' },
@@ -3049,6 +3089,8 @@ export default function App() {
   const [firstName, setFirstName] = useState('')
   const [overdueReviews, setOverdueReviews] = useState([])
   const [reviewsExpanded, setReviewsExpanded] = useState(false)
+  const [confirmingReviewId, setConfirmingReviewId] = useState(null)
+  const [confirmReviewError, setConfirmReviewError] = useState(null)
 
   // Sidebar state
   const [activeSidebarSection, setActiveSidebarSection] = useState(null)
@@ -3241,7 +3283,7 @@ export default function App() {
             for (const pp of sd.provision_points ?? []) {
               newPpDomainMap[pp.id] = domain.id
               newPpCategoryMap[pp.id] = pp.category ?? ''
-              newPpInfoMap[pp.id] = { label: pp.label, domainId: domain.id, domainName: domain.name, subDomainName: sd.name }
+              newPpInfoMap[pp.id] = { label: pp.label, domainId: domain.id, domainName: domain.name, subDomainName: sd.name, category: pp.category ?? '' }
               count++
             }
           }
@@ -3288,7 +3330,10 @@ export default function App() {
     const today = new Date().toISOString().slice(0, 10)
     supabase
       .from('entries')
-      .select('provision_point_id, evidence_entries(id, provision_name, next_review_due)')
+      .select(`provision_point_id, evidence_entries(
+        id, provision_name, next_review_due, review_cycle, date_last_reviewed, date_started, created_at,
+        brief_description, named_role_policy_document, supporting_document_link, structured_detail
+      )`)
       .eq('school_id', selectedSchool)
       .then(({ data }) => {
         if (!data) return
@@ -3297,9 +3342,18 @@ export default function App() {
           for (const ev of entry.evidence_entries ?? []) {
             if (ev.next_review_due && ev.next_review_due <= today) {
               overdue.push({
-                provisionPointId: entry.provision_point_id,
-                provisionName:    ev.provision_name || '',
-                nextReviewDue:    ev.next_review_due,
+                evidenceEntryId:        ev.id,
+                provisionPointId:       entry.provision_point_id,
+                provisionName:          ev.provision_name || '',
+                nextReviewDue:          ev.next_review_due,
+                reviewCycle:            ev.review_cycle,
+                dateLastReviewed:       ev.date_last_reviewed,
+                dateStarted:            ev.date_started,
+                createdAt:              ev.created_at,
+                briefDescription:       ev.brief_description,
+                namedRolePolicyDocument: ev.named_role_policy_document,
+                supportingDocumentLink: ev.supporting_document_link,
+                structuredDetail:       ev.structured_detail,
               })
             }
           }
@@ -3578,6 +3632,28 @@ export default function App() {
     }
     console.error('Error saving friction log:', error)
     return false
+  }
+
+  // Fast-confirm for static/declarative reminders — stamps date_last_reviewed
+  // and advances next_review_due via the shared calculateNextReviewDue, without
+  // opening the evidence modal or touching any other field.
+  async function handleConfirmStillCurrent(ev) {
+    if (isDemoMode || readOnly) return
+    const todayIso = new Date().toISOString().slice(0, 10)
+    const nextDue = calculateNextReviewDue(ev.reviewCycle, todayIso)
+    setConfirmingReviewId(ev.evidenceEntryId)
+    setConfirmReviewError(null)
+    const { error } = await supabase
+      .from('evidence_entries')
+      .update({ date_last_reviewed: todayIso, next_review_due: nextDue })
+      .eq('id', ev.evidenceEntryId)
+    setConfirmingReviewId(null)
+    if (error) {
+      console.error('Error confirming still current:', error)
+      setConfirmReviewError(ev.evidenceEntryId)
+      return
+    }
+    setOverdueReviews(prev => prev.filter(r => r.evidenceEntryId !== ev.evidenceEntryId))
   }
 
   async function handleStatusChange(ppId, status) {
@@ -4320,23 +4396,77 @@ export default function App() {
                         const info       = ppInfoMap[r.provisionPointId]
                         const domainId   = info?.domainId
                         const domainName = info?.domainName ?? ''
+                        const category   = info?.category ?? ''
                         const label      = r.provisionName || info?.label || 'Untitled'
                         const dateStr    = new Date(r.nextReviewDue).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+
+                        const isStatic = STATIC_REVIEW_CATEGORIES.includes(category)
+                        const isLive   = LIVE_REVIEW_CATEGORIES.includes(category)
+
+                        let reminderNode = null
+                        if (isStatic) {
+                          const reviewedAgo = formatTimeAgo(r.dateLastReviewed)
+                          const docLabel    = r.namedRolePolicyDocument || null
+                          reminderNode = (
+                            <>
+                              {label}{reviewedAgo ? ` was last reviewed ${reviewedAgo}. ` : ' has no recorded review date yet. '}
+                              {'Is '}
+                              {docLabel && r.supportingDocumentLink ? (
+                                <a href={r.supportingDocumentLink} target="_blank" rel="noreferrer"
+                                  onClick={e => e.stopPropagation()}
+                                  style={{ color: '#0f766e', textDecoration: 'underline' }}>{docLabel}</a>
+                              ) : (docLabel || 'this')}
+                              {' still current?'}
+                            </>
+                          )
+                        } else if (isLive) {
+                          const loggedAgo = formatTimeAgo(r.dateStarted || r.createdAt)
+                          const detail    = r.briefDescription || r.structuredDetail?.professional_type || ''
+                          reminderNode = loggedAgo
+                            ? `${label} — last logged ${loggedAgo}${detail ? ` (${detail})` : ''}. Has anything happened since?`
+                            : `${label} — no engagement logged yet for this point.`
+                        }
+
+                        const canConfirm    = isStatic && !readOnly && !isDemoMode && r.reviewCycle && r.reviewCycle !== 'as_needed'
+                        const isConfirming  = confirmingReviewId === r.evidenceEntryId
+                        const hasConfirmErr = confirmReviewError === r.evidenceEntryId
+
                         return (
-                          <button key={i} type="button"
-                            onClick={() => domainId && setSelectedDomain(domainId)}
-                            style={{
-                              background: 'rgba(255,255,255,0.6)', border: '1px solid #99f6e4', borderRadius: 8,
-                              padding: '8px 10px', textAlign: 'left', cursor: domainId ? 'pointer' : 'default',
-                              fontFamily: 'inherit', flexShrink: 0,
-                            }}
-                          >
-                            <p style={{ fontSize: '0.78rem', fontWeight: 600, color: '#134e4a', lineHeight: 1.35, marginBottom: 3 }}>{label}</p>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <p style={{ fontSize: '0.7rem', color: '#0f766e' }}>{domainName}</p>
-                              <p style={{ fontSize: '0.7rem', color: '#dc2626', fontWeight: 600 }}>{dateStr}</p>
+                          <div key={i} style={{
+                            background: 'rgba(255,255,255,0.6)', border: '1px solid #99f6e4', borderRadius: 8,
+                            padding: '8px 10px', flexShrink: 0,
+                          }}>
+                            <div
+                              role="button" tabIndex={0}
+                              onClick={() => domainId && setSelectedDomain(domainId)}
+                              onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && domainId) setSelectedDomain(domainId) }}
+                              style={{ cursor: domainId ? 'pointer' : 'default', textAlign: 'left' }}
+                            >
+                              <p style={{ fontSize: '0.78rem', fontWeight: 600, color: '#134e4a', lineHeight: 1.35, marginBottom: 3 }}>
+                                {reminderNode ?? label}
+                              </p>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <p style={{ fontSize: '0.7rem', color: '#0f766e' }}>{domainName}</p>
+                                <p style={{ fontSize: '0.7rem', color: '#dc2626', fontWeight: 600 }}>{dateStr}</p>
+                              </div>
                             </div>
-                          </button>
+                            {canConfirm && (
+                              <button type="button"
+                                onClick={() => handleConfirmStillCurrent(r)}
+                                disabled={isConfirming}
+                                style={{
+                                  marginTop: 6, width: '100%', padding: '5px 8px', borderRadius: 6,
+                                  border: '1px solid #0f766e', background: isConfirming ? '#e2f5f1' : '#fff',
+                                  color: '#0f766e', fontSize: '0.7rem', fontWeight: 600,
+                                  cursor: isConfirming ? 'default' : 'pointer', fontFamily: 'inherit',
+                                }}>
+                                {isConfirming ? 'Confirming…' : 'Confirm still current'}
+                              </button>
+                            )}
+                            {hasConfirmErr && (
+                              <p style={{ fontSize: '0.68rem', color: '#dc2626', marginTop: 4 }}>Couldn't save — try again.</p>
+                            )}
+                          </div>
                         )
                       })}
                     </div>
