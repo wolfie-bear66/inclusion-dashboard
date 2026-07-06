@@ -383,13 +383,9 @@ Never rewrite existing query logic in same session as any migration.
 
 - [ ] **Expert engagement analytics visualisation** — dedicated view for `expert_engagement` evidence (professional-type breakdown, commissioning-route spend, pupils reached over time). Parked pending pilot volume from St Augustine — not enough data yet to make a chart meaningful. See Session 38.
 
-- [ ] **Student belonging survey feature** — downloadable template with aggregated score input. Instruments researched: PSSM, BeeWell, Children's Happiness Scale.
+- [ ] **Student belonging survey feature** — downloadable template with aggregated score input. Instruments researched: PSSM, BeeWell, Children's Happiness Scale. Links to Line 445 ## Future Idea
 
 - [ ] **Outcomes Tracker** — CSV upload for mock exam results with demographic tags, user-guided column highlighting, national DfE benchmark comparisons, calendared upload cadence aligned to secondary school mock schedule.
-
-- [ ] **Radial Map view** — visual 4-level hierarchy alternative to linear domain view (Core → Domain → Sub-domain → Point). Deferred until core audit is validated.
-
-- [ ] **Companion product decisions** — use early customer conversations to decide which of Cove, Revision Hub, and six-week reflective diary to formalise as ecosystem package.
 
 - [x] **Founder admin view (private)** — `/admin` route built in `src/pages/AdminView.jsx`. UUID guard on mount redirects non-founders to `/`. Table shows per school: MAT, total evidence entries, entries in last 30 days, last entry date, team members, unassigned points, domain coverage % (colour-coded cells), reports (n/a). Separate Supabase queries assembled in JS. Session 24.
 - [x] **Session 25 — Principle Coverage analytics tab** — New "Principle Coverage" tab added to Analytics after Domain Readiness. Horizontal stacked bar chart (Recharts) shows RAG breakdown per DfE principle. Summary table below chart with totals and % complete. Data: fetches all active provision_points with principle column; cross-joins with entries status map; points with no entry count as not_in_place. PRINCIPLES constant defines fixed order of 7 principles. RAG_COLOURS constant added at module level.
@@ -404,11 +400,76 @@ Never rewrite existing query logic in same session as any migration.
 - [x] **Session 33 — Landing page six-step restructure** — How It Works section expanded from four tabs to six, matching the new "Assign → Evidence → Identify Barriers → Build the Strategy → Report → Review" cycle. Old "Analyse" tab retired (`analysis-dashboard.png` left in place in `/public`, unused, in case it's wanted elsewhere later). New static cycle diagram (`cycle-diagram-six-steps.png`) added above the tabs, always visible regardless of active tab. Section headline replaced with "How Inclusion Dashboard works — one continuous cycle". New Step 6 "Review" has no image; tab panel renders cleanly with no image (existing conditional render + `min-height: 400px` on `.lp-how__tab-panel` already handled this — no layout shift). Image consolidation: `step1-assign.png`, `barriers-dashboard.png`, `step4-build-strategy.png`, `report-dashboard.png`, `cycle-diagram-six-steps.png` moved from `/public` into `/public/images/landing`, joining `howitworks-evidence.png`. All `img` paths in `LandingPage.jsx` updated to match. New `.lp-how__diagram` CSS rule added in `LandingPage.css`. 2 July 2026.
 - [x] **Session 34 — Cycle diagram moved into Review tab** — `cycle-diagram-six-steps.png` relocated from its static position above the tabs into the "Review" tab's content, using the same `img`/`imgAlt` pattern and `lp-how__tab-img` class as the other five tabs. Static image and its wrapper removed from above `.lp-how__tabs`; now-unused `.lp-how__diagram` CSS rule removed from `LandingPage.css`. Section headline "How Inclusion Dashboard works — one continuous cycle" kept in place as the general section title (reads fine without the diagram directly beneath it). Review tab body copy unchanged. 2 July 2026.
 
+## MAT-wide Barriers Intelligence view for approvers (parked — build only 
+if a MAT requests it)
+
+**Status:** Designed, not built. Do not build speculatively.
+
+**What it is:** Gives head teachers (approver role) optional read-only 
+visibility into barriers, actions, and gap data across every school in 
+their MAT — not just their own school — so heads can see what other 
+schools are doing and reach out directly, without waiting for meetings.
+
+**Design decisions already made:**
+- Reuses the existing `MATBarriersView` component unchanged — it is 
+  already read-only and fit for purpose as the approver-facing view.
+- Enabled per-MAT, not globally: add a `barriers_sharing_enabled` boolean 
+  column on the `mats` table, default `false`. Only flip to `true` for a 
+  specific MAT once they've explicitly opted in.
+- Approver's own Barriers screen gets a "My School" / "Trust-wide" toggle, 
+  visible only when their MAT has `barriers_sharing_enabled = true`.
+- RLS: new SELECT-only policy on `barriers`, `barrier_provision_links`, 
+  and `entries` allowing approver role to read rows where the school's 
+  `mat_id` matches their own school's `mat_id` — resolved via a 
+  school-to-school join (my school's mat_id = target school's mat_id), 
+  NOT via `profiles.mat_id`, since approver profiles do not reliably have 
+  `mat_id` populated even when their school belongs to a MAT. This was 
+  flagged explicitly as a likely silent-failure point if built the 
+  wrong way.
+- Write access (INSERT/UPDATE/DELETE on barriers) remains school-scoped 
+  only — trust-wide visibility is read-only, full stop.
+- Linked documents: a plain URL field pointing to an external file 
+  (e.g. Microsoft 365 link). No file storage build needed — access is 
+  naturally gated by the viewer's own tenant login. Nothing for the 
+  product to host or manage.
+
+**Not yet decided (resolve with the MAT at the time, not in advance):**
+- Whether all heads see everything by default, or whether the MAT's 
+  central team wants to curate/redact before trust-wide visibility 
+  (relevant for sensitive barrier descriptions, e.g. LAC or 
+  safeguarding-adjacent framing).
+
+**Trigger to revisit:** A MAT (via LinkedIn outreach or otherwise) asks 
+for cross-school visibility for their heads.
+
+## Future Idea: Provider Suggestions / Marketplace (post-paying-schools)
+
+**Status:** Idea only — not scoped, not scheduled. Revisit once real paying schools exist.
+
+**Concept:** Use aggregated provision data (esp. External Partnership heat map / gaps in 
+provision) to surface suggestions for external providers who could fill those gaps.
+
+Two distinct models to keep separate:
+1. **Affiliate/referral** — e.g. Outward Bound, overnight experiences, other external 
+   providers. Commission-based. Requires affiliate disclosure + privacy/consent updates.
+2. **Own products cross-sell** — e.g. Cove (parent chatbot), Revision Hub, surfaced as 
+   relevant suggestions based on identified gaps. No affiliate disclosure needed, but 
+   still needs clear framing so it doesn't feel like a bait-and-switch.
+
+**Trigger point:** Likely built on top of existing External Partnership heat map data 
+(Provision Depth analytics) — low-engagement/gap cells are the natural surface point.
+
+**Open questions for later:**
+- Consent/privacy policy implications of using school data this way
+- Whether this is a MAT-level or school-level feature
+- Pricing/commission model if going the affiliate route
+- Does this dilute the "compliance tool, not vendor" positioning that's worked so far?
+
 ---
 
 ## Known issues / technical debt
 
-- [ ] Sub-domains RLS errors appearing in console — pre-existing, not blocking, needs investigation.
+- [x] Sub-domains RLS errors appearing in console — pre-existing, not blocking, needs investigation.
 - [x] `evidenceEntries` is empty on category view — fixed. Lifted the full `ENTRY_SELECT` fetch to the school-level `useEffect` (was per-domain); domain-level effect now only fetches sub_domains. Both Domain and Category views read from the same shared `evidenceEntries` state.
 - [x] **Invite form updated** — now collects first name, last name, job title, and email; profile row created automatically on invite (first_name, last_name, onboarding_state, welcomed); job_title column added to profiles (step7_job_title.sql); job_title moved to client-side update after Edge Function invite — schema cache workaround; By Person view shows job_title instead of role chip when available; contributor welcome banner personalised with first name and point count; Edge Function redeployed.
 - [x] **Set password page built** — invited users now land on /set-password before entering the dashboard. SetPasswordPage handles its own session wait (invite-link hash consumed by Supabase JS); auth listener intercepts SIGNED_IN with type=invite hash as belt-and-suspenders. Redirect URL in Supabase must be set to https://inclusiondashboard.co.uk/set-password.
@@ -421,7 +482,8 @@ Never rewrite existing query logic in same session as any migration.
 
 ### Demo accounts
 - Demo: `demo@testschool.co.uk` / `DemoAccess2026!`
-- Pilot: `aquarless@staugustine.sjcmat.co.uk` (isolated from Demo MAT)
+- Pilot: `aquarless@staugustine.sjcmat.co.uk` (isolated from Demo MAT) / `AQstaugs123`
+- Admin: `syates@staugustine.sjcmat.co.uk` / `Austin101`
 
 ### Key dates
 - White paper published: 23 February 2026
