@@ -3140,6 +3140,14 @@ export default function App() {
   // to the authLoading guard during the sign-in flow, producing a visible flash on mobile.
   const pathnameRef = useRef(window.location.pathname)
 
+  // Tracks which user id the profile-driven state (role/view/selectedSchool)
+  // was last initialized for. Supabase's visibilitychange-triggered session
+  // recheck re-fires onAuthStateChange on tab refocus even with no real
+  // sign-in/out — without this guard the profile effect below would re-run
+  // and stomp in-session navigation (e.g. a MAT admin drilled into a school)
+  // back to the role's default view.
+  const initializedUserIdRef = useRef(null)
+
   // Invite user modal state
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteFirstName, setInviteFirstName] = useState('')
@@ -3193,6 +3201,7 @@ export default function App() {
   // authLoading is cleared here once we know which view to show.
   useEffect(() => {
     if (!session) {
+      initializedUserIdRef.current = null
       setSelectedSchool('')
       setSchoolName('')
       setDomains([])
@@ -3220,6 +3229,13 @@ export default function App() {
       setView('school')
       setBrowsingSchoolName('')
       setAuthLoading(false)
+      return
+    }
+
+    if (initializedUserIdRef.current === session.user.id) {
+      // Same user already initialized — this fire is a token refresh or
+      // tab-refocus recheck, not a real sign-in. Leave in-session navigation
+      // state (view, selectedSchool, etc.) untouched.
       return
     }
 
@@ -3263,6 +3279,7 @@ export default function App() {
           setView('school')
         }
         setAuthLoading(false)
+        initializedUserIdRef.current = session.user.id
       })
 
     supabase
