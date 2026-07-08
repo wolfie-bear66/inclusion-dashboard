@@ -7,6 +7,8 @@ import PrivacyPage from './pages/PrivacyPage'
 import TeamPage from './pages/TeamPage'
 import InclusionStrategyWizard from './pages/InclusionStrategyWizard'
 import OnboardingPrompt from './components/OnboardingPrompt'
+import ApprovalQueueModal from './components/ApprovalQueueModal'
+import AssignmentModal from './components/AssignmentModal'
 import SetPasswordPage from './pages/SetPasswordPage'
 import AdminView from './pages/AdminView'
 import { useIsReadOnlyView } from './hooks/useIsReadOnlyView'
@@ -169,7 +171,7 @@ const EXPERT_PROFESSIONAL_REPORT_LABEL = {
 
 // entries holds status + group flags; evidence detail lives in evidence_entries (nested)
 const ENTRY_SELECT = [
-  'id', 'provision_point_id', 'status',
+  'id', 'provision_point_id', 'status', 'submitted_for_approval_at', 'send_back_note',
   'grp_send', 'grp_pp', 'grp_eal', 'grp_fsm', 'grp_lac', 'grp_wwc', 'grp_other',
   'evidence_entries(id, provision_name, brief_description, indicator_type, provision_category, named_role_policy_document, delivered_by, send_tiers, pupils_reached, reach_total, reach_send, reach_pp, reach_eal, reach_fsm, reach_lac, reach_wwc, reach_other, grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other, date_started, date_last_reviewed, next_review_due, funding_source, cost, review_cycle, evidence_notes, intended_outcomes, impact_on_outcomes, supporting_document_link, notes, evidence_type, structured_detail)',
 ].join(', ')
@@ -2886,7 +2888,7 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
   )
 }
 
-function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, onOpenModal, readOnly, isFlagged, onFlag }) {
+function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, onOpenModal, readOnly, isFlagged, onFlag, userRole, submittedAt }) {
   const [flagOpen, setFlagOpen] = useState(false)
   const [flagNote, setFlagNote] = useState('')
   const [flagSaving, setFlagSaving] = useState(false)
@@ -2936,19 +2938,30 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, on
         )}
         <div className="provision-actions">
           <div className="status-group">
-            {STATUSES.map(s => (
-              <button
-                key={s}
-                type="button"
-                className={`status-btn status-btn--${s.replace(/_/g, '-')}${status === s ? ' active' : ''}`}
-                onClick={readOnly ? undefined : () => onStatusChange(pp.id, s)}
-                disabled={readOnly}
-                title={readOnly ? 'You do not have edit access to this school' : undefined}
-                style={readOnly ? { cursor: 'default', opacity: 0.65 } : undefined}
-              >
-                {STATUS_LABELS[s]}
-              </button>
-            ))}
+            {STATUSES.map(s => {
+              const isGatedInPlace = s === 'in_place' && userRole === 'contributor'
+              const isPending = isGatedInPlace && !!submittedAt
+              const disabled = readOnly || isPending
+              const label = isPending ? 'Awaiting Approval' : isGatedInPlace ? 'Submit for Approval' : STATUS_LABELS[s]
+              const title = readOnly
+                ? 'You do not have edit access to this school'
+                : isPending
+                  ? 'Submitted — waiting for an approver to confirm'
+                  : undefined
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  className={`status-btn status-btn--${s.replace(/_/g, '-')}${status === s ? ' active' : ''}`}
+                  onClick={disabled ? undefined : () => onStatusChange(pp.id, s)}
+                  disabled={disabled}
+                  title={title}
+                  style={disabled ? { cursor: 'default', opacity: 0.65 } : undefined}
+                >
+                  {label}
+                </button>
+              )
+            })}
           </div>
           {!readOnly && (
             <button type="button" className="evidence-btn" onClick={() => onOpenModal(pp)}>
@@ -3089,6 +3102,9 @@ export default function App() {
   const [firstName, setFirstName] = useState('')
   const [overdueReviews, setOverdueReviews] = useState([])
   const [reviewsExpanded, setReviewsExpanded] = useState(false)
+  const [approvalQueueCount, setApprovalQueueCount] = useState(0)
+  const [approvalQueueOpen, setApprovalQueueOpen] = useState(false)
+  const [selfAssignOpen, setSelfAssignOpen] = useState(false)
   const [confirmingReviewId, setConfirmingReviewId] = useState(null)
   const [confirmReviewError, setConfirmReviewError] = useState(null)
 
@@ -3341,10 +3357,15 @@ export default function App() {
       })
   }, [selectedSchool])
 
-  // Overdue reviews for home screen reviews panel
+  // Reviews for home screen reviews panel — already-overdue rows, plus rows due within
+  // the next 30 days ("due soon"), kept distinguishable via isOverdue on each item.
   useEffect(() => {
     if (!selectedSchool) { setOverdueReviews([]); return }
-    const today = new Date().toISOString().slice(0, 10)
+    const todayDate = new Date()
+    const today = todayDate.toISOString().slice(0, 10)
+    const horizonDate = new Date(todayDate)
+    horizonDate.setDate(horizonDate.getDate() + 30)
+    const horizon = horizonDate.toISOString().slice(0, 10)
     supabase
       .from('entries')
       .select(`provision_point_id, evidence_entries(
@@ -3354,11 +3375,11 @@ export default function App() {
       .eq('school_id', selectedSchool)
       .then(({ data }) => {
         if (!data) return
-        const overdue = []
+        const upcoming = []
         for (const entry of data) {
           for (const ev of entry.evidence_entries ?? []) {
-            if (ev.next_review_due && ev.next_review_due <= today) {
-              overdue.push({
+            if (ev.next_review_due && ev.next_review_due <= horizon) {
+              upcoming.push({
                 evidenceEntryId:        ev.id,
                 provisionPointId:       entry.provision_point_id,
                 provisionName:          ev.provision_name || '',
@@ -3371,18 +3392,37 @@ export default function App() {
                 namedRolePolicyDocument: ev.named_role_policy_document,
                 supportingDocumentLink: ev.supporting_document_link,
                 structuredDetail:       ev.structured_detail,
+                isOverdue:              ev.next_review_due <= today,
               })
             }
           }
         }
-        overdue.sort((a, b) => a.nextReviewDue.localeCompare(b.nextReviewDue))
-        setOverdueReviews(overdue)
+        upcoming.sort((a, b) => a.nextReviewDue.localeCompare(b.nextReviewDue))
+        setOverdueReviews(upcoming)
         setReviewsExpanded(false)
       })
   }, [selectedSchool])
 
-  // Fetch assigned provision point IDs for the personal view
+  // Approval queue count for the dashboard pill — approver/mat_admin only.
+  function loadApprovalQueueCount() {
+    if (!selectedSchool || (userRole !== 'approver' && userRole !== 'mat_admin')) {
+      setApprovalQueueCount(0)
+      return
+    }
+    supabase
+      .from('entries')
+      .select('id', { count: 'exact', head: true })
+      .eq('school_id', selectedSchool)
+      .not('submitted_for_approval_at', 'is', null)
+      .then(({ count }) => setApprovalQueueCount(count ?? 0))
+  }
+
   useEffect(() => {
+    loadApprovalQueueCount()
+  }, [selectedSchool, userRole])
+
+  // Fetch assigned provision point IDs for the personal view
+  function loadPersonalAssignedPpIds() {
     if (!selectedSchool || viewMode === 'whole_school') {
       setPersonalAssignedPpIds(new Set())
       return
@@ -3397,6 +3437,10 @@ export default function App() {
       .then(({ data }) => {
         setPersonalAssignedPpIds(new Set((data ?? []).map(a => a.provision_point_id)))
       })
+  }
+
+  useEffect(() => {
+    loadPersonalAssignedPpIds()
   }, [viewMode, selectedSchool, session])
 
   // Fetch team members for the approver dropdown
@@ -3675,6 +3719,14 @@ export default function App() {
 
   async function handleStatusChange(ppId, status) {
     if (isDemoMode) return
+
+    // Contributors can't set 'in_place' directly — clicking it submits the point for
+    // an approver/mat_admin to confirm instead. Approver/mat_admin keep full direct
+    // status-write, including 'in_place', with no approval step.
+    if (userRole === 'contributor' && status === 'in_place') {
+      return handleSubmitForApproval(ppId)
+    }
+
     const currentEntry = entries[ppId] ?? {}
     setEntries(prev => ({ ...prev, [ppId]: { ...currentEntry, status } }))
     setAllStatuses(prev => ({ ...prev, [ppId]: status }))
@@ -3693,6 +3745,37 @@ export default function App() {
     } else if (data?.id && !currentEntry.id) {
       setEntries(prev => ({ ...prev, [ppId]: { ...prev[ppId], id: data.id } }))
     }
+  }
+
+  async function handleSubmitForApproval(ppId) {
+    const currentEntry = entries[ppId] ?? {}
+    const nowIso = new Date().toISOString()
+    setEntries(prev => ({ ...prev, [ppId]: { ...currentEntry, submitted_for_approval_at: nowIso } }))
+
+    const { data, error } = await supabase
+      .from('entries')
+      .upsert(
+        [{ school_id: selectedSchool, provision_point_id: ppId, ...currentEntry, submitted_for_approval_at: nowIso }],
+        { onConflict: 'school_id,provision_point_id' }
+      )
+      .select('id')
+      .single()
+
+    if (error) {
+      console.error('Error submitting for approval:', error)
+      return
+    }
+    if (data?.id && !currentEntry.id) {
+      setEntries(prev => ({ ...prev, [ppId]: { ...prev[ppId], id: data.id } }))
+    }
+
+    const { error: logError } = await supabase.from('point_approval_log').insert({
+      entry_id: data.id,
+      school_id: selectedSchool,
+      action: 'submitted',
+      actioned_by: session.user.id,
+    })
+    if (logError) console.error('Error logging submission:', logError)
   }
 
   async function handleModalSave() {
@@ -4187,6 +4270,8 @@ export default function App() {
                             readOnly={readOnly}
                             isFlagged={flaggedPoints.has(pp.id)}
                             onFlag={handleFlag}
+                            userRole={userRole}
+                            submittedAt={entries[pp.id]?.submitted_for_approval_at}
                           />
                         ))}
                         {needsTrunc && (
@@ -4220,6 +4305,86 @@ export default function App() {
             ? overdueReviews.filter(r => personalAssignedPpIds.has(r.provisionPointId))
             : overdueReviews
           const reviewsDueCount = filteredReviews.length
+          const overdueItems = filteredReviews.filter(r => r.isOverdue)
+          const dueSoonItems = filteredReviews.filter(r => !r.isOverdue)
+
+          function renderReviewItem(r, i) {
+            const info       = ppInfoMap[r.provisionPointId]
+            const domainId   = info?.domainId
+            const domainName = info?.domainName ?? ''
+            const category   = info?.category ?? ''
+            const label      = r.provisionName || info?.label || 'Untitled'
+            const dateStr    = new Date(r.nextReviewDue).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+
+            const isStatic = STATIC_REVIEW_CATEGORIES.includes(category)
+            const isLive   = LIVE_REVIEW_CATEGORIES.includes(category)
+
+            let reminderNode = null
+            if (isStatic) {
+              const reviewedAgo = formatTimeAgo(r.dateLastReviewed)
+              const docLabel    = r.namedRolePolicyDocument || null
+              reminderNode = (
+                <>
+                  {label}{reviewedAgo ? ` was last reviewed ${reviewedAgo}. ` : ' has no recorded review date yet. '}
+                  {'Is '}
+                  {docLabel && r.supportingDocumentLink ? (
+                    <a href={r.supportingDocumentLink} target="_blank" rel="noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      style={{ color: '#0f766e', textDecoration: 'underline' }}>{docLabel}</a>
+                  ) : (docLabel || 'this')}
+                  {' still current?'}
+                </>
+              )
+            } else if (isLive) {
+              const loggedAgo = formatTimeAgo(r.dateStarted || r.createdAt)
+              const detail    = r.briefDescription || r.structuredDetail?.professional_type || ''
+              reminderNode = loggedAgo
+                ? `${label} — last logged ${loggedAgo}${detail ? ` (${detail})` : ''}. Has anything happened since?`
+                : `${label} — no engagement logged yet for this point.`
+            }
+
+            const canConfirm    = isStatic && !readOnly && !isDemoMode && r.reviewCycle && r.reviewCycle !== 'as_needed'
+            const isConfirming  = confirmingReviewId === r.evidenceEntryId
+            const hasConfirmErr = confirmReviewError === r.evidenceEntryId
+
+            return (
+              <div key={i} style={{
+                background: 'rgba(255,255,255,0.6)', border: '1px solid #99f6e4', borderRadius: 8,
+                padding: '8px 10px', flexShrink: 0,
+              }}>
+                <div
+                  role="button" tabIndex={0}
+                  onClick={() => domainId && setSelectedDomain(domainId)}
+                  onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && domainId) setSelectedDomain(domainId) }}
+                  style={{ cursor: domainId ? 'pointer' : 'default', textAlign: 'left' }}
+                >
+                  <p style={{ fontSize: '0.78rem', fontWeight: 600, color: '#134e4a', lineHeight: 1.35, marginBottom: 3 }}>
+                    {reminderNode ?? label}
+                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <p style={{ fontSize: '0.7rem', color: '#0f766e' }}>{domainName}</p>
+                    <p style={{ fontSize: '0.7rem', color: r.isOverdue ? '#dc2626' : '#0f766e', fontWeight: 600 }}>{dateStr}</p>
+                  </div>
+                </div>
+                {canConfirm && (
+                  <button type="button"
+                    onClick={() => handleConfirmStillCurrent(r)}
+                    disabled={isConfirming}
+                    style={{
+                      marginTop: 6, width: '100%', padding: '5px 8px', borderRadius: 6,
+                      border: '1px solid #0f766e', background: isConfirming ? '#e2f5f1' : '#fff',
+                      color: '#0f766e', fontSize: '0.7rem', fontWeight: 600,
+                      cursor: isConfirming ? 'default' : 'pointer', fontFamily: 'inherit',
+                    }}>
+                    {isConfirming ? 'Confirming…' : 'Confirm still current'}
+                  </button>
+                )}
+                {hasConfirmErr && (
+                  <p style={{ fontSize: '0.68rem', color: '#dc2626', marginTop: 4 }}>Couldn't save — try again.</p>
+                )}
+              </div>
+            )
+          }
 
           // Domain cards with RAG triage — scoped to assigned points in personal view
           const domainCards = domains.map(d => {
@@ -4282,24 +4447,37 @@ export default function App() {
 
               {/* View toggle — pill for contributors, dropdown for approvers/mat_admins */}
               {userRole === 'contributor' ? (
-                <div style={{ display: 'inline-flex', background: '#E2E8F0', borderRadius: 8, padding: 3, gap: 2, alignSelf: 'flex-start' }}>
-                  {[{ value: 'personal', label: 'My provision' }, { value: 'whole_school', label: 'Whole school' }].map(opt => {
-                    const active = viewMode === opt.value
-                    return (
-                      <button key={opt.value} type="button" onClick={() => setViewMode(opt.value)}
-                        style={{
-                          padding: '6px 16px', border: 'none', borderRadius: 6,
-                          fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit',
-                          background: active ? '#fff' : 'transparent',
-                          color: active ? '#1A202C' : '#64748b',
-                          fontWeight: active ? 600 : 400,
-                          boxShadow: active ? '0 1px 3px rgba(0,0,0,0.10)' : 'none',
-                          transition: 'all 0.12s',
-                        }}>
-                        {opt.label}
-                      </button>
-                    )
-                  })}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'inline-flex', background: '#E2E8F0', borderRadius: 8, padding: 3, gap: 2 }}>
+                    {[{ value: 'personal', label: 'My provision' }, { value: 'whole_school', label: 'Whole school' }].map(opt => {
+                      const active = viewMode === opt.value
+                      return (
+                        <button key={opt.value} type="button" onClick={() => setViewMode(opt.value)}
+                          style={{
+                            padding: '6px 16px', border: 'none', borderRadius: 6,
+                            fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit',
+                            background: active ? '#fff' : 'transparent',
+                            color: active ? '#1A202C' : '#64748b',
+                            fontWeight: active ? 600 : 400,
+                            boxShadow: active ? '0 1px 3px rgba(0,0,0,0.10)' : 'none',
+                            transition: 'all 0.12s',
+                          }}>
+                          {opt.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {!readOnly && !isDemoMode && (
+                    <button type="button" onClick={() => setSelfAssignOpen(true)} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '6px 14px', border: '1px solid #1B365D', borderRadius: 8,
+                      background: '#fff', color: '#1B365D',
+                      fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                    }}>
+                      <i className="ti ti-adjustments" style={{ fontSize: '0.9rem' }} />
+                      My Provision
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -4396,96 +4574,46 @@ export default function App() {
                       {untouchedCount} provision point{untouchedCount !== 1 ? 's' : ''} haven't been started yet.
                     </p>
                   )}
+                  {(userRole === 'approver' || userRole === 'mat_admin') && approvalQueueCount > 0 && (
+                    <button type="button" onClick={() => setApprovalQueueOpen(true)} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
+                      marginTop: 10, padding: '5px 12px', borderRadius: 999, border: '1px solid #FBBF24',
+                      background: '#FEF3C7', color: '#92400E', fontSize: '0.78rem', fontWeight: 600,
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}>
+                      <i className="ti ti-clipboard-check" style={{ fontSize: '0.9rem' }} />
+                      {approvalQueueCount} awaiting approval
+                    </button>
+                  )}
                 </div>
 
                 {/* Right: reviews due — filtered in personal view, hidden if none */}
                 {reviewsDueCount > 0 && (
                   <div style={{
-                    width: 248, flexShrink: 0,
+                    width: 340, flexShrink: 0,
                     background: '#F0FDFA', border: '1px solid #99f6e4', borderRadius: 12, padding: '16px 18px',
                     display: 'flex', flexDirection: 'column', gap: 10,
                   }}>
                     <p style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1A202C' }}>
                       Evaluate &amp; Sustain — due this term
                     </p>
-                    <div style={{ overflowY: 'auto', maxHeight: 210, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {filteredReviews.map((r, i) => {
-                        const info       = ppInfoMap[r.provisionPointId]
-                        const domainId   = info?.domainId
-                        const domainName = info?.domainName ?? ''
-                        const category   = info?.category ?? ''
-                        const label      = r.provisionName || info?.label || 'Untitled'
-                        const dateStr    = new Date(r.nextReviewDue).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-
-                        const isStatic = STATIC_REVIEW_CATEGORIES.includes(category)
-                        const isLive   = LIVE_REVIEW_CATEGORIES.includes(category)
-
-                        let reminderNode = null
-                        if (isStatic) {
-                          const reviewedAgo = formatTimeAgo(r.dateLastReviewed)
-                          const docLabel    = r.namedRolePolicyDocument || null
-                          reminderNode = (
-                            <>
-                              {label}{reviewedAgo ? ` was last reviewed ${reviewedAgo}. ` : ' has no recorded review date yet. '}
-                              {'Is '}
-                              {docLabel && r.supportingDocumentLink ? (
-                                <a href={r.supportingDocumentLink} target="_blank" rel="noreferrer"
-                                  onClick={e => e.stopPropagation()}
-                                  style={{ color: '#0f766e', textDecoration: 'underline' }}>{docLabel}</a>
-                              ) : (docLabel || 'this')}
-                              {' still current?'}
-                            </>
-                          )
-                        } else if (isLive) {
-                          const loggedAgo = formatTimeAgo(r.dateStarted || r.createdAt)
-                          const detail    = r.briefDescription || r.structuredDetail?.professional_type || ''
-                          reminderNode = loggedAgo
-                            ? `${label} — last logged ${loggedAgo}${detail ? ` (${detail})` : ''}. Has anything happened since?`
-                            : `${label} — no engagement logged yet for this point.`
-                        }
-
-                        const canConfirm    = isStatic && !readOnly && !isDemoMode && r.reviewCycle && r.reviewCycle !== 'as_needed'
-                        const isConfirming  = confirmingReviewId === r.evidenceEntryId
-                        const hasConfirmErr = confirmReviewError === r.evidenceEntryId
-
-                        return (
-                          <div key={i} style={{
-                            background: 'rgba(255,255,255,0.6)', border: '1px solid #99f6e4', borderRadius: 8,
-                            padding: '8px 10px', flexShrink: 0,
-                          }}>
-                            <div
-                              role="button" tabIndex={0}
-                              onClick={() => domainId && setSelectedDomain(domainId)}
-                              onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && domainId) setSelectedDomain(domainId) }}
-                              style={{ cursor: domainId ? 'pointer' : 'default', textAlign: 'left' }}
-                            >
-                              <p style={{ fontSize: '0.78rem', fontWeight: 600, color: '#134e4a', lineHeight: 1.35, marginBottom: 3 }}>
-                                {reminderNode ?? label}
-                              </p>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <p style={{ fontSize: '0.7rem', color: '#0f766e' }}>{domainName}</p>
-                                <p style={{ fontSize: '0.7rem', color: '#dc2626', fontWeight: 600 }}>{dateStr}</p>
-                              </div>
-                            </div>
-                            {canConfirm && (
-                              <button type="button"
-                                onClick={() => handleConfirmStillCurrent(r)}
-                                disabled={isConfirming}
-                                style={{
-                                  marginTop: 6, width: '100%', padding: '5px 8px', borderRadius: 6,
-                                  border: '1px solid #0f766e', background: isConfirming ? '#e2f5f1' : '#fff',
-                                  color: '#0f766e', fontSize: '0.7rem', fontWeight: 600,
-                                  cursor: isConfirming ? 'default' : 'pointer', fontFamily: 'inherit',
-                                }}>
-                                {isConfirming ? 'Confirming…' : 'Confirm still current'}
-                              </button>
-                            )}
-                            {hasConfirmErr && (
-                              <p style={{ fontSize: '0.68rem', color: '#dc2626', marginTop: 4 }}>Couldn't save — try again.</p>
-                            )}
-                          </div>
-                        )
-                      })}
+                    <div style={{ overflowY: 'auto', maxHeight: 280, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {overdueItems.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <p style={{ fontSize: '0.7rem', fontWeight: 700, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            Overdue ({overdueItems.length})
+                          </p>
+                          {overdueItems.map((r, i) => renderReviewItem(r, `overdue-${i}`))}
+                        </div>
+                      )}
+                      {dueSoonItems.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <p style={{ fontSize: '0.7rem', fontWeight: 700, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            Due soon ({dueSoonItems.length})
+                          </p>
+                          {dueSoonItems.map((r, i) => renderReviewItem(r, `due-soon-${i}`))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -4593,6 +4721,32 @@ export default function App() {
             onGoToTeam={() => {
               setFirstLoginPromptVisible(false)
               setSelectedDomain('team')
+            }}
+          />
+        )}
+
+        {selfAssignOpen && selectedSchool && (
+          <AssignmentModal
+            person={{ id: session.user.id, first_name: firstName || 'Me', last_name: '', role: userRole }}
+            schoolId={selectedSchool}
+            currentUserId={session.user.id}
+            supabase={supabase}
+            onClose={() => setSelfAssignOpen(false)}
+            onSaved={loadPersonalAssignedPpIds}
+          />
+        )}
+
+        {approvalQueueOpen && selectedSchool && (
+          <ApprovalQueueModal
+            schoolId={selectedSchool}
+            currentUserId={session.user.id}
+            supabase={supabase}
+            isDemoMode={isDemoMode}
+            onClose={() => setApprovalQueueOpen(false)}
+            onActioned={(ppId, patch) => {
+              setEntries(prev => ({ ...prev, [ppId]: { ...prev[ppId], ...patch } }))
+              if (patch.status) setAllStatuses(prev => ({ ...prev, [ppId]: patch.status }))
+              loadApprovalQueueCount()
             }}
           />
         )}
@@ -4721,6 +4875,8 @@ export default function App() {
                             readOnly={readOnly}
                             isFlagged={flaggedPoints.has(pp.id)}
                             onFlag={handleFlag}
+                            userRole={userRole}
+                            submittedAt={entries[pp.id]?.submitted_for_approval_at}
                           />
                         ))}
 
