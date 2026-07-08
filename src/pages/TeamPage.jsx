@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import AssignmentModal, { CATEGORY_ORDER } from '../components/AssignmentModal'
+import RemoveReplaceModal from '../components/RemoveReplaceModal'
 
 // ── Shared mini components ────────────────────────────────────────────
 
@@ -43,11 +44,12 @@ function RoleChip({ role }) {
 
 // ── By Person view ────────────────────────────────────────────────────
 
-function ByPersonView({ schoolId, currentUserId, supabase, readOnly }) {
+function ByPersonView({ schoolId, currentUserId, supabase, readOnly, userRole }) {
   const [members, setMembers] = useState([])
   const [assignmentCounts, setAssignmentCounts] = useState({})
   const [loading, setLoading] = useState(true)
   const [modalPerson, setModalPerson] = useState(null)
+  const [removePerson, setRemovePerson] = useState(null)
 
   async function loadData() {
     console.log('[team] fetch function entered');
@@ -135,17 +137,31 @@ function ByPersonView({ schoolId, currentUserId, supabase, readOnly }) {
             </div>
 
             {!readOnly && (
-              <button type="button"
-                onClick={() => setModalPerson(m)}
-                style={{
-                  padding: '7px 16px', border: '1px solid #1B365D', borderRadius: 8,
-                  background: count > 0 ? 'rgba(27,54,93,0.08)' : '#1B365D',
-                  color: count > 0 ? '#1B365D' : '#fff',
-                  fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-                  flexShrink: 0, whiteSpace: 'nowrap',
-                }}>
-                {count > 0 ? 'Edit assignment' : 'Assign points'}
-              </button>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <button type="button"
+                  onClick={() => setModalPerson(m)}
+                  style={{
+                    padding: '7px 16px', border: '1px solid #1B365D', borderRadius: 8,
+                    background: count > 0 ? 'rgba(27,54,93,0.08)' : '#1B365D',
+                    color: count > 0 ? '#1B365D' : '#fff',
+                    fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                    whiteSpace: 'nowrap',
+                  }}>
+                  {count > 0 ? 'Edit assignment' : 'Assign points'}
+                </button>
+                {userRole === 'approver' && (
+                  <button type="button"
+                    onClick={() => setRemovePerson(m)}
+                    style={{
+                      padding: '7px 16px', border: '1px solid #E2E8F0', borderRadius: 8,
+                      background: '#fff', color: '#EA4335',
+                      fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                      whiteSpace: 'nowrap',
+                    }}>
+                    Remove
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )
@@ -159,6 +175,18 @@ function ByPersonView({ schoolId, currentUserId, supabase, readOnly }) {
           supabase={supabase}
           onClose={() => setModalPerson(null)}
           onSaved={loadData}
+        />
+      )}
+
+      {removePerson && !readOnly && userRole === 'approver' && (
+        <RemoveReplaceModal
+          person={removePerson}
+          schoolId={schoolId}
+          currentUserId={currentUserId}
+          supabase={supabase}
+          teamMembers={members.filter(m => m.id !== removePerson.id)}
+          onClose={() => setRemovePerson(null)}
+          onRemoved={loadData}
         />
       )}
     </div>
@@ -302,7 +330,7 @@ function ByPointView({ schoolId, supabase }) {
 
 // ── TeamPage ──────────────────────────────────────────────────────────
 
-export default function TeamPage({ schoolId, currentUserId, supabase, onInviteUser, readOnly = false }) {
+export default function TeamPage({ schoolId, currentUserId, supabase, onInviteUser, readOnly = false, userRole }) {
   const [view, setView] = useState('person')
 
   return (
@@ -347,6 +375,7 @@ export default function TeamPage({ schoolId, currentUserId, supabase, onInviteUs
           currentUserId={currentUserId}
           supabase={supabase}
           readOnly={readOnly}
+          userRole={userRole}
         />
       )}
       {view === 'point' && (

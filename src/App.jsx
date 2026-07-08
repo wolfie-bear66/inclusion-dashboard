@@ -4575,6 +4575,7 @@ export default function App() {
             supabase={supabase}
             onInviteUser={openInviteModal}
             readOnly={readOnly}
+            userRole={userRole}
           />
         )}
 
