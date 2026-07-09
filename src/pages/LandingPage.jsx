@@ -204,8 +204,9 @@ export default function LandingPage() {
           Inclusion Strategy Deadline: 31 December 2026
         </div>
         <h1 className="lp-hero__h1">
-          <span className="lp-hero__h1-brand">Write and Publish Your Inclusion Strategy with</span>{' '}
-          <span className="lp-hero__h1-accent">Live Team Evidence</span>
+          <span className="lp-hero__h1-brand">Write and Publish Your</span>{' '}
+          <span className="lp-hero__h1-accent">Inclusion Strategy</span>{' '}
+          <span className="lp-hero__h1-brand">with Live Team Evidence</span>
         </h1>
         <p className="lp-hero__sub" style={{ fontSize: '19px', lineHeight: 1.65 }}>
           Easily map school-wide provision and generate a completed framework ahead of the
