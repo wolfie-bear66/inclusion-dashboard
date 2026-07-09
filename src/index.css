@@ -14,6 +14,8 @@
 
   /* Layer 2 — Brand / Interface */
   --brand-navy: #1B365D;
+  /* Landing page hero only — do not use elsewhere (see Design System Section 10) */
+  --hero-accent-coral: #C45C1A;
   --action-primary: #1B365D;
   --action-hover: #152A4A;
   --action-active-bg: rgba(27, 54, 93, 0.10);

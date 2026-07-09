@@ -203,18 +203,13 @@ export default function LandingPage() {
         }}>
           Inclusion Strategy Deadline: 31 December 2026
         </div>
-        <h1 className="lp-hero__h1" style={{
-          fontFamily: "'Playfair Display', Georgia, serif",
-          fontWeight: 700,
-          fontSize: '72px',
-          lineHeight: 1.05,
-          letterSpacing: '-0.01em',
-        }}>
-          <span style={{ color: '#1B365D' }}>Inclusion,</span><br />
-          <span style={{ color: '#C45C1A' }}>evidenced in full.</span>
+        <h1 className="lp-hero__h1">
+          <span className="lp-hero__h1-brand">Write and Publish Your Inclusion Strategy with</span>{' '}
+          <span className="lp-hero__h1-accent">Live Team Evidence</span>
         </h1>
         <p className="lp-hero__sub" style={{ fontSize: '19px', lineHeight: 1.65 }}>
-          See the gaps, act on them, report with confidence.
+          Easily map school-wide provision and generate a completed framework ahead of the
+          31 December deadline. Free to use until the end of 2026.
         </p>
 
         <div className="lp-hero__cta-row">

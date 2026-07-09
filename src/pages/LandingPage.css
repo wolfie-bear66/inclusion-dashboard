@@ -123,6 +123,12 @@
   margin: 0 auto;
   line-height: 1.15;
 }
+.lp-hero__h1 .lp-hero__h1-brand {
+  color: var(--brand-navy);
+}
+.lp-hero__h1 .lp-hero__h1-accent {
+  color: var(--hero-accent-coral);
+}
 .lp-hero__sub {
   font-size: 1.125rem;
   font-weight: 400;
