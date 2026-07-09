@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 9 July 2026 (Session 44 — Hero CTA changed to 'Start Mapping Free', now links to contact section)
+Last updated: 9 July 2026 (Session 45 — Contact section intro copy updated)
 
 ---
 
@@ -18,6 +18,8 @@ Last updated: 9 July 2026 (Session 44 — Hero CTA changed to 'Start Mapping Fre
 ---
 
 ## Completed
+
+- [x] **Session 45 — Contact section intro copy updated** — Replaced the Stuart intro paragraph in `.lp-cta`/`#contact` (`LandingPage.jsx`) to lead with the free-until-end-of-2026 offer and the 31 December Inclusion Strategy deadline, prompting visitors to message about setting up a free account. Heading "Built by a teacher, for teachers" and the `<ContactForm>` below (fields, validation, Formspree submission, section `id="contact"`) all untouched — text-only change on the `<p>` sibling, same inline styles retained.
 
 - [x] **Session 44 — Hero CTA changed to 'Start Mapping Free', now links to contact section** — Hero's `.lp-hero__cta-row` button (`LandingPage.jsx`) relabelled from "Explore the live demo →" to "Start Mapping Free" and its `href` changed from `/demo` to `#contact`, matching the existing nav bar "Get in touch" anchor pattern (the `#contact` section already had its `id` from the existing Formspree contact form section — no new id needed). Visual style (`lp-btn-primary lp-hero__cta-btn`) and position unchanged — text/destination only. Verified live via click: navigates to `#contact` and scrolls the contact section into view. Scoped to the hero CTA row only — the "Explore the live demo" hero image overlay link and the How It Works "Try a live demo" link both still point to `/demo`, untouched per the diagnostic's scope note.
 

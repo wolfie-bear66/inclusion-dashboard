@@ -420,9 +420,11 @@ export default function LandingPage() {
           Built by a teacher, for teachers
         </h2>
         <p style={{ fontSize: '16px', color: '#4B5563', maxWidth: '560px', margin: '0 auto 32px', lineHeight: '1.6' }}>
-          I'm Stuart — a secondary school science teacher who built Inclusion Dashboard from inside a school.
-          If you'd like to know more, try the tool, or talk about what it could look like in your school or trust,
-          I'd love to hear from you.
+          I'm Stuart — a secondary school teacher who built Inclusion Dashboard whilst working
+          in a school. To support schools in writing their Inclusion Strategy before the 31
+          December deadline I am making it free to use for the rest of 2026, so your whole team
+          can start adding evidence immediately. Message me if you would like to discuss setting
+          up your free account today.
         </p>
         <div style={{ maxWidth: 480, margin: '0 auto' }}>
           <ContactForm
