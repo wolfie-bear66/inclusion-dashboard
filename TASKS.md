@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 9 July 2026 (Session 43 — Hero copy + hero-accent-coral variable introduced)
+Last updated: 9 July 2026 (Session 44 — Hero CTA changed to 'Start Mapping Free', now links to contact section)
 
 ---
 
@@ -18,6 +18,8 @@ Last updated: 9 July 2026 (Session 43 — Hero copy + hero-accent-coral variable
 ---
 
 ## Completed
+
+- [x] **Session 44 — Hero CTA changed to 'Start Mapping Free', now links to contact section** — Hero's `.lp-hero__cta-row` button (`LandingPage.jsx`) relabelled from "Explore the live demo →" to "Start Mapping Free" and its `href` changed from `/demo` to `#contact`, matching the existing nav bar "Get in touch" anchor pattern (the `#contact` section already had its `id` from the existing Formspree contact form section — no new id needed). Visual style (`lp-btn-primary lp-hero__cta-btn`) and position unchanged — text/destination only. Verified live via click: navigates to `#contact` and scrolls the contact section into view. Scoped to the hero CTA row only — the "Explore the live demo" hero image overlay link and the How It Works "Try a live demo" link both still point to `/demo`, untouched per the diagnostic's scope note.
 
 - [x] **Session 43 — Hero copy + hero-accent-coral variable introduced** — Landing page hero H1/sub-heading copy updated and coral accent formalised into a `--hero-accent-coral: #C45C1A` CSS custom property (`src/index.css`, scoped comment marking it hero-only). Replaced the hardcoded inline-style spans in `LandingPage.jsx` with `className`-based `.lp-hero__h1-brand`/`.lp-hero__h1-accent` spans. **Hit a specificity bug during verification:** the pre-existing `.lp-hero__h1, .lp-hero__h1 span` rule (specificity 0,1,1) silently overrode the new single-class rules (0,1,0), so both spans rendered the same dark neutral colour instead of navy/coral — caught via `preview_inspect` computed styles, not visible from a quick screenshot glance. Fixed by scoping the new rules as `.lp-hero__h1 .lp-hero__h1-brand`/`.lp-hero__h1 .lp-hero__h1-accent` to win on specificity. Verified live: navy `rgb(27,54,93)` and coral `rgb(196,92,26)` render correctly, Playfair Display serif intact.
 

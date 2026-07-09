@@ -214,8 +214,8 @@ export default function LandingPage() {
         </p>
 
         <div className="lp-hero__cta-row">
-          <a className="lp-btn-primary lp-hero__cta-btn" href="/demo">
-            Explore the live demo →
+          <a className="lp-btn-primary lp-hero__cta-btn" href="#contact">
+            Start Mapping Free
           </a>
         </div>
 
