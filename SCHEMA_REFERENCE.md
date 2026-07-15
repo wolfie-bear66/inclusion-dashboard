@@ -85,7 +85,7 @@ wider than earlier versions of this doc suggested — verified against the live 
 | evidence_notes | text | |
 | cost | numeric | |
 | notes | text | |
-| grp_send / grp_pp / grp_eal / grp_fsm / grp_lac / grp_wwc / grp_other | boolean | Default `false` each |
+| grp_send / grp_pp / grp_eal / grp_fsm / grp_lac / grp_wwc / grp_social_care / grp_young_carer / grp_mental_health_support / grp_other | boolean | Default `false` each |
 | created_at | timestamptz | Default `now()` |
 | who_delivers | text | |
 | send_tiers | text[] | Default `'{}'` |
@@ -98,7 +98,7 @@ wider than earlier versions of this doc suggested — verified against the live 
 | supporting_document_link | text | |
 | intended_outcomes | text | |
 | provision_category | text | `student_facing` / `policy_structural` / `whole_school`, or empty string for legacy entries. Drives which fields the evidence modal shows |
-| reach_total / reach_send / reach_pp / reach_eal / reach_fsm / reach_lac / reach_wwc / reach_other | integer | Structured reach breakdown, used when `provision_category` is set |
+| reach_total / reach_send / reach_pp / reach_eal / reach_fsm / reach_lac / reach_wwc / reach_social_care / reach_young_carer / reach_mental_health_support / reach_other | integer | Structured reach breakdown, used when `provision_category` is set. No default, nullable |
 | updated_at | timestamptz | Default `now()` |
 | evidence_type | text | NOT NULL, default `'standard'`. CHECK: `standard` / `expert_engagement` |
 | structured_detail | jsonb | Nullable. Populated only when `evidence_type = 'expert_engagement'` (currently just the "Experts at Hand service accessed and used" provision point, id `f8509db3-b3d7-44a8-a061-b6f8a05848f1`). Shape: `{ professional_type, commissioning_route, activity_type, pupils_reached, report_received }` |
@@ -106,6 +106,32 @@ wider than earlier versions of this doc suggested — verified against the live 
 Note: `entries` also has its own `funding_source` column with an identical CHECK constraint,
 but it is never read or written by the app — `evidence_entries.funding_source` is the one
 actually used.
+
+Note: `entries` also has its own `grp_send`/`grp_pp`/.../`grp_other` boolean columns
+(the original 7 groups only — never extended to the 3 added Session 46). These are
+fetched by the app in a couple of places but never read back or written to from any
+current code path — confirmed dead/legacy. All live group-tag logic reads
+`evidence_entries.grp_*` instead. Do not extend `entries.grp_*` without first confirming
+whether anything has started relying on it.
+
+---
+
+## school_context
+
+One row per school (`UNIQUE` on `school_id`), holds pupil cohort sizes used as the
+denominator for % reach in Group Reach analytics. Not previously documented here —
+verified against the live schema 2026-07-15.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| school_id | uuid | FK → schools.id, unique |
+| total_pupils | integer | NOT NULL, default `0` |
+| pp_count / send_count / fsm_count / eal_count / lac_count / wwc_count | integer | NOT NULL, default `0` each |
+| social_care_count / young_carer_count / mental_health_support_count | integer | NOT NULL, default `0` each. Added Session 46, alongside the matching `evidence_entries` grp_*/reach_* columns above |
+| updated_at | timestamptz | |
+
+No `other_count` — "Other" has no cohort denominator in Group Reach (raw reach count only, same as before Session 46).
 
 ---
 
@@ -121,6 +147,7 @@ actually used.
 | step7_job_title.sql | Adds `job_title` text column to profiles |
 | step8_school_phase.sql | Adds `phase` text column to schools (CHECK: primary / secondary / all_through / special) |
 | step9_expert_engagement_evidence.sql | Adds `evidence_type` + `structured_detail` (jsonb) to evidence_entries; adds `experts_at_hand` to the funding_source CHECK constraint |
+| supabase/migrations/20260715094811_add_social_care_young_carer_mh_support.sql | Adds `grp_social_care`/`grp_young_carer`/`grp_mental_health_support` (boolean, default false) and `reach_social_care`/`reach_young_carer`/`reach_mental_health_support` (integer, nullable) to `evidence_entries`; adds `social_care_count`/`young_carer_count`/`mental_health_support_count` (integer, default 0) to `school_context` |
 
 ---
 
@@ -133,7 +160,7 @@ actually used.
 | domain_id | uuid | FK → domains.id — NOT a text field, always a UUID |
 | sub_domain_id | uuid | FK → sub_domains.id — nullable |
 | description | text | |
-| student_groups | jsonb | Array format: `'["SEND","PP"]'::jsonb` — NOT a text array |
+| student_groups | jsonb | **Object format**, keyed by short lowercase group keys with no `grp_` prefix: `'{"send": true, "pp": false, ...}'::jsonb` — despite this doc previously (incorrectly) describing it as a string array. Confirmed canonical Session 46 by reading the actual read/write code (`App.jsx`, `MATDashboard.jsx`) and cross-checked against `generateReport.js`'s dual-shape defensive handling, which suggests some historical rows may not conform — but object-keyed is what all current code writes and expects. Keys in use: `send` / `pp` / `eal` / `fsm` / `lac` / `wwc` / `social_care` / `young_carer` / `mental_health_support` / `other`. This doc correction is documentation-only — no data migration was performed on existing rows. |
 | scale | text | CHECK: `individual` / `group` / `whole_school` |
 | source | text | CHECK: `data_analysis` / `staff_observation` / `pupil_voice` / `family_feedback` / `external_review` |
 | status | text | CHECK: `active` / `being_addressed` / `resolved` |

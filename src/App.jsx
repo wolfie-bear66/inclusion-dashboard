@@ -123,6 +123,9 @@ const REACH_GROUPS = [
   { field: 'reach_fsm',   label: 'FSM' },
   { field: 'reach_lac',   label: 'LAC' },
   { field: 'reach_wwc',   label: 'WWC' },
+  { field: 'reach_social_care',            label: 'Social Care' },
+  { field: 'reach_young_carer',            label: 'Young Carer' },
+  { field: 'reach_mental_health_support',  label: 'Mental Health Support' },
   { field: 'reach_other', label: 'Other' },
 ]
 const EV_GROUPS = [
@@ -132,6 +135,9 @@ const EV_GROUPS = [
   { value: 'grp_fsm',  label: 'FSM' },
   { value: 'grp_lac',  label: 'LAC' },
   { value: 'grp_wwc',  label: 'White Working Class' },
+  { value: 'grp_social_care',           label: 'Social Care' },
+  { value: 'grp_young_carer',           label: 'Young Carer' },
+  { value: 'grp_mental_health_support', label: 'Mental Health Support' },
   { value: 'grp_other', label: 'Other' },
 ]
 
@@ -173,7 +179,7 @@ const EXPERT_PROFESSIONAL_REPORT_LABEL = {
 const ENTRY_SELECT = [
   'id', 'provision_point_id', 'status', 'submitted_for_approval_at', 'send_back_note',
   'grp_send', 'grp_pp', 'grp_eal', 'grp_fsm', 'grp_lac', 'grp_wwc', 'grp_other',
-  'evidence_entries(id, provision_name, brief_description, indicator_type, provision_category, named_role_policy_document, delivered_by, send_tiers, pupils_reached, reach_total, reach_send, reach_pp, reach_eal, reach_fsm, reach_lac, reach_wwc, reach_other, grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other, date_started, date_last_reviewed, next_review_due, funding_source, cost, review_cycle, evidence_notes, intended_outcomes, impact_on_outcomes, supporting_document_link, notes, evidence_type, structured_detail)',
+  'evidence_entries(id, provision_name, brief_description, indicator_type, provision_category, named_role_policy_document, delivered_by, send_tiers, pupils_reached, reach_total, reach_send, reach_pp, reach_eal, reach_fsm, reach_lac, reach_wwc, reach_social_care, reach_young_carer, reach_mental_health_support, reach_other, grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_social_care, grp_young_carer, grp_mental_health_support, grp_other, date_started, date_last_reviewed, next_review_due, funding_source, cost, review_cycle, evidence_notes, intended_outcomes, impact_on_outcomes, supporting_document_link, notes, evidence_type, structured_detail)',
 ].join(', ')
 
 // ── Analytics sub-components ─────────────────────────────────────
@@ -226,6 +232,9 @@ const A_GROUPS = [
   { key: 'grp_eal',  label: 'EAL' },
   { key: 'grp_lac',  label: 'LAC' },
   { key: 'grp_wwc',  label: 'White Working Class' },
+  { key: 'grp_social_care',           label: 'Social Care' },
+  { key: 'grp_young_carer',           label: 'Young Carer' },
+  { key: 'grp_mental_health_support', label: 'Mental Health Support' },
 ]
 
 const FUNDING_LABELS_MAP = {
@@ -577,7 +586,7 @@ const REPORT_DOMAIN_OPTIONS = [
   { id: '11111111-0000-0000-0000-000000000005', label: 'Belonging' },
   { id: '11111111-0000-0000-0000-000000000006', label: 'Wellbeing' },
 ]
-const REPORT_GROUP_OPTIONS = ['Pupil Premium', 'SEND', 'FSM', 'EAL', 'LAC', 'White Working Class']
+const REPORT_GROUP_OPTIONS = ['Pupil Premium', 'SEND', 'FSM', 'EAL', 'LAC', 'White Working Class', 'Social Care', 'Young Carer', 'Mental Health Support']
 const REPORT_PURPOSE_OPTIONS = [
   {
     id: 'full_strategy',
@@ -660,7 +669,8 @@ function ReportBuilder({ schoolName = '', supabase: sb, school, schoolCtx = {}, 
             ),
             evidence_entries(
               id, entry_id, intended_outcomes, impact_on_outcomes, next_review_due,
-              funding_source, cost, grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc
+              funding_source, cost, grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc,
+              grp_social_care, grp_young_carer, grp_mental_health_support
             )
           `)
           .eq('school_id', school),
@@ -900,6 +910,9 @@ const BARRIER_GROUPS = [
   { key: 'fsm',  label: 'FSM' },
   { key: 'lac',  label: 'LAC' },
   { key: 'wwc',  label: 'White Working Class' },
+  { key: 'social_care',            label: 'Social Care' },
+  { key: 'young_carer',            label: 'Young Carer' },
+  { key: 'mental_health_support',  label: 'Mental Health Support' },
   { key: 'other',label: 'Other' },
 ]
 const BARRIER_SCALES = [
@@ -2042,9 +2055,86 @@ function FundingCost({ analyticsEntries }) {
   )
 }
 
+// Domain × group evidenced-outcomes matrix — default view of the Outcomes & Impact tab.
+// Cell = count of allEvidence rows in that domain, tagged grp_<group> = true, with a
+// non-empty impact_on_outcomes (tagged alone doesn't count — must be evidenced).
+// New component rather than resurrecting the dead GroupReach (App.jsx, below) — GroupReach's
+// purpose was cohort % reach, this is evidenced-impact count; different data, same table
+// + overflowX:auto structural pattern.
+function outcomesMatrixCellStyle(count) {
+  if (count === 0) return { background: '#FEF2F2', color: '#B91C1C' }
+  if (count === 1) return { background: '#C7D9EE', color: '#1A202C' }
+  if (count === 2) return { background: '#8FB8D8', color: '#1A202C' }
+  if (count <= 4) return { background: '#4A7FA8', color: '#FFFFFF' }
+  return { background: '#1B365D', color: '#FFFFFF' }
+}
+
+function OutcomesMatrix({ matrix, leastRepresented, onCellClick, onViewFullList }) {
+  return (
+    <ACard>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 4 }}>
+        <ASectionTitle sub="Evidenced outcomes by domain and student group — click a cell to see the entries behind it">
+          Outcomes & Impact
+        </ASectionTitle>
+        <button
+          type="button"
+          onClick={onViewFullList}
+          style={{ fontSize: '0.78rem', color: '#1B365D', background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', padding: '4px 0', fontFamily: 'inherit' }}
+        >
+          View full list →
+        </button>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '4px 4px', fontSize: '0.78rem' }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: 'left', padding: '4px 8px', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>Domain</th>
+              {matrix[0]?.cells?.map(c => (
+                <th key={c.groupKey} style={{ padding: '4px 6px', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                  {c.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {matrix.map(row => (
+              <tr key={row.domainId}>
+                <td style={{ padding: '4px 8px', fontWeight: 500, color: '#1A202C', whiteSpace: 'nowrap' }}>{row.domain}</td>
+                {row.cells.map(c => (
+                  <td
+                    key={c.groupKey}
+                    onClick={() => onCellClick(row.domainId, row.domain, c.field, c.groupKey, c.label)}
+                    style={{
+                      padding: '6px 4px', textAlign: 'center', cursor: 'pointer',
+                      borderRadius: 4, fontWeight: 600, minWidth: 32,
+                      ...outcomesMatrixCellStyle(c.count),
+                    }}
+                  >
+                    {c.count}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {leastRepresented.length > 0 && (
+        <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: 14 }}>
+          <strong style={{ color: '#1A202C' }}>Least represented in evidenced outcomes:</strong>{' '}
+          {leastRepresented.map(g => `${g.label} (${g.total} ${g.total === 1 ? 'entry' : 'entries'})`).join(', ')}
+        </p>
+      )}
+    </ACard>
+  )
+}
+
 function OutcomesImpact({ allEvidence, domains, analyticsEntries }) {
   const [filterMode, setFilterMode] = useState('all')
   const [activeFilters, setActiveFilters] = useState([])
+  const [view, setView] = useState('matrix') // 'matrix' | 'list'
+  const [cellFilter, setCellFilter] = useState(null) // { domainId, domainName, field, groupKey, groupLabel }
 
   const allItems = allEvidence
     .filter(ev => ev.intended_outcomes || ev.impact_on_outcomes || ev.evidence_notes || ev.evidence_type === 'expert_engagement')
@@ -2055,9 +2145,13 @@ function OutcomesImpact({ allEvidence, domains, analyticsEntries }) {
         name:      ev.provision_name || ev.entryLabel,
         point:     ev.entryLabel,
         domain:    ev.domainName,
+        domainId:  ev.domainId,
         subDomain: ev.subDomainName,
         colour:    dIdx >= 0 ? aDomainColour(ev.domainName, dIdx) : '#94a3b8',
         groups:    A_GROUPS.filter(g => ev[g.key]).map(g => g.label),
+        // Independent of A_GROUPS (which omits "Other") — used only for matrix drill-down
+        // matching, so all 10 REACH_GROUPS columns (including Other) work correctly.
+        groupKeys: REACH_GROUPS.map(g => g.field.replace('reach_', 'grp_')).filter(k => ev[k]),
         intended:  ev.intended_outcomes,
         impact:    ev.impact_on_outcomes,
         docLink:   ev.supporting_document_link || null,
@@ -2080,19 +2174,63 @@ function OutcomesImpact({ allEvidence, domains, analyticsEntries }) {
   const showUnassigned = activeFilters.includes('Unassigned')
   const nonUnassignedFilters = activeFilters.filter(f => f !== 'Unassigned')
 
-  const filteredItems = filterMode === 'all' || nonUnassignedFilters.length === 0
-    ? allItems
-    : filterMode === 'domain'
-      ? allItems.filter(i => nonUnassignedFilters.includes(i.domain))
-      : filterMode === 'group'
-        ? allItems.filter(i => i.groups.some(g => nonUnassignedFilters.includes(g)))
-        : allItems.filter(i => nonUnassignedFilters.includes(i.subDomain))
+  const filteredItems = cellFilter
+    ? allItems.filter(i => i.domain === cellFilter.domainName && i.groupKeys.includes(cellFilter.groupKey))
+    : filterMode === 'all' || nonUnassignedFilters.length === 0
+      ? allItems
+      : filterMode === 'domain'
+        ? allItems.filter(i => nonUnassignedFilters.includes(i.domain))
+        : filterMode === 'group'
+          ? allItems.filter(i => i.groups.some(g => nonUnassignedFilters.includes(g)))
+          : allItems.filter(i => nonUnassignedFilters.includes(i.subDomain))
 
   const pillOptions = filterMode === 'domain' ? domainOptions : filterMode === 'group' ? groupOptions : subDomainOptions
 
   function setMode(mode) { setFilterMode(mode); setActiveFilters([]) }
   function toggleFilter(val) {
     setActiveFilters(prev => prev.includes(val) ? prev.filter(x => x !== val) : [...prev, val])
+  }
+
+  // ── Domain × group evidenced-outcomes matrix (default view) ──
+  const outcomesMatrix = domains.map(d => ({
+    domainId: d.id,
+    domain: d.name,
+    cells: REACH_GROUPS.map(g => {
+      const grpKey = g.field.replace('reach_', 'grp_')
+      const count = allEvidence.filter(ev =>
+        ev.domainId === d.id && ev[grpKey] && ev.impact_on_outcomes?.trim()
+      ).length
+      return { field: g.field, groupKey: grpKey, label: g.label, count }
+    }),
+  }))
+
+  const leastRepresented = REACH_GROUPS
+    .filter(g => g.field !== 'reach_other')
+    .map(g => {
+      const grpKey = g.field.replace('reach_', 'grp_')
+      return {
+        label: g.label,
+        groupKey: grpKey,
+        total: outcomesMatrix.reduce((s, row) => s + (row.cells.find(c => c.groupKey === grpKey)?.count ?? 0), 0),
+      }
+    })
+    .sort((a, b) => a.total - b.total)
+    .slice(0, 2)
+
+  function openCell(domainId, domainName, field, groupKey, groupLabel) {
+    setCellFilter({ domainId, domainName, field, groupKey, groupLabel })
+    setActiveFilters([])
+    setView('list')
+  }
+  function backToMatrix() {
+    setCellFilter(null)
+    setView('matrix')
+  }
+  function viewFullList() {
+    setCellFilter(null)
+    setFilterMode('all')
+    setActiveFilters([])
+    setView('list')
   }
 
   const modePills = [
@@ -2122,8 +2260,32 @@ function OutcomesImpact({ allEvidence, domains, analyticsEntries }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {/* Filter controls */}
+      {view === 'matrix' && (
+        <OutcomesMatrix
+          matrix={outcomesMatrix}
+          leastRepresented={leastRepresented}
+          onCellClick={openCell}
+          onViewFullList={viewFullList}
+        />
+      )}
+
+      {view === 'list' && (
+      <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <button type="button" onClick={backToMatrix}
+          style={{ fontSize: '0.78rem', color: '#1B365D', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: '4px 0' }}>
+          ← Back to matrix
+        </button>
+        {cellFilter && (
+          <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+            Filtered: <strong style={{ color: '#1A202C' }}>{cellFilter.domainName}</strong> × <strong style={{ color: '#1A202C' }}>{cellFilter.groupLabel}</strong>
+          </span>
+        )}
+      </div>
+
+      {!cellFilter && (
       <div>
+        {/* Filter controls */}
         {/* Mode toggle pills */}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
           {modePills.map(m => (
@@ -2172,6 +2334,14 @@ function OutcomesImpact({ allEvidence, domains, analyticsEntries }) {
           </div>
         )}
       </div>
+      )}
+
+      {cellFilter && (
+        <div style={{ background: 'rgba(27,54,93,0.06)', borderRadius: 8, padding: '10px 16px', display: 'inline-flex', alignItems: 'baseline', gap: 8 }}>
+          <span style={{ fontSize: '1.2rem', fontWeight: 700, color: '#1B365D', lineHeight: 1 }}>{filteredItems.length}</span>
+          <span style={{ fontSize: '0.78rem', color: '#64748b' }}>outcome{filteredItems.length !== 1 ? 's' : ''}</span>
+        </div>
+      )}
 
       {(!showUnassigned || nonUnassignedFilters.length > 0) && filteredItems.map((item, i) => (
         <ACard key={i}>
@@ -2269,6 +2439,8 @@ function OutcomesImpact({ allEvidence, domains, analyticsEntries }) {
           <p style={{ fontSize: '0.85rem', color: '#257A3B' }}>All provision points have at least one evidence entry.</p>
         </ACard>
       )}
+      </>
+      )}
     </div>
   )
 }
@@ -2281,6 +2453,9 @@ function GroupReach({ reachMatrix, schoolCtx }) {
     { field: 'reach_fsm',   cohort: schoolCtx.fsmCount },
     { field: 'reach_lac',   cohort: schoolCtx.lacCount },
     { field: 'reach_wwc',   cohort: schoolCtx.wwcCount },
+    { field: 'reach_social_care',           cohort: schoolCtx.socialCareCount },
+    { field: 'reach_young_carer',           cohort: schoolCtx.youngCarerCount },
+    { field: 'reach_mental_health_support', cohort: schoolCtx.mentalHealthSupportCount },
     { field: 'reach_other', cohort: null },
   ]
   const hasAnyData = reachMatrix.some(r => r.totalReach > 0)
@@ -2537,6 +2712,9 @@ function SchoolContextPanel({ schoolCtx, onSave, ctxLoading, readOnly = false })
               { label: 'EAL',          value: schoolCtx.ealCount },
               { label: 'LAC',          value: schoolCtx.lacCount },
               { label: 'WW Class',     value: schoolCtx.wwcCount },
+              { label: 'Social Care',            value: schoolCtx.socialCareCount },
+              { label: 'Young Carer',            value: schoolCtx.youngCarerCount },
+              { label: 'Mental Health Support',  value: schoolCtx.mentalHealthSupportCount },
             ].map((f, i) => (
               <div key={i} style={{ textAlign: 'center' }}>
                 <p style={{ fontSize: '1rem', fontWeight: 700, color: '#1A202C' }}>{ctxLoading ? '…' : (f.value || '—')}</p>
@@ -2574,6 +2752,9 @@ function SchoolContextPanel({ schoolCtx, onSave, ctxLoading, readOnly = false })
             { key: 'ealCount',   label: 'EAL' },
             { key: 'lacCount',   label: 'LAC' },
             { key: 'wwcCount',   label: 'WW Class' },
+            { key: 'socialCareCount',           label: 'Social Care' },
+            { key: 'youngCarerCount',           label: 'Young Carer' },
+            { key: 'mentalHealthSupportCount',  label: 'Mental Health Support' },
           ].map(f => (
             <div key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b' }}>{f.label}</label>
@@ -2705,8 +2886,10 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
           provision_points(*, sub_domains(*, domains(id, name))),
           evidence_entries(id, provision_name, indicator_type, provision_category, funding_source, cost, next_review_due,
             evidence_notes, intended_outcomes, impact_on_outcomes, supporting_document_link,
-            reach_total, reach_send, reach_pp, reach_eal, reach_fsm, reach_lac, reach_wwc, reach_other,
-            grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other, evidence_type, structured_detail)
+            reach_total, reach_send, reach_pp, reach_eal, reach_fsm, reach_lac, reach_wwc,
+            reach_social_care, reach_young_carer, reach_mental_health_support, reach_other,
+            grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc,
+            grp_social_care, grp_young_carer, grp_mental_health_support, grp_other, evidence_type, structured_detail)
         `)
         .eq('school_id', school),
       sb.from('domains').select('id, name, display_order').order('display_order'),
@@ -3095,7 +3278,7 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState(null)
 
   // School context — lifted from AnalyticsView so home screen and analytics share it
-  const [schoolCtx, setSchoolCtx] = useState({ totalPupils: 0, ppCount: 0, sendCount: 0, fsmCount: 0, ealCount: 0, lacCount: 0, wwcCount: 0 })
+  const [schoolCtx, setSchoolCtx] = useState({ totalPupils: 0, ppCount: 0, sendCount: 0, fsmCount: 0, ealCount: 0, lacCount: 0, wwcCount: 0, socialCareCount: 0, youngCarerCount: 0, mentalHealthSupportCount: 0 })
   const [ctxLoading, setCtxLoading] = useState(true)
 
   // Home screen extras
@@ -3337,7 +3520,7 @@ export default function App() {
     setCtxLoading(true)
     supabase
       .from('school_context')
-      .select('total_pupils, pp_count, send_count, fsm_count, eal_count, lac_count, wwc_count')
+      .select('total_pupils, pp_count, send_count, fsm_count, eal_count, lac_count, wwc_count, social_care_count, young_carer_count, mental_health_support_count')
       .eq('school_id', selectedSchool)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -3351,6 +3534,9 @@ export default function App() {
             ealCount:    data.eal_count,
             lacCount:    data.lac_count,
             wwcCount:    data.wwc_count,
+            socialCareCount:           data.social_care_count,
+            youngCarerCount:           data.young_carer_count,
+            mentalHealthSupportCount:  data.mental_health_support_count,
           })
         }
         setCtxLoading(false)
@@ -3670,6 +3856,9 @@ export default function App() {
       eal_count:    updated.ealCount,
       lac_count:    updated.lacCount,
       wwc_count:    updated.wwcCount,
+      social_care_count:           updated.socialCareCount,
+      young_carer_count:           updated.youngCarerCount,
+      mental_health_support_count: updated.mentalHealthSupportCount,
       updated_at:   new Date().toISOString(),
     }, { onConflict: 'school_id' })
     if (error) { console.error('Error saving school context:', error); return }
@@ -4934,7 +5123,7 @@ export default function App() {
                   const showReach        = isStudentFacing || isWholeSchool
                   const showCost         = isStudentFacing || isWholeSchool || isLegacy
                   const showOutcomes     = isStudentFacing || isWholeSchool || isLegacy
-                  const showDates        = isStudentFacing || isWholeSchool || isLegacy
+                  const showDates        = isStudentFacing || isWholeSchool || isLegacy || isPolicyStruct
 
                   const reachInputStyle = { padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: '0.85rem', width: '100%' }
 

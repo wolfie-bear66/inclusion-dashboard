@@ -45,6 +45,9 @@ const GROUP_TO_BOOL = {
   'EAL':                'grp_eal',
   'LAC':                'grp_lac',
   'White Working Class':'grp_wwc',
+  'Social Care':             'grp_social_care',
+  'Young Carer':             'grp_young_carer',
+  'Mental Health Support':   'grp_mental_health_support',
 }
 const ALL_GROUP_KEYS = [
   { key: 'grp_pp',   label: 'Pupil Premium' },
@@ -53,6 +56,9 @@ const ALL_GROUP_KEYS = [
   { key: 'grp_eal',  label: 'EAL' },
   { key: 'grp_lac',  label: 'LAC' },
   { key: 'grp_wwc',  label: 'White Working Class' },
+  { key: 'grp_social_care',           label: 'Social Care' },
+  { key: 'grp_young_carer',           label: 'Young Carer' },
+  { key: 'grp_mental_health_support', label: 'Mental Health Support' },
 ]
 
 const DFE_PRINCIPLES = [
@@ -236,6 +242,9 @@ function drawSchoolContext(doc, y, { schoolCtx, readinessData, selectedDomains }
     { label: 'EAL',                 value: schoolCtx.ealCount    || '—' },
     { label: 'LAC',                 value: schoolCtx.lacCount    || '—' },
     { label: 'White Working Class', value: schoolCtx.wwcCount    || '—' },
+    { label: 'Social Care',            value: schoolCtx.socialCareCount          || '—' },
+    { label: 'Young Carer',            value: schoolCtx.youngCarerCount          || '—' },
+    { label: 'Mental Health Support',  value: schoolCtx.mentalHealthSupportCount || '—' },
   ]
 
   const COLS = 4, GAP = 3
@@ -753,8 +762,8 @@ function drawEnrichmentEquityCompact(doc, y, entries) {
     if (!bySD[sd]) bySD[sd] = []
     bySD[sd].push(e)
   }
-  const groups = ['Pupil Premium', 'SEND', 'FSM', 'EAL', 'LAC', 'White Working Class']
-  const keys   = ['grp_pp', 'grp_send', 'grp_fsm', 'grp_eal', 'grp_lac', 'grp_wwc']
+  const groups = ['Pupil Premium', 'SEND', 'FSM', 'EAL', 'LAC', 'White Working Class', 'Social Care', 'Young Carer', 'Mental Health Support']
+  const keys   = ['grp_pp', 'grp_send', 'grp_fsm', 'grp_eal', 'grp_lac', 'grp_wwc', 'grp_social_care', 'grp_young_carer', 'grp_mental_health_support']
 
   const body = Object.entries(bySD).map(([sdName, es]) => {
     const row = [sdName]
@@ -783,12 +792,7 @@ function drawEnrichmentEquityCompact(doc, y, entries) {
     alternateRowStyles:{ fillColor: [250, 251, 252] },
     columnStyles: {
       0: { cellWidth: 40 },
-      1: { cellWidth: 20, halign: 'center' },
-      2: { cellWidth: 20, halign: 'center' },
-      3: { cellWidth: 20, halign: 'center' },
-      4: { cellWidth: 20, halign: 'center' },
-      5: { cellWidth: 20, halign: 'center' },
-      6: { cellWidth: 20, halign: 'center' },
+      ...Object.fromEntries(groups.map((_, i) => [i + 1, { cellWidth: 15, halign: 'center' }])),
     },
     didParseCell(data) {
       if (data.section !== 'body' || data.column.index === 0) return

@@ -40,6 +40,9 @@ const BARRIER_GROUP_LABELS = {
   fsm:   'FSM',
   lac:   'LAC',
   wwc:   'White Working Class',
+  social_care:            'Social Care',
+  young_carer:            'Young Carer',
+  mental_health_support:  'Mental Health Support',
   other: 'Other',
 }
 
