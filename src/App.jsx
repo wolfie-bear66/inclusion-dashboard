@@ -12,6 +12,7 @@ import AssignmentModal from './components/AssignmentModal'
 import SetPasswordPage from './pages/SetPasswordPage'
 import AdminView from './pages/AdminView'
 import { useIsReadOnlyView } from './hooks/useIsReadOnlyView'
+import { usePrincipleCoverage } from './hooks/usePrincipleCoverage'
 import ReadOnlyBanner from './components/ReadOnlyBanner'
 import './App.css'
 import { generateEvidenceReport, generateReport, generateInclusionStrategy } from './generateReport'
@@ -265,6 +266,17 @@ const PRINCIPLES = [
 
 const RAG_COLOURS = { in_place: '#257A3B', in_progress: '#D4751A', not_in_place: '#EA4335' }
 
+// Compact principle labels — used by the Principle Coverage chart axis and the home page principle cards.
+const PRINCIPLE_LABEL_SHORT = {
+  'Leadership & Governance':          'Leadership',
+  'Early & Evidence-Based Support':   'Early Support',
+  'High Quality Adaptive Teaching':   'Adaptive Teaching',
+  'Enriching Provision':              'Enriching Provision',
+  'Safe & Respectful Culture':        'Safe Culture',
+  'Family & Wider Partnerships':      'Family Partnerships',
+  'Accessible & Inclusive Environments': 'Accessible Envs',
+}
+
 // ── Sidebar domain colours (spec-provided) ────────────────────────────
 const SIDEBAR_DOMAIN_COLOURS = {
   SEND:       '#4338CA',
@@ -385,11 +397,12 @@ function Sidebar({
         {navBtn({ id: 'home', icon: 'ti-home', label: 'Home', active: isHome,
           onClick: () => { setSelectedDomain(''); setAnalyticsTabRequest(null); setOverviewMode('domain'); setSelectedCategory(null); onClose() } })}
 
-        {/* Domains */}
+        {/* Domains — clicking the label navigates straight to the domain overview page and opens the submenu */}
         {expanderBtn({
           id: 'domains-expander', icon: 'ti-layout-grid', label: 'Domains',
-          open: activeSidebarSection === 'domains', onToggle: () => setActiveSidebarSection(prev => prev === 'domains' ? null : 'domains'),
-          active: !!(selectedDomain && selectedDomain !== 'analytics' && selectedDomain !== '__report__' && activeSidebarSection !== 'domains'),
+          open: activeSidebarSection === 'domains',
+          onToggle: () => { setSelectedDomain('__domains__'); setAnalyticsTabRequest(null); setActiveSidebarSection('domains'); onClose() },
+          active: selectedDomain === '__domains__',
         })}
         {activeSidebarSection === 'domains' && domains.map(d => {
           const colour = sidebarDomainColour(d.name)
@@ -2773,18 +2786,8 @@ function SchoolContextPanel({ schoolCtx, onSave, ctxLoading, readOnly = false })
 }
 
 function PrincipleCoverage({ principleData }) {
-  const LABEL_SHORT = {
-    'Leadership & Governance':          'Leadership',
-    'Early & Evidence-Based Support':   'Early Support',
-    'High Quality Adaptive Teaching':   'Adaptive Teaching',
-    'Enriching Provision':              'Enriching Provision',
-    'Safe & Respectful Culture':        'Safe Culture',
-    'Family & Wider Partnerships':      'Family Partnerships',
-    'Accessible & Inclusive Environments': 'Accessible Envs',
-  }
-
   const chartData = principleData.map(p => ({
-    name: LABEL_SHORT[p.principle] ?? p.principle,
+    name: PRINCIPLE_LABEL_SHORT[p.principle] ?? p.principle,
     fullName: p.principle,
     in_place: p.inPlace,
     in_progress: p.inProgress,
@@ -2866,43 +2869,12 @@ function PrincipleCoverage({ principleData }) {
 }
 
 function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = null, schoolCtx, onSave, ctxLoading, onNavigateToCategory, readOnly = false }) {
-  const [analyticsEntries, setAnalyticsEntries] = useState([])
-  const [domains, setDomains] = useState([])
-  const [allActivePPs, setAllActivePPs] = useState([])
-  const [aLoading, setALoading] = useState(true)
+  const { analyticsEntries, domains, principleData, loading: aLoading } = usePrincipleCoverage(sb, school)
   const [activeTab, setActiveTab] = useState('readiness')
 
   useEffect(() => {
     if (tabRequest) setActiveTab(tabRequest)
   }, [tabRequest])
-
-  useEffect(() => {
-    setALoading(true)
-    Promise.all([
-      sb.from('entries')
-        .select(`
-          id, provision_point_id, status,
-          grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc, grp_other,
-          provision_points(*, sub_domains(*, domains(id, name))),
-          evidence_entries(id, provision_name, indicator_type, provision_category, funding_source, cost, next_review_due,
-            evidence_notes, intended_outcomes, impact_on_outcomes, supporting_document_link,
-            reach_total, reach_send, reach_pp, reach_eal, reach_fsm, reach_lac, reach_wwc,
-            reach_social_care, reach_young_carer, reach_mental_health_support, reach_other,
-            grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc,
-            grp_social_care, grp_young_carer, grp_mental_health_support, grp_other, evidence_type, structured_detail)
-        `)
-        .eq('school_id', school),
-      sb.from('domains').select('id, name, display_order').order('display_order'),
-      sb.from('provision_points').select('id, principle, display_order').eq('active', true),
-    ]).then(([entriesRes, domainsRes, ppsRes]) => {
-      if (entriesRes.error) console.error('Analytics entries error:', entriesRes.error)
-      if (domainsRes.error) console.error('Analytics domains error:', domainsRes.error)
-      setAnalyticsEntries(entriesRes.data ?? [])
-      setDomains(domainsRes.data ?? [])
-      setAllActivePPs(ppsRes.data ?? [])
-      setALoading(false)
-    })
-  }, [school])
 
   // Domain readiness
   const readinessData = domains.map((d, idx) => {
@@ -2916,16 +2888,6 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
       notInPlace: de.filter(e => e.status === 'not_in_place').length,
       total: de.length,
     }
-  })
-
-  // Principle Coverage — join active PPs with entry statuses
-  const entryStatusMap = Object.fromEntries(analyticsEntries.map(e => [e.provision_point_id, e.status]))
-  const principleData = PRINCIPLES.map(principle => {
-    const pps = allActivePPs.filter(pp => pp.principle === principle)
-    const inPlace    = pps.filter(pp => entryStatusMap[pp.id] === 'in_place').length
-    const inProgress = pps.filter(pp => entryStatusMap[pp.id] === 'in_progress').length
-    const notInPlace = pps.filter(pp => !entryStatusMap[pp.id] || entryStatusMap[pp.id] === 'not_in_place').length
-    return { principle, total: pps.length, inPlace, inProgress, notInPlace }
   })
 
   // Flatten all evidence entries with domain context
@@ -4057,6 +4019,9 @@ export default function App() {
   const viewedSchoolName = browsingSchoolName || schoolName
   const isDemoMode = sessionStorage.getItem('isDemoMode') === 'true'
 
+  // Home page principle cards — always whole-school, same as the readiness card above it.
+  const { principleData: homePrincipleData } = usePrincipleCoverage(supabase, selectedSchool)
+
   const allPoints = subDomains.flatMap(sd => sd.provision_points)
   const answeredCount = allPoints.filter(p => entries[p.id]?.status).length
   const progress = allPoints.length ? Math.round((answeredCount / allPoints.length) * 100) : 0
@@ -4575,25 +4540,18 @@ export default function App() {
             )
           }
 
-          // Domain cards with RAG triage — scoped to assigned points in personal view
-          const domainCards = domains.map(d => {
-            let ppIds = Object.entries(ppDomainMap).filter(([, did]) => did === d.id).map(([id]) => id)
-            if (isPersonalView) ppIds = ppIds.filter(id => personalAssignedPpIds.has(id))
-            const total      = ppIds.length
-            const inPlace    = ppIds.filter(id => allStatuses[id] === 'in_place').length
-            const inProgress = ppIds.filter(id => allStatuses[id] === 'in_progress').length
-            const notInPlace = ppIds.filter(id => allStatuses[id] === 'not_in_place').length
-            const untouched  = ppIds.filter(id => !allStatuses[id]).length
+          // Principle cards — always whole-school (see homePrincipleData above), same RAG colouring as before.
+          // Fixed DfE order — homePrincipleData is already in PRINCIPLES order from the hook, so no sort here (intentional: never reorder by status).
+          const principleCards = homePrincipleData.map(p => {
+            const { total, inPlace, inProgress, notInPlace } = p
             let rag = 'untouched'
             if (total > 0) {
               if (notInPlace > 0) rag = 'red'
               else if (inPlace / total >= 0.7) rag = 'green'
               else if (inProgress > 0 || inPlace > 0) rag = 'amber'
             }
-            return { ...d, total, inPlace, inProgress, notInPlace, untouched, rag }
+            return { ...p, rag }
           })
-          const ragOrder    = { untouched: 0, red: 1, amber: 2, green: 3 }
-          const sortedDomains = [...domainCards].sort((a, b) => ragOrder[a.rag] - ragOrder[b.rag])
           const ragBg     = { untouched: '#F7F8FA', red: 'rgba(234,67,53,0.06)', amber: 'rgba(212,117,26,0.08)', green: 'rgba(37,122,59,0.06)' }
           const ragBorder = { untouched: '#E2E8F0', red: 'rgba(234,67,53,0.25)', amber: 'rgba(212,117,26,0.25)', green: 'rgba(37,122,59,0.25)' }
 
@@ -4613,8 +4571,8 @@ export default function App() {
               transition: 'background 0.25s',
             }}>
 
-              {/* Greeting row */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+              {/* Greeting row + compact readiness box */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
                 <div>
                   <h1 style={{ fontSize: '1.35rem', fontWeight: 600, color: '#1A202C', lineHeight: 1.25 }}>
                     {greeting}{firstName ? `, ${firstName}` : ''}.
@@ -4623,15 +4581,36 @@ export default function App() {
                     <p style={{ fontSize: '0.82rem', color: '#94a3b8', marginTop: 3 }}>{schoolName}</p>
                   )}
                 </div>
-                <button type="button" onClick={() => setSelectedDomain('report-builder')} style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0,
-                  padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e8f0',
-                  background: '#fff', color: '#475569',
-                  fontSize: '0.82rem', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+
+                {/* Overall readiness — always whole-school, compact */}
+                <div style={{
+                  flexShrink: 0, minWidth: 220, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12,
+                  padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 6,
                 }}>
-                  <i className="ti ti-file-export" style={{ fontSize: '0.9rem', color: '#94a3b8' }} />
-                  Generate report
-                </button>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+                    <span style={{ fontSize: '1.6rem', fontWeight: 700, color: '#1B365D', lineHeight: 1 }}>{readPct}%</span>
+                    <span style={{ fontSize: '0.72rem', color: '#94a3b8', paddingBottom: 2 }}>{totInPlace} of {totTotal} in place</span>
+                  </div>
+                  <div style={{ height: 5, borderRadius: 99, background: '#E2E8F0', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${readPct}%`, background: '#1B365D', borderRadius: 99, transition: 'width 0.4s' }} />
+                  </div>
+                  {untouchedCount > 0 && (
+                    <p style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                      {untouchedCount} not started yet
+                    </p>
+                  )}
+                  {(userRole === 'approver' || userRole === 'mat_admin') && approvalQueueCount > 0 && (
+                    <button type="button" onClick={() => setApprovalQueueOpen(true)} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
+                      padding: '4px 10px', borderRadius: 999, border: '1px solid #FBBF24',
+                      background: '#FEF3C7', color: '#92400E', fontSize: '0.72rem', fontWeight: 600,
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}>
+                      <i className="ti ti-clipboard-check" style={{ fontSize: '0.85rem' }} />
+                      {approvalQueueCount} awaiting approval
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* View toggle — pill for contributors, dropdown for approvers/mat_admins */}
@@ -4740,121 +4719,94 @@ export default function App() {
                 </div>
               ) : (
                 <>
-              {/* Readiness + Reviews band */}
-              <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
-
-                {/* Left: readiness — always whole-school */}
-                <div style={{
-                  flex: 1, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px',
-                  display: 'flex', flexDirection: 'column', justifyContent: 'center',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, marginBottom: 10 }}>
-                    <span style={{ fontSize: '2.8rem', fontWeight: 700, color: '#1B365D', lineHeight: 1 }}>{readPct}%</span>
-                    <div style={{ paddingBottom: 4 }}>
-                      <p style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1A202C' }}>Overall readiness</p>
-                      <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: 2 }}>{totInPlace} of {totTotal} indicators in place</p>
+              {/* Evaluate & Sustain — collapsed summary tile, expands in place */}
+              {reviewsDueCount > 0 && (
+                <div style={{ background: '#F0FDFA', border: '1px solid #99f6e4', borderRadius: 12, overflow: 'hidden' }}>
+                  <button type="button" onClick={() => setReviewsExpanded(v => !v)} style={{
+                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                    padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                  }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1A202C' }}>
+                      Evaluate &amp; Sustain —{' '}
+                      {[
+                        overdueItems.length > 0 ? `${overdueItems.length} overdue` : null,
+                        dueSoonItems.length > 0 ? `${dueSoonItems.length} due soon` : null,
+                      ].filter(Boolean).join(' · ')}
+                    </span>
+                    <i className={`ti ${reviewsExpanded ? 'ti-chevron-up' : 'ti-chevron-down'}`} style={{ fontSize: '0.85rem', color: '#0f766e', flexShrink: 0 }} />
+                  </button>
+                  {reviewsExpanded && (
+                    <div style={{ padding: '0 16px 16px' }}>
+                      <div style={{ overflowY: 'auto', maxHeight: 280, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {overdueItems.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <p style={{ fontSize: '0.7rem', fontWeight: 700, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                              Overdue ({overdueItems.length})
+                            </p>
+                            {overdueItems.map((r, i) => renderReviewItem(r, `overdue-${i}`))}
+                          </div>
+                        )}
+                        {dueSoonItems.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <p style={{ fontSize: '0.7rem', fontWeight: 700, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                              Due soon ({dueSoonItems.length})
+                            </p>
+                            {dueSoonItems.map((r, i) => renderReviewItem(r, `due-soon-${i}`))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <div style={{ height: 8, borderRadius: 99, background: '#E2E8F0', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${readPct}%`, background: '#1B365D', borderRadius: 99, transition: 'width 0.4s' }} />
-                  </div>
-                  {untouchedCount > 0 && (
-                    <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: 10 }}>
-                      {untouchedCount} provision point{untouchedCount !== 1 ? 's' : ''} haven't been started yet.
-                    </p>
-                  )}
-                  {(userRole === 'approver' || userRole === 'mat_admin') && approvalQueueCount > 0 && (
-                    <button type="button" onClick={() => setApprovalQueueOpen(true)} style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
-                      marginTop: 10, padding: '5px 12px', borderRadius: 999, border: '1px solid #FBBF24',
-                      background: '#FEF3C7', color: '#92400E', fontSize: '0.78rem', fontWeight: 600,
-                      cursor: 'pointer', fontFamily: 'inherit',
-                    }}>
-                      <i className="ti ti-clipboard-check" style={{ fontSize: '0.9rem' }} />
-                      {approvalQueueCount} awaiting approval
-                    </button>
                   )}
                 </div>
+              )}
 
-                {/* Right: reviews due — filtered in personal view, hidden if none */}
-                {reviewsDueCount > 0 && (
-                  <div style={{
-                    width: 340, flexShrink: 0,
-                    background: '#F0FDFA', border: '1px solid #99f6e4', borderRadius: 12, padding: '16px 18px',
-                    display: 'flex', flexDirection: 'column', gap: 10,
-                  }}>
-                    <p style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1A202C' }}>
-                      Evaluate &amp; Sustain — due this term
-                    </p>
-                    <div style={{ overflowY: 'auto', maxHeight: 280, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      {overdueItems.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          <p style={{ fontSize: '0.7rem', fontWeight: 700, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                            Overdue ({overdueItems.length})
-                          </p>
-                          {overdueItems.map((r, i) => renderReviewItem(r, `overdue-${i}`))}
-                        </div>
-                      )}
-                      {dueSoonItems.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          <p style={{ fontSize: '0.7rem', fontWeight: 700, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                            Due soon ({dueSoonItems.length})
-                          </p>
-                          {dueSoonItems.map((r, i) => renderReviewItem(r, `due-soon-${i}`))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Domain cards — 3×2 grid, RAG-sorted */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-                {sortedDomains.map(d => {
-                  const colour = sidebarDomainColour(d.name)
-                  const pct    = d.total ? Math.round((d.inPlace / d.total) * 100) : 0
+              {/* Principle cards — 7 DfE Principles of Inclusion, fixed DfE order (never reordered by status), equal size regardless of point count */}
+              <div style={{
+                display: 'flex', flexWrap: isMobile ? 'nowrap' : 'wrap', flexDirection: isMobile ? 'column' : 'row',
+                justifyContent: 'center', gap: 12, maxWidth: isMobile ? '100%' : 980, margin: '0 auto',
+              }}>
+                {principleCards.map(p => {
+                  const pct = p.total ? Math.round((p.inPlace / p.total) * 100) : 0
                   return (
-                    <button key={d.id} type="button" onClick={() => setSelectedDomain(d.id)}
+                    <button key={p.principle} type="button"
+                      onClick={() => { setSelectedDomain('analytics'); setAnalyticsTabRequest('principle') }}
                       style={{
-                        background: ragBg[d.rag], border: `1px solid ${ragBorder[d.rag]}`, borderRadius: 12,
+                        background: ragBg[p.rag], border: `1px solid ${ragBorder[p.rag]}`, borderRadius: 12,
                         padding: '16px 18px', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
                         display: 'flex', flexDirection: 'column', gap: 10,
                         transition: 'box-shadow 0.15s',
+                        flex: isMobile ? '1 1 auto' : '0 0 236px', width: isMobile ? '100%' : 236,
                       }}
                       onMouseEnter={e => e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'}
                       onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                        <span style={{ width: 9, height: 9, borderRadius: '50%', background: colour, flexShrink: 0 }} />
-                        <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1A202C' }}>{d.name}</span>
+                        <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1A202C' }}>
+                          {PRINCIPLE_LABEL_SHORT[p.principle] ?? p.principle}
+                        </span>
                       </div>
                       <div>
                         <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 5 }}>
-                          {d.inPlace} of {d.total} complete
+                          {p.inPlace} of {p.total} complete
                         </p>
                         <div style={{ height: 5, borderRadius: 3, background: 'rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${pct}%`, background: colour, borderRadius: 3, transition: 'width 0.4s' }} />
+                          <div style={{ height: '100%', width: `${pct}%`, background: '#1B365D', borderRadius: 3, transition: 'width 0.4s' }} />
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        {d.inPlace > 0 && (
+                        {p.inPlace > 0 && (
                           <span style={{ fontSize: '0.7rem', color: '#257A3B', background: 'rgba(37,122,59,0.12)', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
-                            {d.inPlace} in place
+                            {p.inPlace} in place
                           </span>
                         )}
-                        {d.inProgress > 0 && (
+                        {p.inProgress > 0 && (
                           <span style={{ fontSize: '0.7rem', color: '#D4751A', background: 'rgba(212,117,26,0.15)', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
-                            {d.inProgress} in progress
+                            {p.inProgress} in progress
                           </span>
                         )}
-                        {d.notInPlace > 0 && (
+                        {p.notInPlace > 0 && (
                           <span style={{ fontSize: '0.7rem', color: '#EA4335', background: 'rgba(234,67,53,0.12)', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
-                            {d.notInPlace} not in place
-                          </span>
-                        )}
-                        {d.untouched > 0 && (
-                          <span style={{ fontSize: '0.7rem', color: '#64748B', background: '#E2E8F0', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
-                            {d.untouched} untouched
+                            {p.notInPlace} not in place
                           </span>
                         )}
                       </div>
@@ -4865,6 +4817,88 @@ export default function App() {
               </>
               )}
 
+            </div>
+          )
+        })()}
+
+        {view !== 'mat' && selectedSchool && selectedDomain === '__domains__' && (() => {
+          // Domain cards with RAG triage — scoped to assigned points in personal view.
+          // Verbatim extraction of the pre-Session-50 home page domain grid.
+          const isPersonalView = viewMode !== 'whole_school'
+          const domainCards = domains.map(d => {
+            let ppIds = Object.entries(ppDomainMap).filter(([, did]) => did === d.id).map(([id]) => id)
+            if (isPersonalView) ppIds = ppIds.filter(id => personalAssignedPpIds.has(id))
+            const total      = ppIds.length
+            const inPlace    = ppIds.filter(id => allStatuses[id] === 'in_place').length
+            const inProgress = ppIds.filter(id => allStatuses[id] === 'in_progress').length
+            const notInPlace = ppIds.filter(id => allStatuses[id] === 'not_in_place').length
+            const untouched  = ppIds.filter(id => !allStatuses[id]).length
+            let rag = 'untouched'
+            if (total > 0) {
+              if (notInPlace > 0) rag = 'red'
+              else if (inPlace / total >= 0.7) rag = 'green'
+              else if (inProgress > 0 || inPlace > 0) rag = 'amber'
+            }
+            return { ...d, total, inPlace, inProgress, notInPlace, untouched, rag }
+          })
+          const ragOrder    = { untouched: 0, red: 1, amber: 2, green: 3 }
+          const sortedDomains = [...domainCards].sort((a, b) => ragOrder[a.rag] - ragOrder[b.rag])
+          const ragBg     = { untouched: '#F7F8FA', red: 'rgba(234,67,53,0.06)', amber: 'rgba(212,117,26,0.08)', green: 'rgba(37,122,59,0.06)' }
+          const ragBorder = { untouched: '#E2E8F0', red: 'rgba(234,67,53,0.25)', amber: 'rgba(212,117,26,0.25)', green: 'rgba(37,122,59,0.25)' }
+
+          return (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+              {sortedDomains.map(d => {
+                const colour = sidebarDomainColour(d.name)
+                const pct    = d.total ? Math.round((d.inPlace / d.total) * 100) : 0
+                return (
+                  <button key={d.id} type="button" onClick={() => setSelectedDomain(d.id)}
+                    style={{
+                      background: ragBg[d.rag], border: `1px solid ${ragBorder[d.rag]}`, borderRadius: 12,
+                      padding: '16px 18px', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+                      display: 'flex', flexDirection: 'column', gap: 10,
+                      transition: 'box-shadow 0.15s',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'}
+                    onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                      <span style={{ width: 9, height: 9, borderRadius: '50%', background: colour, flexShrink: 0 }} />
+                      <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1A202C' }}>{d.name}</span>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 5 }}>
+                        {d.inPlace} of {d.total} complete
+                      </p>
+                      <div style={{ height: 5, borderRadius: 3, background: 'rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${pct}%`, background: colour, borderRadius: 3, transition: 'width 0.4s' }} />
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {d.inPlace > 0 && (
+                        <span style={{ fontSize: '0.7rem', color: '#257A3B', background: 'rgba(37,122,59,0.12)', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
+                          {d.inPlace} in place
+                        </span>
+                      )}
+                      {d.inProgress > 0 && (
+                        <span style={{ fontSize: '0.7rem', color: '#D4751A', background: 'rgba(212,117,26,0.15)', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
+                          {d.inProgress} in progress
+                        </span>
+                      )}
+                      {d.notInPlace > 0 && (
+                        <span style={{ fontSize: '0.7rem', color: '#EA4335', background: 'rgba(234,67,53,0.12)', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
+                          {d.notInPlace} not in place
+                        </span>
+                      )}
+                      {d.untouched > 0 && (
+                        <span style={{ fontSize: '0.7rem', color: '#64748B', background: '#E2E8F0', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
+                          {d.untouched} untouched
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           )
         })()}
@@ -4959,7 +4993,7 @@ export default function App() {
           />
         )}
 
-        {view !== 'mat' && selectedSchool && selectedDomain && selectedDomain !== 'analytics' && selectedDomain !== 'report-builder' && selectedDomain !== 'team' && selectedDomain !== 'barriers' && selectedDomain !== 'inclusion-strategy' && (
+        {view !== 'mat' && selectedSchool && selectedDomain && selectedDomain !== 'analytics' && selectedDomain !== 'report-builder' && selectedDomain !== 'team' && selectedDomain !== 'barriers' && selectedDomain !== 'inclusion-strategy' && selectedDomain !== '__domains__' && (
           loading ? (
             <p className="state-msg">Loading…</p>
           ) : subDomains.length === 0 ? (
