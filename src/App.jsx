@@ -4571,9 +4571,9 @@ export default function App() {
               transition: 'background 0.25s',
             }}>
 
-              {/* Greeting row + compact readiness box */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-                <div>
+              {/* Greeting row + fluid-width readiness box */}
+              <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+                <div style={{ flexShrink: 0 }}>
                   <h1 style={{ fontSize: '1.35rem', fontWeight: 600, color: '#1A202C', lineHeight: 1.25 }}>
                     {greeting}{firstName ? `, ${firstName}` : ''}.
                   </h1>
@@ -4582,28 +4582,31 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Overall readiness — always whole-school, compact */}
+                {/* Overall readiness — always whole-school, fills remaining row width */}
                 <div style={{
-                  flexShrink: 0, minWidth: 220, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12,
-                  padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 6,
+                  flex: '1 1 320px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12,
+                  padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap',
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-                    <span style={{ fontSize: '1.6rem', fontWeight: 700, color: '#1B365D', lineHeight: 1 }}>{readPct}%</span>
-                    <span style={{ fontSize: '0.72rem', color: '#94a3b8', paddingBottom: 2 }}>{totInPlace} of {totTotal} in place</span>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexShrink: 0 }}>
+                    <span style={{ fontSize: '2rem', fontWeight: 700, color: '#1B365D', lineHeight: 1 }}>{readPct}%</span>
+                    <span style={{ fontSize: '0.78rem', color: '#94a3b8', paddingBottom: 3 }}>overall readiness</span>
                   </div>
-                  <div style={{ height: 5, borderRadius: 99, background: '#E2E8F0', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${readPct}%`, background: '#1B365D', borderRadius: 99, transition: 'width 0.4s' }} />
+                  <div style={{ flex: '1 1 160px', minWidth: 160, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ height: 6, borderRadius: 99, background: '#E2E8F0', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${readPct}%`, background: '#1B365D', borderRadius: 99, transition: 'width 0.4s' }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{totInPlace} of {totTotal} in place</span>
+                      {untouchedCount > 0 && (
+                        <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>{untouchedCount} not started yet</span>
+                      )}
+                    </div>
                   </div>
-                  {untouchedCount > 0 && (
-                    <p style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
-                      {untouchedCount} not started yet
-                    </p>
-                  )}
                   {(userRole === 'approver' || userRole === 'mat_admin') && approvalQueueCount > 0 && (
                     <button type="button" onClick={() => setApprovalQueueOpen(true)} style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
-                      padding: '4px 10px', borderRadius: 999, border: '1px solid #FBBF24',
-                      background: '#FEF3C7', color: '#92400E', fontSize: '0.72rem', fontWeight: 600,
+                      display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0,
+                      padding: '5px 12px', borderRadius: 999, border: '1px solid #FBBF24',
+                      background: '#FEF3C7', color: '#92400E', fontSize: '0.75rem', fontWeight: 600,
                       cursor: 'pointer', fontFamily: 'inherit',
                     }}>
                       <i className="ti ti-clipboard-check" style={{ fontSize: '0.85rem' }} />
@@ -4760,10 +4763,11 @@ export default function App() {
                 </div>
               )}
 
-              {/* Principle cards — 7 DfE Principles of Inclusion, fixed DfE order (never reordered by status), equal size regardless of point count */}
+              {/* Principle cards — 7 DfE Principles of Inclusion, fixed DfE order (never reordered by status), fluid width capped at 300px per card.
+                  Container max-width is pinned to exactly 4 cards + 3 gaps (4*300 + 3*16 = 1248px) so a 5th card can never join row 1 on very wide monitors — keeps the 4-top/3-bottom structure at every desktop/tablet width, not just one. */}
               <div style={{
                 display: 'flex', flexWrap: isMobile ? 'nowrap' : 'wrap', flexDirection: isMobile ? 'column' : 'row',
-                justifyContent: 'center', gap: 12, maxWidth: isMobile ? '100%' : 980, margin: '0 auto',
+                justifyContent: 'center', gap: 16, width: '100%', maxWidth: isMobile ? '100%' : 1248, margin: '0 auto',
               }}>
                 {principleCards.map(p => {
                   const pct = p.total ? Math.round((p.inPlace / p.total) * 100) : 0
@@ -4775,7 +4779,9 @@ export default function App() {
                         padding: '16px 18px', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
                         display: 'flex', flexDirection: 'column', gap: 10,
                         transition: 'box-shadow 0.15s',
-                        flex: isMobile ? '1 1 auto' : '0 0 236px', width: isMobile ? '100%' : 236,
+                        flex: isMobile ? '1 1 auto' : '1 1 calc(25% - 12px)',
+                        width: isMobile ? '100%' : undefined,
+                        minWidth: isMobile ? undefined : 160, maxWidth: isMobile ? undefined : 300,
                       }}
                       onMouseEnter={e => e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'}
                       onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
