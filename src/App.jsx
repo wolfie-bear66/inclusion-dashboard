@@ -4820,6 +4820,22 @@ export default function App() {
                   )
                 })}
               </div>
+
+              {/* Quiet next-step hint below the principle cards grid — links to the existing Domains and Categories pages, no per-card links. */}
+              <div style={{ textAlign: 'center', fontSize: '0.78rem', color: '#94a3b8' }}>
+                See this broken down by:{' '}
+                <button type="button"
+                  onClick={() => { setSelectedDomain('__domains__'); setAnalyticsTabRequest(null) }}
+                  style={{ background: 'none', border: 'none', padding: 0, color: '#64748b', textDecoration: 'underline', cursor: 'pointer', font: 'inherit' }}>
+                  Domain
+                </button>
+                {'  |  '}
+                <button type="button"
+                  onClick={() => { setSelectedDomain(''); setAnalyticsTabRequest(null); setOverviewMode('category'); setSelectedCategory(null) }}
+                  style={{ background: 'none', border: 'none', padding: 0, color: '#64748b', textDecoration: 'underline', cursor: 'pointer', font: 'inherit' }}>
+                  Category
+                </button>
+              </div>
               </>
               )}
 
