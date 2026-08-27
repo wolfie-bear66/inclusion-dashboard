@@ -35,6 +35,28 @@ Unique constraint: `(provision_point_id, school_id)` — one owner per point per
 
 ---
 
+## schools
+
+Not previously documented here — columns below confirmed by Stuart from his actual manual
+onboarding SQL, 27 August 2026. Full column list not live-verified; there may be others.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK, default `gen_random_uuid()` |
+| name | text | Required |
+| urn | text | Nullable. School's DfE reference number |
+| mat_name | text | Nullable. Null for standalone schools. Denormalised alongside `mat_id` — kept in sync manually, not derived |
+| mat_id | uuid | Nullable, FK → mats.id |
+| phase | text | CHECK: `primary` / `secondary` / `all_through` / `special` (`step8_school_phase.sql`) |
+| created_at | timestamptz | Default, never set manually |
+
+No RLS policy currently permits client-side INSERT on this table (the only one that existed
+was dropped in Session 42's cleanup with no replacement, since nothing inserted schools
+client-side at the time — see `migrations/step13_rls_cleanup_phase1.sql`). Any new
+school-creation path must go through a service-role Edge Function.
+
+---
+
 ## provision_points
 
 | Column | Type | Notes |

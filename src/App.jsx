@@ -11,6 +11,7 @@ import ApprovalQueueModal from './components/ApprovalQueueModal'
 import AssignmentModal from './components/AssignmentModal'
 import SetPasswordPage from './pages/SetPasswordPage'
 import AdminView from './pages/AdminView'
+import SchoolOnboardingView from './pages/SchoolOnboardingView'
 import { useIsReadOnlyView } from './hooks/useIsReadOnlyView'
 import { usePrincipleCoverage } from './hooks/usePrincipleCoverage'
 import ReadOnlyBanner from './components/ReadOnlyBanner'
@@ -4041,6 +4042,7 @@ export default function App() {
   if (pathname === '/about') return <AboutPage />
   if (pathname === '/privacy') return <PrivacyPage />
   if (pathname === '/admin') return <AdminView />
+  if (pathname === '/admin/onboard-school') return <SchoolOnboardingView />
 
   // Invite-link landing page — also rendered when password_set flag is false (see profile fetch)
   if (pathname.startsWith('/set-password')) return <SetPasswordPage />

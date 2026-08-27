@@ -204,6 +204,9 @@ export default function AdminView() {
         </a>
         <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: '#1B365D' }}>Founder Admin</h1>
         <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: '#64748b' }}>Internal use only</p>
+        <a href="/admin/onboard-school" style={{ fontSize: '0.8125rem', color: '#1B365D', textDecoration: 'underline', display: 'inline-block', marginTop: 12 }}>
+          + Onboard a new school
+        </a>
       </div>
 
       {loading && <p style={{ color: '#64748b' }}>Loading…</p>}
