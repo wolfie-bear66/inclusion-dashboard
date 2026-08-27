@@ -98,18 +98,20 @@ Deno.serve(async (req) => {
 
   // Step 3: parse request body
   let school_name: string, urn: string | null, mat_name: string | null, mat_id: string | null, phase: string | null
+  let new_mat_name: string | null
   let email: string, first_name: string, last_name: string, job_title: string
   try {
     const body = await req.json()
-    school_name = body.school_name
-    urn         = body.urn || null
-    mat_name    = body.mat_name || null
-    mat_id      = body.mat_id || null
-    phase       = body.phase || null
-    email       = body.email
-    first_name  = body.first_name ?? ''
-    last_name   = body.last_name ?? ''
-    job_title   = body.job_title || 'Approver'
+    school_name  = body.school_name
+    urn          = body.urn || null
+    mat_name     = body.mat_name || null
+    mat_id       = body.mat_id || null
+    new_mat_name = body.new_mat_name || null
+    phase        = body.phase || null
+    email        = body.email
+    first_name   = body.first_name ?? ''
+    last_name    = body.last_name ?? ''
+    job_title    = body.job_title || 'Approver'
 
     if (!school_name || !email) {
       return fail('school_name and email are required', 400)
@@ -121,6 +123,25 @@ Deno.serve(async (req) => {
   // Steps 4-6: identify the caller from their access token and enforce founder-only access
   const deny = await requireFounder(req, admin)
   if (deny) return deny
+
+  // Step 6b: if a brand-new MAT was requested, create it first — nothing else has happened
+  // yet, so a failure here is a clean failure with nothing to clean up.
+  if (new_mat_name) {
+    try {
+      const { data: matData, error: matError } = await admin
+        .from('mats')
+        .insert({ name: new_mat_name })
+        .select('id')
+        .single()
+      if (matError || !matData) {
+        return fail(matError?.message ?? 'Failed to create MAT')
+      }
+      mat_id = matData.id
+      mat_name = new_mat_name
+    } catch (err: any) {
+      return fail(String(err))
+    }
+  }
 
   // Step 7: insert the school
   let schoolId: string

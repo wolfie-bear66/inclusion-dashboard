@@ -12,12 +12,14 @@ const PHASES = [
 ]
 
 const STANDALONE = '__standalone__'
+const NEW_MAT = '__new_mat__'
 
 const emptyForm = {
   school_name: '',
   urn: '',
   phase: '',
   matChoice: STANDALONE,
+  newMatName: '',
   first_name: '',
   last_name: '',
   email: '',
@@ -76,6 +78,7 @@ export default function SchoolOnboardingView() {
     setResult(null)
 
     const selectedMat = mats.find(m => m.id === form.matChoice)
+    const isNewMat = form.matChoice === NEW_MAT
 
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -90,8 +93,9 @@ export default function SchoolOnboardingView() {
           school_name: form.school_name.trim(),
           urn: form.urn.trim(),
           phase: form.phase || null,
-          mat_id: selectedMat?.id ?? null,
-          mat_name: selectedMat?.name ?? null,
+          mat_id: isNewMat ? null : (selectedMat?.id ?? null),
+          mat_name: isNewMat ? null : (selectedMat?.name ?? null),
+          new_mat_name: isNewMat ? form.newMatName.trim() : null,
           email: form.email.trim(),
           first_name: form.first_name.trim(),
           last_name: form.last_name.trim(),
@@ -145,8 +149,15 @@ export default function SchoolOnboardingView() {
             <select value={form.matChoice} onChange={e => update('matChoice', e.target.value)} style={inputStyle}>
               <option value={STANDALONE}>Standalone school — no MAT</option>
               {mats.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              <option value={NEW_MAT}>+ Add new MAT</option>
             </select>
           </Field>
+
+          {form.matChoice === NEW_MAT && (
+            <Field label="New MAT name" required>
+              <input required value={form.newMatName} onChange={e => update('newMatName', e.target.value)} style={inputStyle} />
+            </Field>
+          )}
 
           <hr style={{ border: 'none', borderTop: '1px solid #E2E8F0', margin: '4px 0' }} />
 

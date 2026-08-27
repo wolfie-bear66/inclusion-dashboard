@@ -57,6 +57,19 @@ school-creation path must go through a service-role Edge Function.
 
 ---
 
+## mats
+
+Live-verified via `information_schema.columns`, 27 August 2026 — exactly these 3 columns,
+no other constraints beyond `id`/`name` being `NOT NULL`.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK, default `gen_random_uuid()` |
+| name | text | Required |
+| created_at | timestamptz | Nullable, default `now()` |
+
+---
+
 ## provision_points
 
 | Column | Type | Notes |
