@@ -134,15 +134,24 @@ export default function AdminView() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'Inter, sans-serif', padding: '32px 24px' }}>
-      <div style={{ marginBottom: 28 }}>
-        <a href="/" style={{ fontSize: '0.8125rem', color: '#1B365D', textDecoration: 'none', display: 'inline-block', marginBottom: 20 }}>
-          ← Back to site
-        </a>
-        <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: '#1B365D' }}>Founder Admin</h1>
-        <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: '#64748b' }}>Internal use only</p>
-        <a href="/admin/onboard-school" style={{ fontSize: '0.8125rem', color: '#1B365D', textDecoration: 'underline', display: 'inline-block', marginTop: 12 }}>
-          + Onboard a new school
-        </a>
+      <div style={{ marginBottom: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <a href="/" style={{ fontSize: '0.8125rem', color: '#1B365D', textDecoration: 'none', display: 'inline-block', marginBottom: 20 }}>
+            ← Back to site
+          </a>
+          <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: '#1B365D' }}>Founder Admin</h1>
+          <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: '#64748b' }}>Internal use only</p>
+          <a href="/admin/onboard-school" style={{ fontSize: '0.8125rem', color: '#1B365D', textDecoration: 'underline', display: 'inline-block', marginTop: 12 }}>
+            + Onboard a new school
+          </a>
+        </div>
+        <button
+          type="button"
+          onClick={async () => { await supabase.auth.signOut(); window.location.replace('/') }}
+          style={actionBtnStyle}
+        >
+          Sign out
+        </button>
       </div>
 
       {loading && <p style={{ color: '#64748b' }}>Loading…</p>}
