@@ -1,44 +1,46 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 
-const FOUNDER_UUID = '9c539de8-0ddf-43d7-974b-e55406966bb3'
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+const STATS_URL = `${SUPABASE_URL}/functions/v1/admin-dashboard-stats`
+const RESEND_URL = `${SUPABASE_URL}/functions/v1/resend-invite`
+const UPDATE_SCHOOL_URL = `${SUPABASE_URL}/functions/v1/update-school`
+const UPDATE_ROLE_URL = `${SUPABASE_URL}/functions/v1/update-user-role`
+const PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-const DOMAIN_ORDER = [
-  'SEND Support & Needs',
-  'Equity & Disadvantage',
-  'Attendance & Engagement',
-  'Enrichment',
-  'Belonging',
-  'Wellbeing',
-]
+const STATUS_LABEL = { trial: 'Trial', paid: 'Paid', churned: 'Churned' }
+const STATUS_COLOUR = { trial: '#D4751A', paid: '#22c55e', churned: '#94a3b8' }
+const ENGAGEMENT_LABEL = { active: 'Active', stalled: 'Stalled', never_logged_in: 'Never logged in' }
+const ENGAGEMENT_COLOUR = { active: '#22c55e', stalled: '#f97316', never_logged_in: '#94a3b8' }
 
 function fmtDate(iso) {
   if (!iso) return 'Never'
-  const d = new Date(iso)
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-function coverageColour(pct) {
-  if (pct === null || pct === undefined) return '#e5e7eb'
-  if (pct === 0) return '#e5e7eb'
-  if (pct < 50) return '#fbbf24'
-  if (pct < 80) return '#f97316'
-  return '#22c55e'
+function fmtMoney(n) {
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(n || 0)
 }
 
 export default function AdminView() {
   const [checking, setChecking] = useState(true)
-  const [rows, setRows]         = useState([])
-  const [domains, setDomains]   = useState([])
-  const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState(null)
+  const [allowed, setAllowed] = useState(false)
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [editingRow, setEditingRow] = useState(null)
+  const [actionMsg, setActionMsg] = useState(null)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user?.id !== FOUNDER_UUID) {
-        window.location.replace('/')
-        return
-      }
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) { window.location.replace('/'); return }
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_founder')
+        .eq('id', session.user.id)
+        .single()
+      if (!profile?.is_founder) { window.location.replace('/'); return }
+      setAllowed(true)
       setChecking(false)
       loadData()
     })
@@ -48,144 +50,13 @@ export default function AdminView() {
     setLoading(true)
     setError(null)
     try {
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-
-      // 1. Schools + their mat_id
-      const { data: schools, error: schoolsErr } = await supabase
-        .from('schools')
-        .select('id, name, mat_id')
-        .order('name')
-      if (schoolsErr) throw schoolsErr
-
-      const schoolIds = schools.map(s => s.id)
-
-      // 2. MAT names
-      const matIds = [...new Set(schools.map(s => s.mat_id).filter(Boolean))]
-      let matMap = {}
-      if (matIds.length) {
-        const { data: mats } = await supabase
-          .from('mats')
-          .select('id, name')
-          .in('id', matIds)
-        for (const m of mats ?? []) matMap[m.id] = m.name
-      }
-
-      // 3. Domains (ordered)
-      const { data: domainsRaw } = await supabase
-        .from('domains')
-        .select('id, name')
-      const sortedDomains = (domainsRaw ?? []).sort(
-        (a, b) => DOMAIN_ORDER.indexOf(a.name) - DOMAIN_ORDER.indexOf(b.name)
-      )
-      setDomains(sortedDomains)
-
-      // 4. All evidence_entries via entries (total count, last 30d, last date)
-      //    evidence_entries has entry_id → entries has school_id
-      const { data: eeRaw } = await supabase
-        .from('evidence_entries')
-        .select('id, created_at, entry_id, entries!inner(school_id)')
-        .in('entries.school_id', schoolIds)
-
-      const eeBySchool = {}
-      for (const ee of eeRaw ?? []) {
-        const sid = ee.entries?.school_id
-        if (!sid) continue
-        if (!eeBySchool[sid]) eeBySchool[sid] = []
-        eeBySchool[sid].push(ee)
-      }
-
-      // 5. Profile counts per school
-      const { data: profilesRaw } = await supabase
-        .from('profiles')
-        .select('id, school_id')
-        .in('school_id', schoolIds)
-      const profilesBySchool = {}
-      for (const p of profilesRaw ?? []) {
-        profilesBySchool[p.school_id] = (profilesBySchool[p.school_id] ?? 0) + 1
-      }
-
-      // 6. Active provision point count (global total)
-      const { data: ppRaw } = await supabase
-        .from('provision_points')
-        .select('id, sub_domain_id, sub_domains(domain_id)')
-        .eq('active', true)
-      const activePpIds = new Set((ppRaw ?? []).map(p => p.id))
-      const activePpTotal = activePpIds.size
-
-      // Build pp → domain lookup
-      const ppToDomain = {}
-      for (const pp of ppRaw ?? []) {
-        const domainId = pp.sub_domains?.domain_id
-        if (domainId) ppToDomain[pp.id] = domainId
-      }
-
-      // 7. Point assignments per school
-      const { data: assignRaw } = await supabase
-        .from('point_assignments')
-        .select('school_id, provision_point_id')
-        .in('school_id', schoolIds)
-      const assignedBySchool = {}
-      for (const a of assignRaw ?? []) {
-        if (!assignedBySchool[a.school_id]) assignedBySchool[a.school_id] = new Set()
-        assignedBySchool[a.school_id].add(a.provision_point_id)
-      }
-
-      // 8. Entries with status per school (for domain coverage)
-      const { data: entriesRaw } = await supabase
-        .from('entries')
-        .select('school_id, provision_point_id, status')
-        .in('school_id', schoolIds)
-        .in('status', ['in_place', 'in_progress', 'not_in_place'])
-
-      const entriesBySchool = {}
-      for (const e of entriesRaw ?? []) {
-        if (!entriesBySchool[e.school_id]) entriesBySchool[e.school_id] = []
-        entriesBySchool[e.school_id].push(e)
-      }
-
-      // Assemble rows
-      const assembled = schools.map(school => {
-        const sid = school.id
-
-        const ees = eeBySchool[sid] ?? []
-        const totalEE = ees.length
-        const last30EE = ees.filter(e => e.created_at >= thirtyDaysAgo).length
-        const lastDate = ees.length
-          ? ees.reduce((max, e) => e.created_at > max ? e.created_at : max, ees[0].created_at)
-          : null
-
-        const teamCount = profilesBySchool[sid] ?? 0
-        const assignedPps = assignedBySchool[sid] ?? new Set()
-        const unassigned = activePpTotal - assignedPps.size
-
-        // Domain coverage: per domain, % of active pp that are in_place
-        const schoolEntries = entriesBySchool[sid] ?? []
-        const domainCoverage = {}
-        for (const domain of sortedDomains) {
-          const activePpsInDomain = (ppRaw ?? []).filter(
-            pp => ppToDomain[pp.id] === domain.id
-          )
-          if (!activePpsInDomain.length) { domainCoverage[domain.id] = null; continue }
-          const inPlaceCount = activePpsInDomain.filter(pp =>
-            schoolEntries.some(e => e.provision_point_id === pp.id && e.status === 'in_place')
-          ).length
-          domainCoverage[domain.id] = Math.round((inPlaceCount / activePpsInDomain.length) * 100)
-        }
-
-        return {
-          id: sid,
-          name: school.name,
-          mat: school.mat_id ? (matMap[school.mat_id] ?? '—') : '—',
-          totalEE,
-          last30EE,
-          lastDate,
-          teamCount,
-          unassigned,
-          domainCoverage,
-        }
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(STATS_URL, {
+        headers: { 'Authorization': `Bearer ${session.access_token}`, 'apikey': PUBLISHABLE_KEY },
       })
-
-      setRows(assembled)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Failed to load dashboard data')
+      setData(json)
     } catch (err) {
       setError(err.message ?? 'Unknown error')
     } finally {
@@ -193,12 +64,77 @@ export default function AdminView() {
     }
   }
 
-  if (checking) return null
+  async function handleResendInvite(profileId) {
+    setActionMsg(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(RESEND_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({ profile_id: profileId }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Failed to resend invite')
+      setActionMsg({ type: 'success', text: `Invite resent to ${json.email}` })
+    } catch (err) {
+      setActionMsg({ type: 'error', text: err.message })
+    }
+  }
+
+  async function handleSaveEdit(edited) {
+    setActionMsg(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(UPDATE_SCHOOL_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify(edited),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Failed to update school')
+      setActionMsg({ type: 'success', text: 'School updated.' })
+      setEditingRow(null)
+      loadData()
+    } catch (err) {
+      setActionMsg({ type: 'error', text: err.message })
+    }
+  }
+
+  async function handleChangeRole(profileId, role) {
+    setActionMsg(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(UPDATE_ROLE_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({ profile_id: profileId, role }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Failed to update role')
+      setActionMsg({ type: 'success', text: 'Role updated.' })
+      loadData()
+    } catch (err) {
+      setActionMsg({ type: 'error', text: err.message })
+    }
+  }
+
+  if (checking || !allowed) return null
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'Inter, sans-serif', padding: '32px 24px' }}>
-      {/* Header */}
-      <div style={{ marginBottom: 32 }}>
+      <div style={{ marginBottom: 28 }}>
         <a href="/" style={{ fontSize: '0.8125rem', color: '#1B365D', textDecoration: 'none', display: 'inline-block', marginBottom: 20 }}>
           ← Back to site
         </a>
@@ -212,86 +148,248 @@ export default function AdminView() {
       {loading && <p style={{ color: '#64748b' }}>Loading…</p>}
       {error && <p style={{ color: '#EA4335' }}>Error: {error}</p>}
 
-      {!loading && !error && (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem', background: '#fff', border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
-            <thead>
-              <tr style={{ background: '#1B365D', color: '#fff' }}>
-                <Th>School</Th>
-                <Th>MAT</Th>
-                <Th>Evidence entries</Th>
-                <Th>Last 30 days</Th>
-                <Th>Last entry</Th>
-                <Th>Team members</Th>
-                <Th>Unassigned pts</Th>
-                {domains.map(d => (
-                  <Th key={d.id} style={{ minWidth: 64, textAlign: 'center' }}>
-                    {d.name.split(' ')[0]}
-                  </Th>
-                ))}
-                <Th>Reports</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, i) => (
-                <tr key={row.id} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
-                  <Td style={{ fontWeight: 600, color: '#1B365D' }}>{row.name}</Td>
-                  <Td>{row.mat}</Td>
-                  <Td>{row.totalEE}</Td>
-                  <Td>{row.last30EE}</Td>
-                  <Td>{fmtDate(row.lastDate)}</Td>
-                  <Td>{row.teamCount}</Td>
-                  <Td>{row.unassigned}</Td>
-                  {domains.map(d => {
-                    const pct = row.domainCoverage[d.id]
-                    const bg = coverageColour(pct)
-                    return (
-                      <Td key={d.id} style={{ textAlign: 'center', padding: '8px 6px' }}>
-                        <span style={{
-                          display: 'inline-block',
-                          minWidth: 36,
-                          padding: '2px 6px',
-                          borderRadius: 4,
-                          background: bg,
-                          color: pct >= 50 ? '#fff' : '#1e293b',
-                          fontWeight: 600,
-                          fontSize: '0.75rem',
-                        }}>
-                          {pct === null ? '—' : `${pct}%`}
-                        </span>
-                      </Td>
-                    )
-                  })}
-                  <Td style={{ color: '#94a3b8' }}>n/a</Td>
-                </tr>
-              ))}
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={8 + domains.length} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>
-                    No schools found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {actionMsg && (
+        <div style={{
+          marginBottom: 16, padding: '10px 14px', borderRadius: 8, fontSize: '0.8125rem',
+          background: actionMsg.type === 'error' ? '#FEF2F2' : '#F0FDF4',
+          color: actionMsg.type === 'error' ? '#B91C1C' : '#166534',
+        }}>
+          {actionMsg.text}
         </div>
+      )}
+
+      {!loading && !error && data && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 28 }}>
+            <Tile title="Pipeline">
+              <StatRow label="Trial" value={data.pipeline.trial} colour={STATUS_COLOUR.trial} />
+              <StatRow label="Paid" value={data.pipeline.paid} colour={STATUS_COLOUR.paid} />
+              <StatRow label="Churned" value={data.pipeline.churned} colour={STATUS_COLOUR.churned} />
+            </Tile>
+            <Tile title="Engagement">
+              <StatRow label="Active (30d)" value={data.engagement.active_last_30} colour={ENGAGEMENT_COLOUR.active} />
+              <StatRow label="Stalled" value={data.engagement.stalled} colour={ENGAGEMENT_COLOUR.stalled} />
+              <StatRow label="Never logged in" value={data.engagement.never_logged_in} colour={ENGAGEMENT_COLOUR.never_logged_in} />
+            </Tile>
+            <Tile title="Revenue">
+              <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#1B365D' }}>{fmtMoney(data.revenue.annual_total)}</div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>
+                annual, across {data.revenue.paid_school_count} paid school{data.revenue.paid_school_count === 1 ? '' : 's'}
+              </div>
+            </Tile>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem', background: '#fff', border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
+              <thead>
+                <tr style={{ background: '#1B365D', color: '#fff' }}>
+                  <Th>School</Th>
+                  <Th>Status</Th>
+                  <Th>Price</Th>
+                  <Th>Confirmed</Th>
+                  <Th>Staff</Th>
+                  <Th>Engagement</Th>
+                  <Th>Last login</Th>
+                  <Th>Actions</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.rows.map((row, i) => (
+                  <tr key={row.id} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                    <Td style={{ fontWeight: 600, color: '#1B365D' }}>{row.name}</Td>
+                    <Td><Pill colour={STATUS_COLOUR[row.subscription_status]}>{STATUS_LABEL[row.subscription_status]}</Pill></Td>
+                    <Td>{row.annual_price ? fmtMoney(row.annual_price) : (row.price_tier ?? '—')}</Td>
+                    <Td>{fmtDate(row.confirmed_at)}</Td>
+                    <Td>{row.staff_count}</Td>
+                    <Td><Pill colour={ENGAGEMENT_COLOUR[row.engagement_status]}>{ENGAGEMENT_LABEL[row.engagement_status]}</Pill></Td>
+                    <Td>{fmtDate(row.last_login)}</Td>
+                    <Td>
+                      <button onClick={() => setEditingRow(row)} style={actionBtnStyle}>Edit</button>
+                      {row.pending_invites.map(p => (
+                        <button
+                          key={p.profile_id}
+                          onClick={() => handleResendInvite(p.profile_id)}
+                          title={p.email ?? ''}
+                          style={{ ...actionBtnStyle, marginLeft: 6 }}
+                        >
+                          Resend{row.pending_invites.length > 1 ? ` (${p.email?.split('@')[0] ?? '?'})` : ' invite'}
+                        </button>
+                      ))}
+                    </Td>
+                  </tr>
+                ))}
+                {data.rows.length === 0 && (
+                  <tr><td colSpan={8} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>No schools found.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {editingRow && (
+        <EditSchoolModal
+          row={editingRow}
+          mats={data?.mats ?? []}
+          onClose={() => setEditingRow(null)}
+          onSave={handleSaveEdit}
+          onChangeRole={handleChangeRole}
+        />
       )}
     </div>
   )
 }
 
-function Th({ children, style }) {
+function EditSchoolModal({ row, mats, onClose, onSave, onChangeRole }) {
+  const [name, setName] = useState(row.name)
+  const [status, setStatus] = useState(row.subscription_status)
+  const [priceTier, setPriceTier] = useState(row.price_tier ?? '')
+  const [annualPrice, setAnnualPrice] = useState(row.annual_price ?? '')
+  const [matChoice, setMatChoice] = useState(row.mat_id ?? '__standalone__')
+  const [newMatName, setNewMatName] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function submit() {
+    setSaving(true)
+    const matPayload = matChoice === '__new__'
+      ? { new_mat_name: newMatName }
+      : { mat_id: matChoice === '__standalone__' ? null : matChoice }
+    await onSave({
+      school_id: row.id,
+      name,
+      subscription_status: status,
+      price_tier: priceTier || null,
+      annual_price: annualPrice === '' ? null : Number(annualPrice),
+      ...matPayload,
+    })
+    setSaving(false)
+  }
+
   return (
-    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.75rem', whiteSpace: 'nowrap', ...style }}>
-      {children}
-    </th>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, overflowY: 'auto', padding: 24 }}>
+      <div style={{ background: '#fff', borderRadius: 12, padding: 28, width: '100%', maxWidth: 460, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <h2 style={{ margin: 0, fontSize: '1.125rem', color: '#1B365D' }}>Edit {row.name}</h2>
+
+        <Field label="School name">
+          <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
+        </Field>
+        <Field label="Subscription status">
+          <select value={status} onChange={e => setStatus(e.target.value)} style={inputStyle}>
+            <option value="trial">Trial</option>
+            <option value="paid">Paid</option>
+            <option value="churned">Churned</option>
+          </select>
+        </Field>
+        <Field label="Price tier (label)">
+          <input value={priceTier} onChange={e => setPriceTier(e.target.value)} placeholder="e.g. Band 1 (£500)" style={inputStyle} />
+        </Field>
+        <Field label="Annual price (£, used for revenue total)">
+          <input type="number" value={annualPrice} onChange={e => setAnnualPrice(e.target.value)} style={inputStyle} />
+        </Field>
+        <Field label="MAT">
+          <select value={matChoice} onChange={e => setMatChoice(e.target.value)} style={inputStyle}>
+            <option value="__standalone__">Standalone school (no MAT)</option>
+            {mats.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            <option value="__new__">+ Create new MAT…</option>
+          </select>
+        </Field>
+        {matChoice === '__new__' && (
+          <Field label="New MAT name">
+            <input value={newMatName} onChange={e => setNewMatName(e.target.value)} style={inputStyle} />
+          </Field>
+        )}
+
+        {row.staff.length > 0 && (
+          <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: 14, marginTop: 4 }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 8 }}>
+              Staff & roles
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {row.staff.map(person => (
+                <div key={person.profile_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <div style={{ fontSize: '0.8125rem', color: '#334155' }}>
+                    {person.first_name} {person.last_name}
+                    {person.job_title ? <span style={{ color: '#94a3b8' }}> — {person.job_title}</span> : null}
+                  </div>
+                  <select
+                    value={person.role}
+                    onChange={e => onChangeRole(person.profile_id, e.target.value)}
+                    style={{ ...inputStyle, padding: '4px 8px', width: 140 }}
+                  >
+                    <option value="contributor">Contributor</option>
+                    <option value="approver">Approver</option>
+                    <option value="mat_admin">MAT Admin</option>
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+          <button onClick={onClose} style={{ ...actionBtnStyle, background: '#fff' }}>Cancel</button>
+          <button onClick={submit} disabled={saving} style={{ ...actionBtnStyle, background: '#1B365D', color: '#fff' }}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
-function Td({ children, style }) {
+function Tile({ title, children }) {
   return (
-    <td style={{ padding: '10px 12px', borderTop: '1px solid #E2E8F0', color: '#334155', ...style }}>
+    <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, padding: '18px 20px' }}>
+      <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 10 }}>
+        {title}
+      </div>
       {children}
-    </td>
+    </div>
   )
+}
+
+function StatRow({ label, value, colour }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0' }}>
+      <span style={{ fontSize: '0.8125rem', color: '#334155' }}>{label}</span>
+      <span style={{ fontSize: '1rem', fontWeight: 700, color: colour }}>{value}</span>
+    </div>
+  )
+}
+
+function Pill({ children, colour }) {
+  return (
+    <span style={{
+      display: 'inline-block', padding: '2px 8px', borderRadius: 999,
+      background: `${colour}1A`, color: colour, fontWeight: 600, fontSize: '0.75rem',
+    }}>
+      {children}
+    </span>
+  )
+}
+
+function Field({ label, children }) {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8125rem', color: '#334155' }}>
+      {label}
+      {children}
+    </label>
+  )
+}
+
+function Th({ children }) {
+  return <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{children}</th>
+}
+
+function Td({ children, style }) {
+  return <td style={{ padding: '10px 12px', borderTop: '1px solid #E2E8F0', color: '#334155', ...style }}>{children}</td>
+}
+
+const inputStyle = {
+  padding: '8px 10px', borderRadius: 6, border: '1px solid #E2E8F0', fontSize: '0.8125rem', fontFamily: 'inherit',
+}
+
+const actionBtnStyle = {
+  padding: '5px 10px', borderRadius: 6, border: '1px solid #E2E8F0', background: '#fff',
+  fontSize: '0.75rem', fontWeight: 600, color: '#1B365D', cursor: 'pointer',
 }
