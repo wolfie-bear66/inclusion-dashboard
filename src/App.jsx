@@ -3403,7 +3403,7 @@ export default function App() {
 
     supabase
       .from('profiles')
-      .select('school_id, role, mat_id, first_name, schools(name), onboarding_state, welcomed, password_set')
+      .select('school_id, role, mat_id, first_name, schools(name), onboarding_state, welcomed, password_set, is_founder')
       .eq('id', session.user.id)
       .single()
       .then(({ data, error }) => {
@@ -3418,6 +3418,13 @@ export default function App() {
         if (data.password_set === false) {
           setNeedsPasswordSet(true)
           setAuthLoading(false)
+          return
+        }
+        // Founder accounts land on the admin dashboard by default — but only on the
+        // plain root landing. If they've manually navigated elsewhere (e.g. /mat-dashboard
+        // to check the demo MAT), let that navigation stand instead of overriding it.
+        if (data.is_founder === true && (pathnameRef.current === '/' || pathnameRef.current === '/dashboard')) {
+          window.location.replace('/admin')
           return
         }
         const role = data.role ?? 'contributor'
