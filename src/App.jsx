@@ -3270,6 +3270,7 @@ export default function App() {
 
   // MAT / role state
   const [userRole, setUserRole] = useState('contributor')
+  const [isFounder, setIsFounder] = useState(false)
   const [userMatId, setUserMatId] = useState(null)
   const [ownSchoolId, setOwnSchoolId] = useState(null) // the logged-in user's own school_id, per their profile — distinct from selectedSchool, which is whatever school is currently being viewed
   // 'school' | 'mat' | 'school_readonly'
@@ -3423,10 +3424,11 @@ export default function App() {
         // Founder accounts land on the admin dashboard by default — but only on the
         // plain root landing. If they've manually navigated elsewhere (e.g. /mat-dashboard
         // to check the demo MAT), let that navigation stand instead of overriding it.
-        if (data.is_founder === true && (pathnameRef.current === '/' || pathnameRef.current === '/dashboard')) {
+        if (data.is_founder === true && ['/', '/dashboard', '/login'].includes(pathnameRef.current)) {
           window.location.replace('/admin')
           return
         }
+        setIsFounder(data.is_founder === true)
         const role = data.role ?? 'contributor'
         console.log('[Profile] loaded — role:', role, '| mat_id:', data.mat_id, '| school_id:', data.school_id)
         setUserRole(role)
@@ -4185,7 +4187,23 @@ export default function App() {
       <header className="header">
         <div className="header-left">
           <h1 className="header-title">Inclusion Dashboard</h1>
-          {view === 'mat' && <p className="header-sub">MAT Dashboard</p>}
+          {view === 'mat' && (
+            <p className="header-sub" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              MAT Dashboard
+              {isFounder && (
+                <>
+                  <span style={{ color: '#94a3b8' }}>›</span>
+                  <button type="button" onClick={() => window.location.replace('/admin')}
+                    style={{ background: '#1B365D', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, padding: '6px 14px', borderRadius: 999 }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#142845'}
+                    onMouseLeave={e => e.currentTarget.style.background = '#1B365D'}
+                  >
+                    Back to Admin
+                  </button>
+                </>
+              )}
+            </p>
+          )}
           {view === 'school_readonly' && (
             <p className="header-sub" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <button type="button" onClick={handleBackToMat}
