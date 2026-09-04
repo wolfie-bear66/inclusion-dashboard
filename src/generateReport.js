@@ -63,6 +63,15 @@ export const ALL_GROUP_KEYS = [
   { key: 'grp_mental_health_support', label: 'Mental Health Support' },
 ]
 
+// barriers.student_groups (object format) is keyed by short codes with no 'grp_'
+// prefix (e.g. 'send', 'pp') — derive their display labels from ALL_GROUP_KEYS
+// rather than a second hand-typed list. 'other' isn't in ALL_GROUP_KEYS (no
+// grp_other column exists), so it's added explicitly.
+export const BARRIER_GROUP_LABELS = {
+  ...Object.fromEntries(ALL_GROUP_KEYS.map(g => [g.key.replace('grp_', ''), g.label])),
+  other: 'Other',
+}
+
 export const DFE_PRINCIPLES = [
   'Leadership & Governance',
   'Early & Evidence-Based Support',
@@ -351,9 +360,10 @@ export function getBarriersSectionData({ barriers, selectedDomains, selectedGrou
       : (b.domains?.name ?? '—')
     const sg = b.student_groups
     const groups = Array.isArray(sg)
+      // Legacy array format already stores full labels (e.g. 'Pupil Premium'), not codes.
       ? sg.join(', ')
       : (sg && typeof sg === 'object'
-          ? Object.keys(sg).filter(k => sg[k]).join(', ')
+          ? Object.keys(sg).filter(k => sg[k]).map(k => BARRIER_GROUP_LABELS[k] ?? k).join(', ')
           : '—')
     return {
       barrier: b,
@@ -432,9 +442,11 @@ export function getDomainReadinessSectionData({ readinessData, selectedDomains }
     ? readinessData
     : readinessData.filter(d => selectedDomains.includes(d.id))
 
+  // pct is null (not 0) when a domain has no provision points at all — a true
+  // "no data recorded" state, distinct from a domain that has points but 0% in place.
   const rows = relevant.map(d => ({
     ...d,
-    pct: d.total ? Math.round((d.inPlace / d.total) * 100) : 0,
+    pct: d.total ? Math.round((d.inPlace / d.total) * 100) : null,
   }))
 
   const gaps  = relevant.filter(d => d.notInPlace > 0)
@@ -449,7 +461,7 @@ function drawDomainReadiness(doc, y, { readinessData, selectedDomains }) {
 
   const { relevant, rows, gaps, inDev } = getDomainReadinessSectionData({ readinessData, selectedDomains })
 
-  const body = rows.map(d => [d.name, d.inPlace, d.inProgress, d.notInPlace, d.total, `${d.pct}%`, ''])
+  const body = rows.map(d => [d.name, d.inPlace, d.inProgress, d.notInPlace, d.total, d.pct === null ? 'No data' : `${d.pct}%`, ''])
 
   autoTable(doc, {
     startY: y,
@@ -473,6 +485,10 @@ function drawDomainReadiness(doc, y, { readinessData, selectedDomains }) {
       if (data.column.index === 1) { data.cell.styles.textColor = GREEN; data.cell.styles.fontStyle = 'bold' }
       if (data.column.index === 2) { data.cell.styles.textColor = AMBER; data.cell.styles.fontStyle = 'bold' }
       if (data.column.index === 3) { data.cell.styles.textColor = RED;   data.cell.styles.fontStyle = 'bold' }
+      if (data.column.index === 5) {
+        const d = rows[data.row.index]
+        if (d && d.pct === null) { data.cell.styles.textColor = MID; data.cell.styles.fontStyle = 'italic' }
+      }
     },
     didDrawCell(data) {
       if (data.section !== 'body' || data.column.index !== 6) return
