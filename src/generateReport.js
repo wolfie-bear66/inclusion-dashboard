@@ -223,16 +223,8 @@ function drawCoverPage(doc, { schoolName, purpose, selectedDomains, selectedGrou
 // ─────────────────────────────────────────────────────────────────────
 // SECTION 1 — School Context
 // ─────────────────────────────────────────────────────────────────────
-function drawSchoolContext(doc, y, { schoolCtx, readinessData, selectedDomains }) {
-  y = sectionBar(doc, y, '1 — School Context')
-  y += 4
-
+function getSchoolContextSectionData({ schoolCtx, readinessData, selectedDomains }) {
   const ay = academicYear()
-  doc.setTextColor(...MID)
-  doc.setFontSize(7.5)
-  doc.setFont('helvetica', 'bold')
-  doc.text(`Cohort Profile ${ay}`, ML, y)
-  y += 5
 
   const cards = [
     { label: 'Total Pupils',        value: schoolCtx.totalPupils || '—' },
@@ -246,6 +238,32 @@ function drawSchoolContext(doc, y, { schoolCtx, readinessData, selectedDomains }
     { label: 'Young Carer',            value: schoolCtx.youngCarerCount          || '—' },
     { label: 'Mental Health Support',  value: schoolCtx.mentalHealthSupportCount || '—' },
   ]
+
+  // Readiness headline
+  const relevant = selectedDomains.length === 0
+    ? readinessData
+    : readinessData.filter(d => selectedDomains.includes(d.id))
+  const total   = relevant.reduce((s, d) => s + d.total, 0)
+  const inPlace = relevant.reduce((s, d) => s + d.inPlace, 0)
+  const pct     = total ? Math.round((inPlace / total) * 100) : 0
+  const readinessLabel = selectedDomains.length === 0
+    ? `Overall readiness: ${pct}%`
+    : `Domain readiness (selected domains): ${pct}%`
+
+  return { ay, cards, readinessLabel }
+}
+
+function drawSchoolContext(doc, y, { schoolCtx, readinessData, selectedDomains }) {
+  const { ay, cards, readinessLabel } = getSchoolContextSectionData({ schoolCtx, readinessData, selectedDomains })
+
+  y = sectionBar(doc, y, '1 — School Context')
+  y += 4
+
+  doc.setTextColor(...MID)
+  doc.setFontSize(7.5)
+  doc.setFont('helvetica', 'bold')
+  doc.text(`Cohort Profile ${ay}`, ML, y)
+  y += 5
 
   const COLS = 4, GAP = 3
   const cardW = (CW - GAP * (COLS - 1)) / COLS
@@ -268,21 +286,10 @@ function drawSchoolContext(doc, y, { schoolCtx, readinessData, selectedDomains }
   }
   y += Math.ceil(cards.length / COLS) * (cardH + GAP) + 4
 
-  // Readiness headline
-  const relevant = selectedDomains.length === 0
-    ? readinessData
-    : readinessData.filter(d => selectedDomains.includes(d.id))
-  const total   = relevant.reduce((s, d) => s + d.total, 0)
-  const inPlace = relevant.reduce((s, d) => s + d.inPlace, 0)
-  const pct     = total ? Math.round((inPlace / total) * 100) : 0
-  const label   = selectedDomains.length === 0
-    ? `Overall readiness: ${pct}%`
-    : `Domain readiness (selected domains): ${pct}%`
-
   doc.setFontSize(9)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(...DARK)
-  doc.text(label, ML, y)
+  doc.text(readinessLabel, ML, y)
   y += 6
 
   return y
@@ -291,11 +298,7 @@ function drawSchoolContext(doc, y, { schoolCtx, readinessData, selectedDomains }
 // ─────────────────────────────────────────────────────────────────────
 // SECTION 2 — Identified Barriers
 // ─────────────────────────────────────────────────────────────────────
-function drawBarriers(doc, y, { barriers, selectedDomains, selectedGroups }) {
-  y = checkNewPage(doc, y, 30)
-  y = sectionBar(doc, y, '2 — Identified Barriers')
-  y += 4
-
+function getBarriersSectionData({ barriers, selectedDomains, selectedGroups }) {
   let filtered = barriers ?? []
 
   if (selectedDomains.length > 0) {
@@ -319,18 +322,10 @@ function drawBarriers(doc, y, { barriers, selectedDomains, selectedGroups }) {
     })
   }
 
-  if (filtered.length === 0) {
-    doc.setTextColor(...MID)
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'italic')
-    doc.text('No barriers currently recorded.', ML, y + 5)
-    return y + 14
-  }
-
   const scaleMap = { individual: 'Individual', group: 'Group', whole_school: 'Whole school' }
   const statusMap = { active: 'Active', being_addressed: 'Being addressed', resolved: 'Resolved' }
 
-  const body = filtered.map(b => {
+  const rows = filtered.map(b => {
     const domLabel = b.sub_domains?.name
       ? `${b.domains?.name ?? ''} — ${b.sub_domains.name}`
       : (b.domains?.name ?? '—')
@@ -340,19 +335,42 @@ function drawBarriers(doc, y, { barriers, selectedDomains, selectedGroups }) {
       : (sg && typeof sg === 'object'
           ? Object.keys(sg).filter(k => sg[k]).join(', ')
           : '—')
-    return [
-      b.description ?? '—',
+    return {
+      barrier: b,
+      description: b.description ?? '—',
       domLabel,
-      groups || '—',
-      scaleMap[b.scale] ?? (b.scale ?? '—'),
-      (b.source ?? '').replace(/_/g, ' ') || '—',
-      statusMap[b.status] ?? (b.status ?? '—'),
-      b.actions ?? '—',
-      b.next_review_due
+      groups: groups || '—',
+      scale: scaleMap[b.scale] ?? (b.scale ?? '—'),
+      source: (b.source ?? '').replace(/_/g, ' ') || '—',
+      status: statusMap[b.status] ?? (b.status ?? '—'),
+      actions: b.actions ?? '—',
+      nextReviewDue: b.next_review_due
         ? new Date(b.next_review_due).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
         : '—',
-    ]
+    }
   })
+
+  return { filtered, rows }
+}
+
+function drawBarriers(doc, y, { barriers, selectedDomains, selectedGroups }) {
+  y = checkNewPage(doc, y, 30)
+  y = sectionBar(doc, y, '2 — Identified Barriers')
+  y += 4
+
+  const { filtered, rows } = getBarriersSectionData({ barriers, selectedDomains, selectedGroups })
+
+  if (filtered.length === 0) {
+    doc.setTextColor(...MID)
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'italic')
+    doc.text('No barriers currently recorded.', ML, y + 5)
+    return y + 14
+  }
+
+  const body = rows.map(r => [
+    r.description, r.domLabel, r.groups, r.scale, r.source, r.status, r.actions, r.nextReviewDue,
+  ])
 
   autoTable(doc, {
     startY: y,
@@ -389,18 +407,29 @@ function drawBarriers(doc, y, { barriers, selectedDomains, selectedGroups }) {
 // ─────────────────────────────────────────────────────────────────────
 // SECTION 3 — Domain Readiness Summary
 // ─────────────────────────────────────────────────────────────────────
-function drawDomainReadiness(doc, y, { readinessData, selectedDomains }) {
-  y = checkNewPage(doc, y, 30)
-  y = sectionBar(doc, y, '3 — Domain Readiness Summary')
-
+function getDomainReadinessSectionData({ readinessData, selectedDomains }) {
   const relevant = selectedDomains.length === 0
     ? readinessData
     : readinessData.filter(d => selectedDomains.includes(d.id))
 
-  const body = relevant.map(d => {
-    const pct = d.total ? Math.round((d.inPlace / d.total) * 100) : 0
-    return [d.name, d.inPlace, d.inProgress, d.notInPlace, d.total, `${pct}%`, '']
-  })
+  const rows = relevant.map(d => ({
+    ...d,
+    pct: d.total ? Math.round((d.inPlace / d.total) * 100) : 0,
+  }))
+
+  const gaps  = relevant.filter(d => d.notInPlace > 0)
+  const inDev = relevant.filter(d => d.inProgress > 0 && d.notInPlace === 0)
+
+  return { relevant, rows, gaps, inDev }
+}
+
+function drawDomainReadiness(doc, y, { readinessData, selectedDomains }) {
+  y = checkNewPage(doc, y, 30)
+  y = sectionBar(doc, y, '3 — Domain Readiness Summary')
+
+  const { relevant, rows, gaps, inDev } = getDomainReadinessSectionData({ readinessData, selectedDomains })
+
+  const body = rows.map(d => [d.name, d.inPlace, d.inProgress, d.notInPlace, d.total, `${d.pct}%`, ''])
 
   autoTable(doc, {
     startY: y,
@@ -442,9 +471,6 @@ function drawDomainReadiness(doc, y, { readinessData, selectedDomains }) {
   y = doc.lastAutoTable.finalY + 4
 
   // Compliance gaps list
-  const gaps = relevant.filter(d => d.notInPlace > 0)
-  const inDev = relevant.filter(d => d.inProgress > 0 && d.notInPlace === 0)
-
   if (gaps.length > 0) {
     y = checkNewPage(doc, y, 12)
     doc.setFontSize(8)
@@ -495,11 +521,7 @@ const FUNDING_LABELS = {
   school_general_budget:     'General Budget',
 }
 
-function drawFunding(doc, y, { entries, selectedDomains, schoolCtx }) {
-  y = checkNewPage(doc, y, 30)
-  y = sectionBar(doc, y, '4 — Funding & Cost')
-  y += 4
-
+function getFundingSectionData({ entries, selectedDomains, schoolCtx }) {
   const domainFiltered = filterByDomain(entries, selectedDomains)
   const allEvidence = domainFiltered.flatMap(e =>
     (e.evidence_entries ?? []).map(ev => ({
@@ -523,15 +545,6 @@ function drawFunding(doc, y, { entries, selectedDomains, schoolCtx }) {
 
   const totalCost = Object.values(bySource).reduce((s, v) => s + v, 0)
 
-  if (totalCost === 0) {
-    doc.setTextColor(...MID)
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'italic')
-    doc.text('No cost data recorded yet.', ML, y + 6)
-    return y + 14
-  }
-
-  // Summary cards
   const equitySpend = byDomain['Equity & Disadvantage'] ?? 0
   const sendSpend   = byDomain['SEND Support & Needs']   ?? 0
   const perPupil    = schoolCtx.totalPupils ? Math.round(totalCost   / schoolCtx.totalPupils) : null
@@ -544,6 +557,35 @@ function drawFunding(doc, y, { entries, selectedDomains, schoolCtx }) {
     { label: 'Per PP Pupil',   value: perPP    ? `£${perPP.toLocaleString()}`     : '—' },
     { label: 'Per SEND Pupil', value: perSEND  ? `£${perSEND.toLocaleString()}`   : '—' },
   ]
+
+  const streamRows = Object.entries(bySource).map(([name, value]) => ({
+    name, value,
+    pctOfTotal: totalCost ? Math.round(value / totalCost * 100) : 0,
+  }))
+
+  const domainRows = Object.entries(byDomain)
+    .filter(([, v]) => v > 0)
+    .map(([name, value]) => ({ name, value }))
+
+  return { totalCost, bySource, byDomain, fCards, streamRows, domainRows }
+}
+
+function drawFunding(doc, y, { entries, selectedDomains, schoolCtx }) {
+  y = checkNewPage(doc, y, 30)
+  y = sectionBar(doc, y, '4 — Funding & Cost')
+  y += 4
+
+  const { totalCost, fCards, streamRows, domainRows } = getFundingSectionData({ entries, selectedDomains, schoolCtx })
+
+  if (totalCost === 0) {
+    doc.setTextColor(...MID)
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'italic')
+    doc.text('No cost data recorded yet.', ML, y + 6)
+    return y + 14
+  }
+
+  // Summary cards
   const COLS = 4, GAP = 3
   const cardW = (CW - GAP * (COLS - 1)) / COLS, cardH = 16
   for (let i = 0; i < fCards.length; i++) {
@@ -562,9 +604,7 @@ function drawFunding(doc, y, { entries, selectedDomains, schoolCtx }) {
   y += cardH + 5
 
   // Funding streams table
-  const streamBody = Object.entries(bySource).map(([name, value]) => [
-    name, `£${value.toLocaleString()}`, `${totalCost ? Math.round(value / totalCost * 100) : 0}%`,
-  ])
+  const streamBody = streamRows.map(r => [r.name, `£${r.value.toLocaleString()}`, `${r.pctOfTotal}%`])
   autoTable(doc, {
     startY: y,
     margin: { left: ML, right: ML, top: 14, bottom: 12 },
@@ -582,9 +622,7 @@ function drawFunding(doc, y, { entries, selectedDomains, schoolCtx }) {
   y = doc.lastAutoTable.finalY + 3
 
   // Domain spend (when domain-scoped, show selected domains only)
-  const domainBody = Object.entries(byDomain)
-    .filter(([, v]) => v > 0)
-    .map(([name, value]) => [name, `£${value.toLocaleString()}`])
+  const domainBody = domainRows.map(r => [r.name, `£${r.value.toLocaleString()}`])
 
   if (domainBody.length > 0) {
     y = checkNewPage(doc, y, 20)
@@ -610,14 +648,19 @@ function drawFunding(doc, y, { entries, selectedDomains, schoolCtx }) {
 // ─────────────────────────────────────────────────────────────────────
 // SECTION 5 — Provision in Place
 // ─────────────────────────────────────────────────────────────────────
+function getProvisionSectionData({ entries, selectedDomains, selectedGroups }) {
+  let filtered = (entries ?? []).filter(e => e.provision_points?.active !== false)
+  filtered = filterByDomain(filtered, selectedDomains)
+  filtered = filterByGroup(filtered, selectedGroups)
+  return filtered
+}
+
 function drawProvisionInPlace(doc, y, { entries, selectedDomains, selectedGroups, provisionView, domainList }) {
   y = checkNewPage(doc, y, 30)
   y = sectionBar(doc, y, '5 — Provision in Place')
   y += 4
 
-  let filtered = (entries ?? []).filter(e => e.provision_points?.active !== false)
-  filtered = filterByDomain(filtered, selectedDomains)
-  filtered = filterByGroup(filtered, selectedGroups)
+  const filtered = getProvisionSectionData({ entries, selectedDomains, selectedGroups })
 
   if (filtered.length === 0) {
     doc.setTextColor(...MID)
@@ -673,7 +716,7 @@ function provisionDidParseCell(filteredSlice) {
   }
 }
 
-function drawProvisionByDomain(doc, y, filtered, domainList) {
+function getProvisionByDomainData(filtered, domainList) {
   // Group by domain UUID → sub-domain name
   const byDomain = {}
   for (const e of filtered) {
@@ -688,19 +731,31 @@ function drawProvisionByDomain(doc, y, filtered, domainList) {
   const orderedIds = (domainList ?? []).map(d => d.id).filter(id => byDomain[id])
   const extraIds   = Object.keys(byDomain).filter(id => !orderedIds.includes(id))
 
-  for (const domId of [...orderedIds, ...extraIds]) {
+  return [...orderedIds, ...extraIds].map(domId => {
     const dom = byDomain[domId]
+    const subDomains = Object.entries(dom.bySD).map(([sdName, sdEntries]) => ({
+      sdName,
+      entries: sdEntries.sort((a, b) => (a.provision_points?.display_order ?? 0) - (b.provision_points?.display_order ?? 0)),
+    }))
+    return { domId, name: dom.name, subDomains }
+  })
+}
+
+function drawProvisionByDomain(doc, y, filtered, domainList) {
+  const domains = getProvisionByDomainData(filtered, domainList)
+
+  for (const dom of domains) {
     y = checkNewPage(doc, y, 16)
     y = domainBar(doc, y, dom.name)
     y += 3
 
     // Enrichment: insert equity supplementary table
     if (dom.name.includes('Enrichment')) {
-      const enrichAll = Object.values(dom.bySD).flat()
+      const enrichAll = dom.subDomains.flatMap(sd => sd.entries)
       y = drawEnrichmentEquityCompact(doc, y, enrichAll)
     }
 
-    for (const [sdName, sdEntries] of Object.entries(dom.bySD)) {
+    for (const { sdName, entries: sdEntries } of dom.subDomains) {
       y = checkNewPage(doc, y, 10)
       doc.setFontSize(7.5)
       doc.setFont('helvetica', 'bold')
@@ -708,15 +763,13 @@ function drawProvisionByDomain(doc, y, filtered, domainList) {
       doc.text(sdName, ML + 3, y)
       y += 5
 
-      const sorted = sdEntries.sort((a, b) => (a.provision_points?.display_order ?? 0) - (b.provision_points?.display_order ?? 0))
-
       autoTable(doc, {
         startY: y,
         margin: { left: ML + 3, right: ML, top: 14, bottom: 12 },
         head: [['Provision', 'Status', 'Type', 'Student Groups', 'Intended Outcome']],
-        body: sorted.map(provisionRowData),
+        body: sdEntries.map(provisionRowData),
         ...PROVISION_TABLE_OPTS,
-        didParseCell: provisionDidParseCell(sorted),
+        didParseCell: provisionDidParseCell(sdEntries),
       })
       y = doc.lastAutoTable.finalY + 4
     }
@@ -724,14 +777,21 @@ function drawProvisionByDomain(doc, y, filtered, domainList) {
   return y
 }
 
+function getProvisionByPrincipleData(filtered) {
+  return DFE_PRINCIPLES
+    .map(principle => ({
+      principle,
+      entries: filtered
+        .filter(e => e.provision_points?.principle === principle)
+        .sort((a, b) => (a.provision_points?.display_order ?? 0) - (b.provision_points?.display_order ?? 0)),
+    }))
+    .filter(g => g.entries.length > 0)
+}
+
 function drawProvisionByPrinciple(doc, y, filtered) {
-  for (const principle of DFE_PRINCIPLES) {
-    const pEntries = filtered
-      .filter(e => e.provision_points?.principle === principle)
-      .sort((a, b) => (a.provision_points?.display_order ?? 0) - (b.provision_points?.display_order ?? 0))
+  const groups = getProvisionByPrincipleData(filtered)
 
-    if (pEntries.length === 0) continue
-
+  for (const { principle, entries: pEntries } of groups) {
     y = checkNewPage(doc, y, 16)
     doc.setFillColor(...NAVY)
     doc.rect(ML, y, CW, 7, 'F')
@@ -755,7 +815,9 @@ function drawProvisionByPrinciple(doc, y, filtered) {
 }
 
 // Compact enrichment equity table for Section 5 (Part 4 — moved here from standalone)
-function drawEnrichmentEquityCompact(doc, y, entries) {
+// NOTE: 'groups'/'keys' here duplicate the same 9-group list as GROUP_TO_BOOL/ALL_GROUP_KEYS
+// above — pre-existing duplication, left as-is per this session's scope (flagged, not fixed).
+function getEnrichmentEquityData(entries) {
   const bySD = {}
   for (const e of entries) {
     const sd = e.provision_points?.sub_domains?.name ?? 'Other'
@@ -765,14 +827,20 @@ function drawEnrichmentEquityCompact(doc, y, entries) {
   const groups = ['Pupil Premium', 'SEND', 'FSM', 'EAL', 'LAC', 'White Working Class', 'Social Care', 'Young Carer', 'Mental Health Support']
   const keys   = ['grp_pp', 'grp_send', 'grp_fsm', 'grp_eal', 'grp_lac', 'grp_wwc', 'grp_social_care', 'grp_young_carer', 'grp_mental_health_support']
 
-  const body = Object.entries(bySD).map(([sdName, es]) => {
-    const row = [sdName]
-    for (const key of keys) {
+  const rows = Object.entries(bySD).map(([sdName, es]) => ({
+    sdName,
+    values: keys.map(key => {
       const count = es.filter(e => (e.evidence_entries ?? []).some(ev => ev[key])).length
-      row.push(`${es.length ? Math.round(count / es.length * 100) : 0}%`)
-    }
-    return row
-  })
+      return es.length ? Math.round(count / es.length * 100) : 0
+    }),
+  }))
+
+  return { groups, rows }
+}
+
+function drawEnrichmentEquityCompact(doc, y, entries) {
+  const { groups, rows } = getEnrichmentEquityData(entries)
+  const body = rows.map(r => [r.sdName, ...r.values.map(v => `${v}%`)])
 
   if (body.length === 0) return y
 
@@ -810,11 +878,7 @@ function drawEnrichmentEquityCompact(doc, y, entries) {
 // ─────────────────────────────────────────────────────────────────────
 // SECTION 6 — Reviews (overdue + next 28 days only)
 // ─────────────────────────────────────────────────────────────────────
-function drawReviews(doc, y, { entries, selectedDomains }) {
-  y = checkNewPage(doc, y, 30)
-  y = sectionBar(doc, y, '6 — Evaluate & Sustain Reviews')
-  y += 4
-
+function getReviewsSectionData({ entries, selectedDomains }) {
   const today = new Date()
   const domainFiltered = filterByDomain(entries, selectedDomains)
 
@@ -834,6 +898,16 @@ function drawReviews(doc, y, { entries, selectedDomains }) {
     )
     .filter(ev => ev.days_remaining < 0 || ev.days_remaining <= 28)
     .sort((a, b) => a.days_remaining - b.days_remaining)
+
+  return reviews
+}
+
+function drawReviews(doc, y, { entries, selectedDomains }) {
+  y = checkNewPage(doc, y, 30)
+  y = sectionBar(doc, y, '6 — Evaluate & Sustain Reviews')
+  y += 4
+
+  const reviews = getReviewsSectionData({ entries, selectedDomains })
 
   if (reviews.length === 0) {
     doc.setTextColor(...MID)
@@ -879,11 +953,7 @@ function drawReviews(doc, y, { entries, selectedDomains }) {
 // ─────────────────────────────────────────────────────────────────────
 // APPENDIX A — Full Outcomes & Impact
 // ─────────────────────────────────────────────────────────────────────
-function drawAppendixA(doc, y, { entries, selectedDomains, selectedGroups, domainList }) {
-  y = checkNewPage(doc, y, 30)
-  y = sectionBar(doc, y, 'Appendix A — Full Outcomes & Impact')
-  y += 4
-
+function getAppendixASectionData({ entries, selectedDomains, selectedGroups, domainList }) {
   const byDomain = {}
   const domFiltered = filterByDomain(entries, selectedDomains)
 
@@ -911,7 +981,19 @@ function drawAppendixA(doc, y, { entries, selectedDomains, selectedGroups, domai
   const orderedIds = (domainList ?? []).map(d => d.id).filter(id => byDomain[id])
   const extraIds   = Object.keys(byDomain).filter(id => !orderedIds.includes(id))
 
-  if (orderedIds.length === 0 && extraIds.length === 0) {
+  const domains = [...orderedIds, ...extraIds].map(domId => byDomain[domId])
+
+  return { domains }
+}
+
+function drawAppendixA(doc, y, { entries, selectedDomains, selectedGroups, domainList }) {
+  y = checkNewPage(doc, y, 30)
+  y = sectionBar(doc, y, 'Appendix A — Full Outcomes & Impact')
+  y += 4
+
+  const { domains } = getAppendixASectionData({ entries, selectedDomains, selectedGroups, domainList })
+
+  if (domains.length === 0) {
     doc.setTextColor(...MID)
     doc.setFontSize(8)
     doc.setFont('helvetica', 'italic')
@@ -919,8 +1001,7 @@ function drawAppendixA(doc, y, { entries, selectedDomains, selectedGroups, domai
     return y + 14
   }
 
-  for (const domId of [...orderedIds, ...extraIds]) {
-    const dom = byDomain[domId]
+  for (const dom of domains) {
     y = checkNewPage(doc, y, 14)
     y = domainBar(doc, y, dom.name)
     y += 3
@@ -948,11 +1029,7 @@ function drawAppendixA(doc, y, { entries, selectedDomains, selectedGroups, domai
 // ─────────────────────────────────────────────────────────────────────
 // APPENDIX B — Full Provision Checklist
 // ─────────────────────────────────────────────────────────────────────
-function drawAppendixB(doc, y, { entries, domainList }) {
-  y = checkNewPage(doc, y, 30)
-  y = sectionBar(doc, y, 'Appendix B — Full Provision Checklist')
-  y += 4
-
+function getAppendixBSectionData({ entries, domainList }) {
   const byDomain = {}
   for (const e of entries) {
     if (e.provision_points?.active === false) continue
@@ -966,14 +1043,31 @@ function drawAppendixB(doc, y, { entries, domainList }) {
 
   const orderedIds = (domainList ?? []).map(d => d.id).filter(id => byDomain[id])
 
-  for (const domId of orderedIds) {
+  const domains = orderedIds.map(domId => {
     const dom = byDomain[domId]
+    const subDomains = Object.entries(dom.bySD).map(([sdName, sdEntries]) => ({
+      sdName,
+      entries: sdEntries.sort((a, b) => (a.provision_points?.display_order ?? 0) - (b.provision_points?.display_order ?? 0)),
+    }))
+    return { domId, name: dom.name, subDomains }
+  })
+
+  return { domains }
+}
+
+function drawAppendixB(doc, y, { entries, domainList }) {
+  y = checkNewPage(doc, y, 30)
+  y = sectionBar(doc, y, 'Appendix B — Full Provision Checklist')
+  y += 4
+
+  const { domains } = getAppendixBSectionData({ entries, domainList })
+
+  for (const dom of domains) {
     y = checkNewPage(doc, y, 14)
     y = domainBar(doc, y, dom.name)
     y += 3
 
-    for (const [sdName, sdEntries] of Object.entries(dom.bySD)) {
-      const sorted = sdEntries.sort((a, b) => (a.provision_points?.display_order ?? 0) - (b.provision_points?.display_order ?? 0))
+    for (const { sdName, entries: sorted } of dom.subDomains) {
       y = checkNewPage(doc, y, 10)
       doc.setFontSize(7.5)
       doc.setFont('helvetica', 'bold')
@@ -1108,566 +1202,6 @@ export function generateEvidenceReport({
 
   const filePrefix = isFullStrategy ? 'Inclusion_Strategy_Statement' : 'Inclusion_Evidence_Report'
   doc.save(`${filePrefix}_${safeName}_${ay.replace('/', '-')}.pdf`)
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// LEGACY — generateReport (old working report, kept for compatibility)
-// ─────────────────────────────────────────────────────────────────────
-const LEGACY_ML  = 14
-const LEGACY_CW  = 269
-const LEGACY_MAX = 197
-const LEGACY_TEAL   = [0, 105, 105]
-const LEGACY_INDIGO = [99, 102, 241]
-const LEGACY_LTGREY = [229, 231, 235]
-
-function legacyHex(hex) {
-  const h = (hex || '#94a3b8').replace('#', '')
-  return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)]
-}
-function legacyDomainColour(name = '', idx = 0) {
-  const map = [
-    { k: 'SEND', c: '#4338CA' }, { k: 'Equity', c: '#7A5C13' },
-    { k: 'Attendance', c: '#0E6251' }, { k: 'Enrichment', c: '#6B21A8' },
-    { k: 'Belonging', c: '#334E68' }, { k: 'Wellbeing', c: '#5B3A9C' },
-  ]
-  const fb = ['#4338CA','#7A5C13','#0E6251','#6B21A8','#334E68','#5B3A9C']
-  const m = map.find(d => name.includes(d.k))
-  return m ? m.c : fb[idx % fb.length]
-}
-function legacyCheckPage(doc, y, needed = 20) {
-  if (y + needed > LEGACY_MAX) { doc.addPage(); return 14 }
-  return y
-}
-function legacySectionBar(doc, y, label) {
-  doc.setFillColor(...LEGACY_TEAL)
-  doc.rect(0, y, 297, 7, 'F')
-  doc.setTextColor(...WHITE)
-  doc.setFontSize(9)
-  doc.setFont('helvetica', 'bold')
-  doc.text(label.toUpperCase(), LEGACY_ML, y + 4.8)
-  return y + 7
-}
-function legacyApplyHF(doc, schoolName, dateStr) {
-  const n = doc.getNumberOfPages()
-  for (let i = 1; i <= n; i++) {
-    doc.setPage(i)
-    doc.setFillColor(...NAVY)
-    doc.rect(0, 0, 297, 12, 'F')
-    doc.setTextColor(...WHITE)
-    doc.setFontSize(9)
-    doc.setFont('helvetica', 'bold')
-    doc.text(schoolName, LEGACY_ML, 8)
-    doc.setFont('helvetica', 'normal')
-    doc.text(`Inclusion Evidence Report | ${dateStr}`, 283, 8, { align: 'right' })
-    doc.setFillColor(...NAVY)
-    doc.rect(0, 200, 297, 10, 'F')
-    doc.setTextColor(...WHITE)
-    doc.setFontSize(7.5)
-    doc.text('Inclusion Dashboard · inclusiondashboard.co.uk', LEGACY_ML, 206)
-    doc.text(`Page ${i} of ${n}`, 283, 206, { align: 'right' })
-  }
-}
-
-export function generateReport({
-  schoolCtx = {}, readinessData = [], upcomingReviews = [],
-  equityData = [], fundingSourceData = [], fundingDomainData = [],
-  totalCost = 0, allEvidence = [], domains = [],
-  schoolName = '', options = {},
-}) {
-  const {
-    includeEquity   = true,
-    equityChart     = 'table',
-    includeFunding  = true,
-    fundingChart    = 'bar',
-    includeOutcomes = true,
-    outcomeMode     = 'all',
-    outcomeSelected = [],
-  } = options
-
-  const doc     = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-  const dateStr = fmt()
-  const ay      = academicYear()
-  const safeName = (schoolName || 'School').replace(/[^a-z0-9]/gi, '_')
-
-  let y = 14
-
-  // School context
-  y = legacySectionBar(doc, y, 'School Context')
-  y += 3
-
-  const cards = [
-    { label: 'Total Pupils',        value: schoolCtx.totalPupils || '—' },
-    { label: 'Pupil Premium',       value: schoolCtx.ppCount     || '—' },
-    { label: 'SEND',                value: schoolCtx.sendCount   || '—' },
-    { label: 'FSM',                 value: schoolCtx.fsmCount    || '—' },
-    { label: 'EAL',                 value: schoolCtx.ealCount    || '—' },
-    { label: 'LAC',                 value: schoolCtx.lacCount    || '—' },
-    { label: 'White Working Class', value: schoolCtx.wwcCount    || '—' },
-    { label: 'Overall Readiness',   value: `${readinessData.reduce((s,d)=>s+d.total,0) ? Math.round(readinessData.reduce((s,d)=>s+d.inPlace,0)/readinessData.reduce((s,d)=>s+d.total,0)*100) : 0}%` },
-  ]
-  const GAP = 3, COLS = 4
-  const cardW = (LEGACY_CW - GAP * (COLS - 1)) / COLS, cardH = 18
-  for (let i = 0; i < cards.length; i++) {
-    const col = i % COLS, row = Math.floor(i / COLS)
-    const cx = LEGACY_ML + col * (cardW + GAP), cy = y + row * (cardH + GAP)
-    doc.setFillColor(241, 245, 249)
-    doc.rect(cx, cy, cardW, cardH, 'F')
-    doc.setTextColor(...DARK)
-    doc.setFontSize(14)
-    doc.setFont('helvetica', 'bold')
-    doc.text(String(cards[i].value), cx + cardW / 2, cy + 9, { align: 'center' })
-    doc.setTextColor(...MID)
-    doc.setFontSize(6.5)
-    doc.setFont('helvetica', 'normal')
-    doc.text(cards[i].label, cx + cardW / 2, cy + 15, { align: 'center' })
-  }
-  y += 2 * (cardH + GAP) + 2
-
-  // Domain readiness table
-  y = legacyCheckPage(doc, y, 30)
-  y = legacySectionBar(doc, y, 'Domain Readiness')
-  const rdBody = readinessData.map(d => {
-    const pct = d.total ? Math.round((d.inPlace / d.total) * 100) : 0
-    return [d.fullName ?? d.name, d.inPlace, d.inProgress, d.notInPlace, d.total, `${pct}%`, '']
-  })
-  autoTable(doc, {
-    startY: y,
-    margin: { left: LEGACY_ML, right: LEGACY_ML, top: 14, bottom: 12 },
-    head: [['Domain', 'In Place', 'In Progress', 'Not In Place', 'Total', '% Complete', 'Coverage']],
-    body: rdBody,
-    styles: { font: 'helvetica', fontSize: 8, cellPadding: 2.5 },
-    headStyles: { fillColor: NAVY, textColor: WHITE, fontStyle: 'bold', fontSize: 8 },
-    alternateRowStyles: { fillColor: [248,250,252] },
-    columnStyles: {
-      0: { cellWidth: 65 }, 1: { cellWidth: 22, halign: 'center' },
-      2: { cellWidth: 24, halign: 'center' }, 3: { cellWidth: 24, halign: 'center' },
-      4: { cellWidth: 18, halign: 'center' }, 5: { cellWidth: 22, halign: 'center' },
-      6: { cellWidth: 94 },
-    },
-    didParseCell(data) {
-      if (data.section !== 'body') return
-      if (data.column.index === 1) { data.cell.styles.textColor = GREEN; data.cell.styles.fontStyle = 'bold' }
-      if (data.column.index === 2) { data.cell.styles.textColor = AMBER; data.cell.styles.fontStyle = 'bold' }
-      if (data.column.index === 3) { data.cell.styles.textColor = RED;   data.cell.styles.fontStyle = 'bold' }
-    },
-    didDrawCell(data) {
-      if (data.section !== 'body' || data.column.index !== 6) return
-      const d = readinessData[data.row.index]
-      if (!d || !d.total) return
-      const frac = d.inPlace / d.total
-      const bx = data.cell.x + 3, by = data.cell.y + (data.cell.height - 4) / 2, bw = data.cell.width - 6
-      doc.setFillColor(...LEGACY_LTGREY)
-      doc.rect(bx, by, bw, 4, 'F')
-      if (frac > 0) {
-        doc.setFillColor(...legacyHex(legacyDomainColour(d.fullName ?? d.name)))
-        doc.rect(bx, by, bw * frac, 4, 'F')
-      }
-    },
-  })
-  y = doc.lastAutoTable.finalY + 3
-
-  // Reviews (overdue + 28 days only)
-  y = legacyCheckPage(doc, y, 20)
-  y = legacySectionBar(doc, y, 'Upcoming Reviews')
-  const today = new Date()
-  const filteredReviews = upcomingReviews.filter(ev => {
-    const d = Math.ceil((new Date(ev.next_review_due) - today) / 86400000)
-    return d < 0 || d <= 28
-  })
-  if (filteredReviews.length === 0) {
-    doc.setTextColor(...MID)
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'italic')
-    doc.text('No reviews overdue or due in the next 28 days.', LEGACY_ML, y + 7)
-    y += 14
-  } else {
-    const rvBody = filteredReviews.map(ev => [
-      ev.provision_name || ev.entryLabel || '—',
-      ev.domainName || '—',
-      ev.next_review_due ? new Date(ev.next_review_due).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—',
-      ev.daysLeft < 0 ? 'Overdue' : `${ev.daysLeft}d`,
-    ])
-    autoTable(doc, {
-      startY: y,
-      margin: { left: LEGACY_ML, right: LEGACY_ML, top: 14, bottom: 12 },
-      head: [['Provision / Entry', 'Domain', 'Review Due', 'Days Remaining']],
-      body: rvBody,
-      styles: { font: 'helvetica', fontSize: 7.5, cellPadding: 2.5 },
-      headStyles: { fillColor: NAVY, textColor: WHITE, fontStyle: 'bold' },
-      alternateRowStyles: { fillColor: [248,250,252] },
-      columnStyles: {
-        0: { cellWidth: 110 }, 1: { cellWidth: 70 }, 2: { cellWidth: 50 }, 3: { cellWidth: 39, halign: 'center' },
-      },
-      didParseCell(data) {
-        if (data.section !== 'body' || data.column.index !== 3) return
-        const ev = filteredReviews[data.row.index]
-        if (!ev) return
-        data.cell.styles.fontStyle = 'bold'
-        data.cell.styles.textColor = ev.daysLeft < 0 ? RED : AMBER
-      },
-    })
-    y = doc.lastAutoTable.finalY + 3
-  }
-
-  // Funding
-  if (includeFunding && totalCost > 0) {
-    y = legacyCheckPage(doc, y, 30)
-    y = legacySectionBar(doc, y, 'Funding & Cost')
-    y += 3
-    const equitySpend = fundingDomainData.find(d => d.fullName?.includes('Equity'))?.value ?? 0
-    const sendSpend   = fundingDomainData.find(d => d.fullName?.includes('SEND'))?.value   ?? 0
-    const perPupil    = schoolCtx.totalPupils ? Math.round(totalCost   / schoolCtx.totalPupils) : null
-    const perPP       = schoolCtx.ppCount     ? Math.round(equitySpend / schoolCtx.ppCount)     : null
-    const perSEND     = schoolCtx.sendCount   ? Math.round(sendSpend   / schoolCtx.sendCount)   : null
-    const fCards = [
-      { label: 'Total Spend',    value: `£${totalCost.toLocaleString()}` },
-      { label: 'Per Pupil',      value: perPupil ? `£${perPupil.toLocaleString()}`  : '—' },
-      { label: 'Per PP Pupil',   value: perPP    ? `£${perPP.toLocaleString()}`     : '—' },
-      { label: 'Per SEND Pupil', value: perSEND  ? `£${perSEND.toLocaleString()}`   : '—' },
-    ]
-    const fcardW = (LEGACY_CW - GAP * (COLS - 1)) / COLS, fcardH = 16
-    for (let i = 0; i < fCards.length; i++) {
-      const cx = LEGACY_ML + i * (fcardW + GAP)
-      doc.setFillColor(241, 245, 249)
-      doc.rect(cx, y, fcardW, fcardH, 'F')
-      doc.setTextColor(...DARK)
-      doc.setFontSize(12)
-      doc.setFont('helvetica', 'bold')
-      doc.text(fCards[i].value, cx + fcardW / 2, y + 8, { align: 'center' })
-      doc.setTextColor(...MID)
-      doc.setFontSize(7)
-      doc.setFont('helvetica', 'normal')
-      doc.text(fCards[i].label, cx + fcardW / 2, y + 13.5, { align: 'center' })
-    }
-    y += fcardH + 5
-    const fsBody = fundingSourceData.map(fs => [fs.name, `£${fs.value.toLocaleString()}`, `${totalCost ? Math.round(fs.value/totalCost*100) : 0}%`])
-    autoTable(doc, {
-      startY: y, margin: { left: LEGACY_ML, right: LEGACY_ML, top: 14, bottom: 12 },
-      head: [['Funding Stream', 'Total Spend', '% of Total']], body: fsBody,
-      styles: { font: 'helvetica', fontSize: 8, cellPadding: 2.5 },
-      headStyles: { fillColor: NAVY, textColor: WHITE, fontStyle: 'bold' },
-      alternateRowStyles: { fillColor: [248,250,252] },
-      columnStyles: { 0: { cellWidth: 180 }, 1: { cellWidth: 55, halign: 'right' }, 2: { cellWidth: 34, halign: 'center' } },
-    })
-    y = doc.lastAutoTable.finalY + 3
-  }
-
-  // Outcomes
-  if (includeOutcomes) {
-    const rawItems = allEvidence
-      .filter(ev => ev.intended_outcomes || ev.impact_on_outcomes)
-      .map(ev => ({
-        name:     ev.provision_name || ev.entryLabel || '—',
-        domain:   ev.domainName    || 'Other',
-        intended: ev.intended_outcomes  || '',
-        impact:   ev.impact_on_outcomes || '',
-      }))
-    let filtered2 = rawItems
-    if (outcomeMode === 'domain' && outcomeSelected.length > 0)
-      filtered2 = rawItems.filter(i => outcomeSelected.includes(i.domain))
-    y = legacyCheckPage(doc, y, 30)
-    y = legacySectionBar(doc, y, 'Outcomes & Impact')
-    if (filtered2.length === 0) {
-      doc.setTextColor(...MID); doc.setFontSize(8); doc.setFont('helvetica', 'italic')
-      doc.text('No outcomes match the current filter.', LEGACY_ML, y + 7)
-      y += 14
-    } else {
-      const body = filtered2.map(item => [item.name, item.domain, item.intended || '—', item.impact || '—'])
-      autoTable(doc, {
-        startY: y, margin: { left: LEGACY_ML, right: LEGACY_ML, top: 14, bottom: 12 },
-        head: [['Entry / Provision', 'Domain', 'Intended Outcome', 'Evidence of Impact']], body,
-        styles: { font: 'helvetica', fontSize: 7.5, cellPadding: 2.5, overflow: 'linebreak' },
-        headStyles: { fillColor: NAVY, textColor: WHITE, fontStyle: 'bold' },
-        alternateRowStyles: { fillColor: [248,250,252] },
-        columnStyles: { 0: { cellWidth: 55 }, 1: { cellWidth: 40 }, 2: { cellWidth: 87 }, 3: { cellWidth: 87 } },
-      })
-      y = doc.lastAutoTable.finalY + 3
-    }
-  }
-
-  legacyApplyHF(doc, schoolName || 'School', dateStr)
-  doc.save(`Inclusion_Evidence_Report_${safeName}_${ay.replace('/', '-')}.pdf`)
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// LEGACY — generateInclusionStrategy (DfE-principle based, with fixes)
-// ─────────────────────────────────────────────────────────────────────
-const IS_GREEN = [37, 122, 59]
-const IS_AMBER = [212, 117, 26]
-
-function isStatusColour(s) {
-  if (s === 'in_place')    return IS_GREEN
-  if (s === 'in_progress') return IS_AMBER
-  return RED
-}
-function isStatusLabel(s) {
-  if (s === 'in_place')    return 'In Place'
-  if (s === 'in_progress') return 'In Progress'
-  return 'Not In Place'
-}
-
-const BARRIER_GROUP_KEYS = [
-  { key: 'send', label: 'SEND' },
-  { key: 'pp',   label: 'Pupil Premium' },
-  { key: 'eal',  label: 'EAL' },
-  { key: 'fsm',  label: 'FSM' },
-  { key: 'lac',  label: 'LAC' },
-  { key: 'wwc',  label: 'White Working Class' },
-]
-
-function applyStrategyHeadersFooters(doc, schoolName, ay) {
-  const n = doc.getNumberOfPages()
-  for (let i = 1; i <= n; i++) {
-    doc.setPage(i)
-    if (i === 1) continue
-    doc.setFillColor(...NAVY)
-    doc.rect(0, 0, 210, 10, 'F')
-    doc.setTextColor(...WHITE)
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'bold')
-    doc.text(schoolName, 14, 6.5)
-    doc.setFont('helvetica', 'normal')
-    doc.text(`Inclusion Strategy Statement ${ay}`, 196, 6.5, { align: 'right' })
-    doc.setFillColor(...NAVY)
-    doc.rect(0, 287, 210, 10, 'F')
-    doc.setTextColor(...WHITE)
-    doc.setFontSize(7)
-    doc.text('Inclusion Dashboard · inclusiondashboard.co.uk', 14, 293)
-    doc.text(`Page ${i} of ${n}`, 196, 293, { align: 'right' })
-  }
-}
-
-export function generateInclusionStrategy({ schoolName = '', allEntries = [], activePPs = [], barriers = [] }) {
-  const doc      = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-  const dateStr  = fmt()
-  const ay       = academicYear()
-  const safeName = (schoolName || 'School').replace(/[^a-z0-9]/gi, '_')
-  const ML_P = 14, MAX_YP = 275, CW_P = 182
-
-  const totalBarriers = barriers.length
-
-  // Cover page
-  doc.setFillColor(...NAVY)
-  doc.rect(0, 0, 210, 297, 'F')
-  doc.setTextColor(...WHITE)
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(28)
-  doc.text('Inclusion Strategy Statement', 105, 110, { align: 'center' })
-  doc.setFontSize(20)
-  doc.text(ay, 105, 125, { align: 'center' })
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(14)
-  doc.text(schoolName || 'School', 105, 150, { align: 'center' })
-  doc.setFontSize(10)
-  doc.setTextColor(180, 200, 220)
-  doc.text(`Generated ${dateStr}`, 105, 165, { align: 'center' })
-  if (totalBarriers > 0) {
-    doc.setFontSize(9)
-    doc.setTextColor(254, 243, 199)
-    doc.text(`Barriers identified: ${totalBarriers}`, 105, 178, { align: 'center' })
-  }
-  doc.setFontSize(8)
-  doc.setTextColor(180, 200, 220)
-  doc.text('Based on the DfE 7 Principles of Inclusion', 105, 280, { align: 'center' })
-
-  const entryMap = {}
-  for (const e of allEntries) entryMap[e.provision_point_id] = e
-
-  const domainToPrinciples = {}
-  for (const pp of activePPs) {
-    const domName = pp.sub_domains?.domains?.name
-    if (!domName || !pp.principle) continue
-    if (!domainToPrinciples[domName]) domainToPrinciples[domName] = new Set()
-    domainToPrinciples[domName].add(pp.principle)
-  }
-
-  const principleBarriers = {}
-  for (const b of barriers) {
-    const domName = b.domains?.name
-    if (!domName) continue
-    const principles = domainToPrinciples[domName]
-    if (!principles) continue
-    for (const p of principles) {
-      if (!principleBarriers[p]) principleBarriers[p] = []
-      principleBarriers[p].push(b)
-    }
-  }
-
-  for (const principle of DFE_PRINCIPLES) {
-    const pps = activePPs
-      .filter(pp => pp.principle === principle)
-      .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))
-
-    const included = pps.filter(pp => {
-      const e = entryMap[pp.id]
-      return e && (e.status === 'in_place' || e.status === 'in_progress')
-    })
-
-    const inPlaceCount  = pps.filter(pp => entryMap[pp.id]?.status === 'in_place').length
-    const prinBarriers  = principleBarriers[principle] ?? []
-
-    doc.addPage()
-    let y = 14
-
-    doc.setFillColor(...NAVY)
-    doc.rect(0, y, 210, 12, 'F')
-    doc.setTextColor(...WHITE)
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(11)
-    doc.text(principle, ML_P, y + 8)
-    y += 12
-
-    const subText = prinBarriers.length > 0
-      ? `${inPlaceCount} of ${pps.length} provision points in place · ${prinBarriers.length} barrier${prinBarriers.length === 1 ? '' : 's'} identified`
-      : `${inPlaceCount} of ${pps.length} provision points in place`
-    doc.setFillColor(240, 244, 248)
-    doc.rect(0, y, 210, 9, 'F')
-    doc.setTextColor(...DARK)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(9)
-    doc.text(subText, ML_P, y + 6)
-    y += 9 + 6
-
-    if (prinBarriers.length > 0) {
-      doc.setFillColor(254, 243, 199)
-      doc.rect(ML_P, y, CW_P, 8, 'F')
-      doc.setFillColor(212, 117, 26)
-      doc.rect(ML_P, y, 4, 8, 'F')
-      doc.setTextColor(122, 74, 10)
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(9)
-      doc.text('IDENTIFIED BARRIERS', ML_P + 7, y + 5.5)
-      y += 8 + 3
-
-      for (let bi = 0; bi < prinBarriers.length; bi++) {
-        const b = prinBarriers[bi]
-        const descLines  = doc.splitTextToSize(b.description ?? '', CW_P - 4).length
-        const hasActions = b.actions && b.actions.trim()
-        const actLines   = hasActions ? doc.splitTextToSize(`Actions: ${b.actions}`, CW_P - 4).length : 0
-        const rowH = descLines * 4.5 + 5 + 5 + (hasActions ? actLines * 4 + 3 : 0) + 4
-
-        if (y + rowH > MAX_YP) {
-          doc.addPage(); y = 14
-          doc.setFillColor(...NAVY); doc.rect(0, 0, 210, 10, 'F')
-          doc.setTextColor(...WHITE); doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
-          doc.text(`${principle} (continued)`, ML_P, 6.5); y = 14
-        }
-
-        const descWrapped = doc.splitTextToSize(b.description ?? '', CW_P - 4)
-        doc.setTextColor(26, 26, 46); doc.setFont('helvetica', 'bold'); doc.setFontSize(10)
-        doc.text(descWrapped, ML_P + 2, y + 4.5)
-        y += descWrapped.length * 4.5 + 2
-
-        const domLabel = b.sub_domains?.name
-          ? `${b.domains?.name ?? ''} — ${b.sub_domains.name}`
-          : (b.domains?.name ?? '')
-        doc.setTextColor(107, 114, 128); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5)
-        doc.text(domLabel, ML_P + 2, y + 4); y += 5
-
-        let tagX = ML_P + 2
-        const isActive = b.status === 'active'
-        const statusBg  = isActive ? [254, 226, 226] : [254, 243, 199]
-        const statusFg  = isActive ? [153, 27, 27]   : [146, 64, 14]
-        const statusTxt = isActive ? 'Active' : 'Being addressed'
-        const statusW   = doc.getTextWidth(statusTxt) + 4
-        doc.setFillColor(...statusBg); doc.roundedRect(tagX, y, statusW, 5, 1, 1, 'F')
-        doc.setTextColor(...statusFg); doc.setFont('helvetica', 'bold'); doc.setFontSize(7)
-        doc.text(statusTxt, tagX + 2, y + 3.5); tagX += statusW + 2
-
-        if (b.scale) {
-          const scaleLabels = { individual: 'Individual', group: 'Group', whole_school: 'Whole school' }
-          const scaleTxt = scaleLabels[b.scale] ?? b.scale
-          const scaleW = doc.getTextWidth(scaleTxt) + 4
-          doc.setFillColor(243, 244, 246); doc.roundedRect(tagX, y, scaleW, 5, 1, 1, 'F')
-          doc.setTextColor(55, 65, 81); doc.setFont('helvetica', 'normal'); doc.setFontSize(7)
-          doc.text(scaleTxt, tagX + 2, y + 3.5); tagX += scaleW + 2
-        }
-
-        const activeGroups = BARRIER_GROUP_KEYS.filter(g => b.student_groups?.[g.key])
-        for (const grp of activeGroups) {
-          const grpW = doc.getTextWidth(grp.label) + 4
-          if (tagX + grpW > ML_P + CW_P - 2) break
-          doc.setFillColor(219, 234, 254); doc.roundedRect(tagX, y, grpW, 5, 1, 1, 'F')
-          doc.setTextColor(30, 64, 175); doc.setFont('helvetica', 'normal'); doc.setFontSize(7)
-          doc.text(grp.label, tagX + 2, y + 3.5); tagX += grpW + 2
-        }
-        y += 6
-
-        if (hasActions) {
-          const actionLines = doc.splitTextToSize(`Actions: ${b.actions}`, CW_P - 4)
-          doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(55, 65, 81)
-          doc.text('Actions:', ML_P + 2, y + 3.5)
-          const prefixW = doc.getTextWidth('Actions: ')
-          doc.setFont('helvetica', 'normal')
-          doc.text(actionLines[0].replace(/^Actions:\s*/, ''), ML_P + 2 + prefixW, y + 3.5)
-          if (actionLines.length > 1) {
-            doc.text(actionLines.slice(1), ML_P + 2, y + 3.5 + 4); y += (actionLines.length - 1) * 4
-          }
-          y += 5
-        }
-
-        if (bi < prinBarriers.length - 1) {
-          doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.5)
-          doc.line(ML_P, y, ML_P + CW_P, y); y += 3
-        }
-      }
-      y += 5
-    }
-
-    if (included.length === 0) {
-      doc.setTextColor(...MID); doc.setFontSize(9)
-      doc.text('No provision points currently in place or in progress for this principle.', ML_P, y)
-      continue
-    }
-
-    for (const pp of included) {
-      const entry  = entryMap[pp.id]
-      const status = entry?.status ?? 'not_in_place'
-      const what   = entry?.what ?? ''
-      const notes  = entry?.evidence_notes ?? ''
-      const label  = pp.label ?? ''
-
-      const whatLines  = what  ? doc.splitTextToSize(what,  CW_P - 30).length : 0
-      const notesLines = notes ? doc.splitTextToSize(notes, CW_P - 30).length : 0
-      const rowH = 8 + (whatLines + notesLines) * 4.5 + (notes ? 5 : 0) + 6
-
-      if (y + rowH > MAX_YP) {
-        doc.addPage(); y = 14
-        doc.setFillColor(...NAVY); doc.rect(0, 0, 210, 10, 'F')
-        doc.setTextColor(...WHITE); doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
-        doc.text(`${principle} (continued)`, ML_P, 6.5); y = 14
-      }
-
-      doc.setFillColor(248, 250, 252)
-      doc.rect(ML_P, y, CW_P, rowH - 2, 'F')
-
-      const col = isStatusColour(status)
-      doc.setFillColor(...col)
-      doc.roundedRect(ML_P, y + 1.5, 22, 5.5, 1.5, 1.5, 'F')
-      doc.setTextColor(...WHITE); doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5)
-      doc.text(isStatusLabel(status), ML_P + 11, y + 5, { align: 'center' })
-
-      doc.setTextColor(...DARK); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5)
-      doc.text(label, ML_P + 26, y + 5.5)
-      y += 9
-
-      if (what) {
-        const lines = doc.splitTextToSize(what, CW_P - 30)
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...DARK)
-        doc.text(lines, ML_P + 26, y); y += lines.length * 4.5
-      }
-      if (notes) {
-        y += 3
-        const noteLines = doc.splitTextToSize(`Evidence: ${notes}`, CW_P - 30)
-        doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5); doc.setTextColor(...MID)
-        doc.text(noteLines, ML_P + 26, y); y += noteLines.length * 4.5
-      }
-      y += 4
-    }
-  }
-
-  applyStrategyHeadersFooters(doc, schoolName || 'School', ay)
-  doc.save(`Inclusion_Strategy_Statement_${safeName}_${ay.replace('/', '-')}.pdf`)
 }
 
 // ─────────────────────────────────────────────────────────────────────

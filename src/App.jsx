@@ -16,7 +16,7 @@ import { useIsReadOnlyView } from './hooks/useIsReadOnlyView'
 import { usePrincipleCoverage } from './hooks/usePrincipleCoverage'
 import ReadOnlyBanner from './components/ReadOnlyBanner'
 import './App.css'
-import { generateEvidenceReport, generateReport, generateInclusionStrategy } from './generateReport'
+import { generateEvidenceReport } from './generateReport'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts'
 
 // ── Invite-link detection ─────────────────────────────────────────────
