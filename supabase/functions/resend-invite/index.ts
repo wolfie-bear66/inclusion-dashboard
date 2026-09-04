@@ -77,12 +77,31 @@ Deno.serve(async (req) => {
   const { data: userData, error: userErr } = await admin.auth.admin.getUserById(profileId)
   if (userErr || !userData?.user?.email) return fail('Could not find the auth account for this profile', 404)
 
-  // Re-issuing the invite to an unconfirmed user resends the same invite email —
-  // Supabase does not error on this as long as the account hasn't been confirmed yet.
-  const { error: inviteErr } = await admin.auth.admin.inviteUserByEmail(userData.user.email)
-  if (inviteErr) return fail(inviteErr.message, 400)
+  const email = userData.user.email
+  // GoTrue marks a user "confirmed" (email_confirmed_at/confirmed_at) as soon as they
+  // authenticate via any link — including one that dead-ended before they set a password
+  // (see the SetPasswordPage timeout fixed previously, and Jenny Carson/Blackmoor Park
+  // Junior specifically, confirmed live: her account is already confirmed even though
+  // profiles.password_set is still false). inviteUserByEmail errors ("already registered")
+  // once a user is confirmed, so route those through resetPasswordForEmail instead — same
+  // built-in Supabase email delivery already used for the app's own "forgot password" flow
+  // (App.jsx handleForgotPassword), so it needs no extra email infrastructure. Left
+  // deliberately as an upfront branch on the account's actual confirmation state rather
+  // than a catch-and-retry on inviteUserByEmail's error text, since that message isn't a
+  // stable contract to match against.
+  const isConfirmed = !!(userData.user.email_confirmed_at || userData.user.confirmed_at)
 
-  return new Response(JSON.stringify({ success: true, email: userData.user.email }), {
+  if (isConfirmed) {
+    const { error: resetErr } = await admin.auth.resetPasswordForEmail(email)
+    if (resetErr) return fail(resetErr.message, 400)
+  } else {
+    // Re-issuing the invite to an unconfirmed user resends the same invite email —
+    // Supabase does not error on this as long as the account hasn't been confirmed yet.
+    const { error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email)
+    if (inviteErr) return fail(inviteErr.message, 400)
+  }
+
+  return new Response(JSON.stringify({ success: true, email }), {
     status: 200,
     headers: { ...CORS, 'Content-Type': 'application/json' },
   })

@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
     // Profiles (per school, plus we need ids to join against auth.users for login data)
     const { data: profiles, error: profilesErr } = await admin
       .from('profiles')
-      .select('id, school_id, first_name, last_name, role, job_title, mat_id')
+      .select('id, school_id, first_name, last_name, role, job_title, mat_id, password_set')
       .in('school_id', schoolIds.length ? schoolIds : ['00000000-0000-0000-0000-000000000000'])
     if (profilesErr) throw profilesErr
 
@@ -148,8 +148,13 @@ Deno.serve(async (req) => {
       else { engagementStatus = 'stalled'; stalled += 1 }
 
       const schoolProfiles = (profiles ?? []).filter((p: any) => p.school_id === s.id)
+      // Eligible for a resend iff they haven't finished onboarding — matches resend-invite's
+      // own guard (`profile.password_set === true` blocks a resend) exactly. Previously this
+      // filtered on `!lastSignInByUserId[p.id]` (never signed in at all), which drops anyone
+      // who authenticated once via an invite link but never got to set a password — e.g. a
+      // dead-ended link — silently hiding their only recovery path in the admin UI.
       const pendingInvites = schoolProfiles
-        .filter((p: any) => !lastSignInByUserId[p.id])
+        .filter((p: any) => p.password_set !== true)
         .map((p: any) => ({ profile_id: p.id, email: emailByUserId[p.id] ?? null }))
 
       const staff = schoolProfiles.map((p: any) => ({
