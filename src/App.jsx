@@ -3442,8 +3442,11 @@ export default function App() {
           setAuthLoading(false)
           return
         }
-        // Invited user who hasn't set a password yet — send to /set-password
-        if (data.password_set === false) {
+        // Invited user who hasn't set a password yet — send to /set-password.
+        // !== true (not === false) so a NULL/undefined password_set — e.g. a profile
+        // row written outside the app's own invite functions — fails toward requiring
+        // a password set, rather than silently skipping the redirect.
+        if (data.password_set !== true) {
           setNeedsPasswordSet(true)
           setAuthLoading(false)
           return
