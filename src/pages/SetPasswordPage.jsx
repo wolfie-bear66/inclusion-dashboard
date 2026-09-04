@@ -9,6 +9,7 @@ export default function SetPasswordPage() {
   const [serverError, setServerError]   = useState(null)
   const [saving, setSaving]             = useState(false)
   const [success, setSuccess]           = useState(false)
+  const [linkExpired, setLinkExpired]   = useState(false)
 
   // Wait for Supabase to process the invite-link hash and establish a session.
   // getSession() catches an already-resolved session; onAuthStateChange catches
@@ -23,8 +24,10 @@ export default function SetPasswordPage() {
             subscription.unsubscribe()
           }
         })
-        // Bail to home if no session after 5 s (e.g. link expired)
-        const bail = setTimeout(() => window.location.replace('/'), 5000)
+        // No session after 5s means the invite link's token was invalid, already used,
+        // or expired (e.g. superseded by a later resend) — surface that instead of
+        // silently dropping the visitor onto the public site with no explanation.
+        const bail = setTimeout(() => { setLinkExpired(true); subscription.unsubscribe() }, 5000)
         return () => { clearTimeout(bail); subscription.unsubscribe() }
       }
     })
@@ -86,6 +89,18 @@ export default function SetPasswordPage() {
 
         {success ? (
           <p style={{ fontSize: '0.88rem', color: '#257A3B', fontWeight: 500 }}>Password set successfully — taking you in…</p>
+        ) : linkExpired ? (
+          <div>
+            <p style={{ fontSize: '0.88rem', color: '#B91C1C', fontWeight: 500, marginBottom: 8 }}>
+              This invite link has expired or already been used.
+            </p>
+            <p style={{ fontSize: '0.85rem', color: '#64748b', lineHeight: 1.55, marginBottom: 20 }}>
+              Ask your admin to resend it — only the most recently sent invite link will work.
+            </p>
+            <a href="/" className="login-btn" style={{ display: 'inline-block', textAlign: 'center', textDecoration: 'none' }}>
+              Return to sign in
+            </a>
+          </div>
         ) : !sessionReady ? (
           <p style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Setting up your account…</p>
         ) : (

@@ -30,6 +30,8 @@ export default function AdminView() {
   const [error, setError] = useState(null)
   const [editingRow, setEditingRow] = useState(null)
   const [actionMsg, setActionMsg] = useState(null)
+  const [resendingId, setResendingId] = useState(null)
+  const [resendMsgByRow, setResendMsgByRow] = useState({})
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -66,6 +68,8 @@ export default function AdminView() {
 
   async function handleResendInvite(profileId) {
     setActionMsg(null)
+    setResendMsgByRow(prev => ({ ...prev, [profileId]: null }))
+    setResendingId(profileId)
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(RESEND_URL, {
@@ -79,9 +83,19 @@ export default function AdminView() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Failed to resend invite')
-      setActionMsg({ type: 'success', text: `Invite resent to ${json.email}` })
+      // Resending always supersedes any invite already sent to this address — Supabase
+      // invite tokens are single-use, and issuing a new one invalidates the last one
+      // (confirmed against Supabase's own invite/token docs). Worth surfacing here since
+      // this is exactly what produced Jenny Carson's dead-end-link report: a resend went
+      // out while an older, now-invalid link was still sitting in the recipient's inbox.
+      const text = `Invite resent to ${json.email}. Note: any previous invite email sent to this address is now invalid — only the most recent link will work.`
+      setActionMsg({ type: 'success', text })
+      setResendMsgByRow(prev => ({ ...prev, [profileId]: { type: 'success', text: `Resent to ${json.email}` } }))
     } catch (err) {
       setActionMsg({ type: 'error', text: err.message })
+      setResendMsgByRow(prev => ({ ...prev, [profileId]: { type: 'error', text: err.message } }))
+    } finally {
+      setResendingId(null)
     }
   }
 
@@ -215,14 +229,30 @@ export default function AdminView() {
                     <Td>
                       <button onClick={() => setEditingRow(row)} style={actionBtnStyle}>Edit</button>
                       {row.pending_invites.map(p => (
-                        <button
-                          key={p.profile_id}
-                          onClick={() => handleResendInvite(p.profile_id)}
-                          title={p.email ?? ''}
-                          style={{ ...actionBtnStyle, marginLeft: 6 }}
-                        >
-                          Resend{row.pending_invites.length > 1 ? ` (${p.email?.split('@')[0] ?? '?'})` : ' invite'}
-                        </button>
+                        <span key={p.profile_id} style={{ display: 'inline-block' }}>
+                          <button
+                            onClick={() => handleResendInvite(p.profile_id)}
+                            title={p.email ?? ''}
+                            disabled={resendingId === p.profile_id}
+                            style={{
+                              ...actionBtnStyle, marginLeft: 6,
+                              opacity: resendingId === p.profile_id ? 0.6 : 1,
+                              cursor: resendingId === p.profile_id ? 'default' : 'pointer',
+                            }}
+                          >
+                            {resendingId === p.profile_id
+                              ? 'Resending…'
+                              : `Resend${row.pending_invites.length > 1 ? ` (${p.email?.split('@')[0] ?? '?'})` : ' invite'}`}
+                          </button>
+                          {resendMsgByRow[p.profile_id] && (
+                            <div style={{
+                              marginTop: 4, fontSize: '0.6875rem', maxWidth: 220,
+                              color: resendMsgByRow[p.profile_id].type === 'error' ? '#B91C1C' : '#166534',
+                            }}>
+                              {resendMsgByRow[p.profile_id].text}
+                            </div>
+                          )}
+                        </span>
                       ))}
                     </Td>
                   </tr>
