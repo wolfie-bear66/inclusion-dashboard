@@ -17,6 +17,7 @@ import { usePrincipleCoverage } from './hooks/usePrincipleCoverage'
 import ReadOnlyBanner from './components/ReadOnlyBanner'
 import './App.css'
 import { generateEvidenceReport } from './generateReport'
+import { generateEvidenceReportWord } from './generateReportWord'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts'
 
 // ── Invite-link detection ─────────────────────────────────────────────
@@ -634,6 +635,7 @@ function ReportBuilder({ schoolName = '', supabase: sb, school, schoolCtx = {}, 
   const [selectedGroups,  setSelectedGroups]  = useState([])   // empty = all groups
   const [provisionView,   setProvisionView]   = useState('domain')
   const [includeAppendixB, setIncludeAppendixB] = useState(false)
+  const [exportFormat,    setExportFormat]    = useState('pdf')   // 'pdf' | 'word'
   const [generating,      setGenerating]      = useState(false)
   const [genError,        setGenError]        = useState(null)
 
@@ -658,7 +660,7 @@ function ReportBuilder({ schoolName = '', supabase: sb, school, schoolCtx = {}, 
   const groupLabel    = selectedGroups.length === 0 ? 'All groups' : selectedGroups.join(' + ')
   const filterSummary = `${purposeLabel} · ${domainLabel} · ${groupLabel}`
 
-  async function handleGeneratePdf() {
+  async function handleGenerate() {
     if (!sb || !school) {
       setGenError('School data not available. Please reload and try again.')
       return
@@ -700,7 +702,7 @@ function ReportBuilder({ schoolName = '', supabase: sb, school, schoolCtx = {}, 
       if (entriesRes.error) throw new Error(`Entries: ${entriesRes.error.message}`)
       if (domainsRes.error) throw new Error(`Domains: ${domainsRes.error.message}`)
 
-      generateEvidenceReport({
+      const reportArgs = {
         purpose,
         selectedDomains,
         selectedGroups,
@@ -712,7 +714,13 @@ function ReportBuilder({ schoolName = '', supabase: sb, school, schoolCtx = {}, 
         schoolCtx,
         schoolName,
         userProfile: profileRes.data  ?? null,
-      })
+      }
+
+      if (exportFormat === 'word') {
+        await generateEvidenceReportWord(reportArgs)
+      } else {
+        generateEvidenceReport(reportArgs)
+      }
     } catch (err) {
       console.error('[ReportBuilder] generation error:', err)
       setGenError('Could not generate report — check console for details.')
@@ -892,24 +900,43 @@ function ReportBuilder({ schoolName = '', supabase: sb, school, schoolCtx = {}, 
         {genError && (
           <p style={{ fontSize: '0.78rem', color: '#dc2626', margin: 0 }}>{genError}</p>
         )}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <p style={{ fontSize: '0.78rem', color: '#64748b', flex: 1, minWidth: 0 }}>
             {purpose === 'full_strategy' ? 'Inclusion Strategy Statement' : 'Inclusion Evidence Report'}
             {' — '}
             {domainLabel}
             {selectedGroups.length > 0 ? ` · ${groupLabel}` : ''}
           </p>
-          <button type="button" onClick={handleGeneratePdf} disabled={generating || !generateEnabled} style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '9px 18px', borderRadius: 8, border: 'none',
-            background: (generating || !generateEnabled) ? '#94a3b8' : '#1B365D',
-            color: '#fff', fontSize: '0.85rem', fontWeight: 600,
-            cursor: (generating || !generateEnabled) ? 'default' : 'pointer',
-            flexShrink: 0, fontFamily: 'inherit',
-          }}>
-            <i className="ti ti-download" style={{ fontSize: '0.9rem', lineHeight: 1 }} />
-            {generating ? 'Generating…' : 'Generate Report'}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            <div style={{ display: 'flex', borderRadius: 8, border: '1.5px solid #e2e8f0', overflow: 'hidden' }}>
+              {[
+                { id: 'pdf',  label: 'PDF' },
+                { id: 'word', label: 'Word' },
+              ].map(opt => (
+                <button key={opt.id} type="button"
+                  onClick={() => setExportFormat(opt.id)}
+                  style={{
+                    padding: '7px 13px', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                    fontSize: '0.78rem', fontWeight: exportFormat === opt.id ? 600 : 400,
+                    background: exportFormat === opt.id ? '#1B365D' : '#fff',
+                    color:      exportFormat === opt.id ? '#fff'    : '#64748b',
+                  }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <button type="button" onClick={handleGenerate} disabled={generating || !generateEnabled} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '9px 18px', borderRadius: 8, border: 'none',
+              background: (generating || !generateEnabled) ? '#94a3b8' : '#1B365D',
+              color: '#fff', fontSize: '0.85rem', fontWeight: 600,
+              cursor: (generating || !generateEnabled) ? 'default' : 'pointer',
+              flexShrink: 0, fontFamily: 'inherit',
+            }}>
+              <i className="ti ti-download" style={{ fontSize: '0.9rem', lineHeight: 1 }} />
+              {generating ? 'Generating…' : 'Generate Report'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
