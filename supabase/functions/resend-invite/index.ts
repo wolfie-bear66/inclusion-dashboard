@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
     // email-security gateways before the real recipient clicks them). The account already
     // exists, so update its password in place rather than creating a new one.
     const newTempPassword = generateTempPassword()
-    const { error: updateErr } = await admin.auth.admin.updateUserById(profileId, { password: newTempPassword })
+    const { error: updateErr } = await admin.auth.admin.updateUserById(profileId, { password: newTempPassword, email_confirm: true })
     if (updateErr) return fail(updateErr.message, 400)
 
     const { error: touchErr } = await admin
