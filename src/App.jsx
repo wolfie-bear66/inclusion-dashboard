@@ -3312,6 +3312,7 @@ export default function App() {
   // Onboarding / welcome state
   const [missingProfile, setMissingProfile] = useState(false)
   const [needsPasswordSet, setNeedsPasswordSet] = useState(false)
+  const [passwordExpired, setPasswordExpired] = useState(false)
   const [onboardingState, setOnboardingState] = useState(null)
   const [firstLoginPromptVisible, setFirstLoginPromptVisible] = useState(false)
   const [sidebarFlashTeam, setSidebarFlashTeam] = useState(false)
@@ -3429,9 +3430,11 @@ export default function App() {
       return
     }
 
+    setPasswordExpired(false)
+
     supabase
       .from('profiles')
-      .select('school_id, role, mat_id, first_name, schools(name), onboarding_state, welcomed, password_set, is_founder')
+      .select('school_id, role, mat_id, first_name, schools(name), onboarding_state, welcomed, password_set, temp_password_issued_at, is_founder')
       .eq('id', session.user.id)
       .single()
       .then(({ data, error }) => {
@@ -3447,6 +3450,17 @@ export default function App() {
         // row written outside the app's own invite functions — fails toward requiring
         // a password set, rather than silently skipping the redirect.
         if (data.password_set !== true) {
+          // Temp passwords (from onboard-school / invite-user / resend-invite) expire
+          // 7 days after issuance if unused — block login instead of letting them keep
+          // trying a stale password indefinitely.
+          const issuedAt = data.temp_password_issued_at ? new Date(data.temp_password_issued_at) : null
+          const daysSinceIssued = issuedAt ? (Date.now() - issuedAt.getTime()) / (1000 * 60 * 60 * 24) : null
+          if (daysSinceIssued !== null && daysSinceIssued > 7) {
+            supabase.auth.signOut()
+            setPasswordExpired(true)
+            setAuthLoading(false)
+            return
+          }
           setNeedsPasswordSet(true)
           setAuthLoading(false)
           return
@@ -4091,6 +4105,31 @@ export default function App() {
   }
 
   if (needsPasswordSet && session) return <SetPasswordPage />
+
+  if (passwordExpired) {
+    return (
+      <div className="login-page">
+        <div style={{
+          background: '#fff', border: '1px solid #E2E8F0', borderRadius: 16,
+          width: '100%', maxWidth: 440,
+          boxShadow: '0 4px 32px rgba(0,0,0,0.09)',
+          padding: '48px 40px',
+          display: 'flex', flexDirection: 'column',
+        }}>
+          <p style={{ fontSize: '0.82rem', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 28 }}>
+            Inclusion Dashboard
+          </p>
+          <h1 className="login-title" style={{ marginBottom: 12 }}>Your temporary password has expired.</h1>
+          <p style={{ fontSize: '0.88rem', color: '#64748b', lineHeight: 1.6, marginBottom: 20 }}>
+            It's been more than 7 days since it was issued. Ask your school admin to send you a new one.
+          </p>
+          <a href="/" className="login-btn" style={{ display: 'inline-block', textAlign: 'center', textDecoration: 'none' }}>
+            Return to sign in
+          </a>
+        </div>
+      </div>
+    )
+  }
 
   if (missingProfile && session) {
     return (

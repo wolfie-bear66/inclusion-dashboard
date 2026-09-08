@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { generateTempPassword, sendTempPasswordEmail } from '../_shared/temp-password.ts'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -159,30 +160,38 @@ Deno.serve(async (req) => {
     return fail(String(err))
   }
 
-  // Step 8: send the invite. If this fails, the school row is already there and orphaned —
-  // hand back its id/name so the caller can decide whether to delete it or retry.
+  // Step 8: create the account with a server-generated temporary password instead of
+  // sending a magic-link invite — school email gateways (Defender/Proofpoint/Mimecast)
+  // prefetch and consume single-use invite links before the real recipient clicks them.
+  // If this fails, the school row is already there and orphaned — hand back its id/name
+  // so the caller can decide whether to delete it or retry.
   let userId: string
+  const tempPassword = generateTempPassword()
   try {
-    const { data: inviteData, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email)
-    if (inviteError) {
+    const { data: userData, error: createError } = await admin.auth.admin.createUser({
+      email,
+      password: tempPassword,
+      email_confirm: true,
+    })
+    if (createError) {
       return fail(
-        `School "${school_name}" was created (id: ${schoolId}) but the invite to ${email} failed: ${inviteError.message}. Delete the orphaned school row or retry the invite.`,
+        `School "${school_name}" was created (id: ${schoolId}) but creating the account for ${email} failed: ${createError.message}. Delete the orphaned school row or retry.`,
         400,
         { school_id: schoolId, school_name },
       )
     }
-    userId = inviteData.user.id
+    userId = userData.user.id
   } catch (err: any) {
     return fail(
-      `School "${school_name}" was created (id: ${schoolId}) but the invite to ${email} failed: ${String(err)}. Delete the orphaned school row or retry the invite.`,
+      `School "${school_name}" was created (id: ${schoolId}) but creating the account for ${email} failed: ${String(err)}. Delete the orphaned school row or retry.`,
       500,
       { school_id: schoolId, school_name },
     )
   }
 
-  // Step 9: insert the profile. Unlike invite-user, this must NOT soft-succeed — the auth
-  // invite has already gone out, so a failure here needs to be surfaced clearly with enough
-  // detail (userId, schoolId) for the caller to finish the job manually.
+  // Step 9: insert the profile. Unlike invite-user, this must NOT soft-succeed — the account
+  // already exists, so a failure here needs to be surfaced clearly with enough detail
+  // (userId, schoolId) for the caller to finish the job manually.
   try {
     const { error: profileError } = await admin.from('profiles').insert({
       id: userId,
@@ -199,20 +208,43 @@ Deno.serve(async (req) => {
         second_login_or_later: false,
       },
       welcomed: false,
+      temp_password_issued_at: new Date().toISOString(),
     })
     if (profileError) {
       return fail(
-        `The invite to ${email} already went out (userId: ${userId}), but the profile could not be created: ${profileError.message}. School "${school_name}" (id: ${schoolId}) exists — you'll need to manually insert the profile row (id: ${userId}, school_id: ${schoolId}) or investigate.`,
+        `The account for ${email} was already created (userId: ${userId}), but the profile could not be created: ${profileError.message}. School "${school_name}" (id: ${schoolId}) exists — you'll need to manually insert the profile row (id: ${userId}, school_id: ${schoolId}) or investigate.`,
         500,
         { school_id: schoolId, school_name, user_id: userId, email },
       )
     }
   } catch (err: any) {
     return fail(
-      `The invite to ${email} already went out (userId: ${userId}), but the profile could not be created: ${String(err)}. School "${school_name}" (id: ${schoolId}) exists — you'll need to manually insert the profile row (id: ${userId}, school_id: ${schoolId}) or investigate.`,
+      `The account for ${email} was already created (userId: ${userId}), but the profile could not be created: ${String(err)}. School "${school_name}" (id: ${schoolId}) exists — you'll need to manually insert the profile row (id: ${userId}, school_id: ${schoolId}) or investigate.`,
       500,
       { school_id: schoolId, school_name, user_id: userId, email },
     )
+  }
+
+  // Step 10: email the temporary password. Soft-fail — the account and profile already
+  // exist, so surface a warning rather than blocking; the founder can use resend-invite
+  // to reissue the password and retry the email.
+  try {
+    await sendTempPasswordEmail({
+      to: email,
+      firstName: first_name,
+      schoolName: school_name,
+      tempPassword,
+    })
+  } catch (err: any) {
+    return new Response(JSON.stringify({
+      success: true,
+      school_id: schoolId,
+      userId,
+      emailError: `Account created but the welcome email failed to send: ${String(err?.message ?? err)}. Use "resend" to reissue the password and retry.`,
+    }), {
+      status: 200,
+      headers: { ...CORS, 'Content-Type': 'application/json' },
+    })
   }
 
   return new Response(JSON.stringify({ success: true, school_id: schoolId, userId }), {

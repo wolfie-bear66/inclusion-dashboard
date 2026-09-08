@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { generateTempPassword, sendTempPasswordEmail } from '../_shared/temp-password.ts'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -66,7 +67,7 @@ Deno.serve(async (req) => {
   // Prevents accidentally re-inviting (and thus disrupting) an already-active user.
   const { data: profile, error: profileErr } = await admin
     .from('profiles')
-    .select('password_set')
+    .select('password_set, first_name, school_id')
     .eq('id', profileId)
     .single()
   if (profileErr || !profile) return fail('Profile not found', 404)
@@ -95,10 +96,40 @@ Deno.serve(async (req) => {
     const { error: resetErr } = await admin.auth.resetPasswordForEmail(email)
     if (resetErr) return fail(resetErr.message, 400)
   } else {
-    // Re-issuing the invite to an unconfirmed user resends the same invite email —
-    // Supabase does not error on this as long as the account hasn't been confirmed yet.
-    const { error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email)
-    if (inviteErr) return fail(inviteErr.message, 400)
+    // Unconfirmed user: reissue a fresh temporary password rather than resending a
+    // magic-link invite (see Phase 1 plan — link-based invites get consumed by school
+    // email-security gateways before the real recipient clicks them). The account already
+    // exists, so update its password in place rather than creating a new one.
+    const newTempPassword = generateTempPassword()
+    const { error: updateErr } = await admin.auth.admin.updateUserById(profileId, { password: newTempPassword })
+    if (updateErr) return fail(updateErr.message, 400)
+
+    const { error: touchErr } = await admin
+      .from('profiles')
+      .update({ temp_password_issued_at: new Date().toISOString() })
+      .eq('id', profileId)
+    if (touchErr) return fail(`Password was reissued but temp_password_issued_at could not be updated: ${touchErr.message}`, 500)
+
+    let schoolName = ''
+    if (profile.school_id) {
+      const { data: schoolRow } = await admin
+        .from('schools')
+        .select('name')
+        .eq('id', profile.school_id)
+        .single()
+      schoolName = schoolRow?.name ?? ''
+    }
+
+    try {
+      await sendTempPasswordEmail({
+        to: email,
+        firstName: profile.first_name ?? '',
+        schoolName,
+        tempPassword: newTempPassword,
+      })
+    } catch (err: any) {
+      return fail(`Password was reissued but the email failed to send: ${String(err?.message ?? err)}`, 500)
+    }
   }
 
   return new Response(JSON.stringify({ success: true, email }), {

@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { generateTempPassword, sendTempPasswordEmail } from '../_shared/temp-password.ts'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -173,19 +174,39 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Step 7: send invite
-  let userId: string
+  // Step 6b: look up the target school's name for the welcome email
+  let schoolName = ''
   try {
-    const { data: inviteData, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email)
-    if (inviteError) {
-      console.error('Failed at step 7:', inviteError.message)
-      return new Response(JSON.stringify({ error: inviteError.message }), {
+    const { data: schoolRow } = await admin
+      .from('schools')
+      .select('name')
+      .eq('id', school_id)
+      .single()
+    schoolName = schoolRow?.name ?? ''
+  } catch (err: any) {
+    console.error('Failed at step 6b (school name lookup):', err.message)
+  }
+
+  // Step 7: create the account with a server-generated temporary password instead of
+  // sending a magic-link invite — school email gateways (Defender/Proofpoint/Mimecast)
+  // prefetch and consume single-use invite links before the real recipient clicks them.
+  let userId: string
+  const tempPassword = generateTempPassword()
+  try {
+    const { data: userData, error: createError } = await admin.auth.admin.createUser({
+      email,
+      password: tempPassword,
+      email_confirm: true,
+    })
+    if (createError) {
+      console.error('Failed at step 7:', createError.message)
+      return new Response(JSON.stringify({ error: createError.message }), {
         status: 400,
         headers: { ...CORS, 'Content-Type': 'application/json' },
       })
     }
-    userId = inviteData.user.id
-    console.log('Invite sent, userId:', userId)
+    userId = userData.user.id
+    console.log('Account created, userId:', userId)
   } catch (err: any) {
     console.error('Failed at step 7:', err.message)
     return new Response(JSON.stringify({ error: String(err) }), {
@@ -194,7 +215,7 @@ Deno.serve(async (req) => {
     })
   }
 
-  // Step 8: insert profile — soft failure so invite success is still communicated
+  // Step 8: insert profile — soft failure so account creation success is still communicated
   try {
     console.log('Attempting profile insert with:', { id: userId, first_name, last_name, school_id })
     const { error: profileError } = await admin.from('profiles').insert({
@@ -211,10 +232,11 @@ Deno.serve(async (req) => {
         second_login_or_later: false,
       },
       welcomed: false,
+      temp_password_issued_at: new Date().toISOString(),
     })
     if (profileError) {
       console.error('Profile insert error:', JSON.stringify(profileError, null, 2))
-      // Invite was already sent — return success with a profileError flag so the
+      // Account was already created — return success with a profileError flag so the
       // frontend can show a tailored message rather than a generic error.
       return new Response(JSON.stringify({ success: true, profileError: profileError.message }), {
         status: 200,
@@ -225,6 +247,27 @@ Deno.serve(async (req) => {
   } catch (err: any) {
     console.error('Failed at step 8 (exception):', err.message)
     return new Response(JSON.stringify({ success: true, profileError: String(err) }), {
+      status: 200,
+      headers: { ...CORS, 'Content-Type': 'application/json' },
+    })
+  }
+
+  // Step 9: email the temporary password — soft failure, account and profile already exist
+  try {
+    await sendTempPasswordEmail({
+      to: email,
+      firstName: first_name,
+      schoolName,
+      tempPassword,
+    })
+    console.log('Temp password email sent')
+  } catch (err: any) {
+    console.error('Failed at step 9:', err.message)
+    return new Response(JSON.stringify({
+      success: true,
+      userId,
+      emailError: `Account created but the welcome email failed to send: ${String(err?.message ?? err)}. Use "resend" to reissue the password and retry.`,
+    }), {
       status: 200,
       headers: { ...CORS, 'Content-Type': 'application/json' },
     })
