@@ -5041,6 +5041,7 @@ export default function App() {
           <TeamPage
             schoolId={selectedSchool}
             currentUserId={session.user.id}
+            matId={userMatId}
             supabase={supabase}
             onInviteUser={openInviteModal}
             readOnly={readOnly}
