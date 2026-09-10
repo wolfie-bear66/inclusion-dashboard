@@ -65,6 +65,15 @@ Deno.serve(async (req) => {
     const realSchools = (schools ?? []).filter((s: any) => !s.is_demo)
     const schoolIds = realSchools.map((s: any) => s.id)
 
+    // Active provision points — shared denominator for the "X/Y started" stat.
+    const { data: activePoints, error: activePointsErr } = await admin
+      .from('provision_points')
+      .select('id')
+      .eq('active', true)
+    if (activePointsErr) throw activePointsErr
+    const activePointIds = (activePoints ?? []).map((p: any) => p.id)
+    const activePointTotal = activePointIds.length
+
     // Profiles (per school, plus we need ids to join against auth.users for login data)
     const { data: profiles, error: profilesErr } = await admin
       .from('profiles')
@@ -99,11 +108,22 @@ Deno.serve(async (req) => {
     // Evidence entries — for "active in last 30 days" / most recent activity per school
     const { data: entries, error: entriesErr } = await admin
       .from('entries')
-      .select('id, school_id')
+      .select('id, school_id, provision_point_id')
       .in('school_id', schoolIds.length ? schoolIds : ['00000000-0000-0000-0000-000000000000'])
     if (entriesErr) throw entriesErr
     const entryIdToSchool: Record<string, string> = {}
     for (const e of entries ?? []) entryIdToSchool[e.id] = e.school_id
+
+    // Started-count per school — "started" means an entries row exists at all for an
+    // active provision point, regardless of status. `entries` has a UNIQUE(school_id,
+    // provision_point_id) constraint, so a plain filtered row count per school is safe
+    // (no risk of double-counting the same point).
+    const activePointIdSet = new Set(activePointIds)
+    const startedCountBySchool: Record<string, number> = {}
+    for (const e of entries ?? []) {
+      if (!activePointIdSet.has(e.provision_point_id)) continue
+      startedCountBySchool[e.school_id] = (startedCountBySchool[e.school_id] ?? 0) + 1
+    }
 
     const entryIds = (entries ?? []).map((e: any) => e.id)
     const { data: evidence, error: evidenceErr } = await admin
@@ -181,6 +201,7 @@ Deno.serve(async (req) => {
         engagement_status: engagementStatus,
         pending_invites: pendingInvites,
         staff,
+        started_count: startedCountBySchool[s.id] ?? 0,
       }
     })
 
@@ -203,6 +224,7 @@ Deno.serve(async (req) => {
       revenue: { annual_total: annualRevenue, paid_school_count: pipeline.paid },
       rows,
       mats: mats ?? [],
+      active_point_total: activePointTotal,
     }), { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } })
   } catch (err: any) {
     return fail(String(err?.message ?? err))

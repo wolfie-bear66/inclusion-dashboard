@@ -211,6 +211,7 @@ export default function AdminView() {
                   <Th>Price</Th>
                   <Th>Confirmed</Th>
                   <Th>Staff</Th>
+                  <Th>Started</Th>
                   <Th>Engagement</Th>
                   <Th>Last login</Th>
                   <Th>Actions</Th>
@@ -224,6 +225,7 @@ export default function AdminView() {
                     <Td>{row.annual_price ? fmtMoney(row.annual_price) : (row.price_tier ?? '—')}</Td>
                     <Td>{fmtDate(row.confirmed_at)}</Td>
                     <Td>{row.staff_count}</Td>
+                    <Td>{row.started_count}/{data.active_point_total}</Td>
                     <Td><Pill colour={ENGAGEMENT_COLOUR[row.engagement_status]}>{ENGAGEMENT_LABEL[row.engagement_status]}</Pill></Td>
                     <Td>{fmtDate(row.last_login)}</Td>
                     <Td>
@@ -258,7 +260,7 @@ export default function AdminView() {
                   </tr>
                 ))}
                 {data.rows.length === 0 && (
-                  <tr><td colSpan={8} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>No schools found.</td></tr>
+                  <tr><td colSpan={9} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>No schools found.</td></tr>
                 )}
               </tbody>
             </table>
