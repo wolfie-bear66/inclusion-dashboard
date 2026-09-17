@@ -242,7 +242,6 @@ export default function BootstrapWizard({ schoolId, schoolName, userId, firstNam
       // overwrite work that's already further along.
       if (!entryStatusByPp[row.point.id]) {
         if (row.point.category === POLICY_CATEGORY) {
-          // Named Person rows: unchanged, see the else branch below.
           if (row.link) {
             // A link is the evidence — the point can genuinely be in_place, not just in_progress.
             entryRows.push({ school_id: schoolId, provision_point_id: row.point.id, status: 'in_place' })
@@ -252,7 +251,10 @@ export default function BootstrapWizard({ schoolId, schoolName, userId, firstNam
           }
           // Neither link nor "exists, no link yet" — no entries write, row stays open.
         } else {
-          entryRows.push({ school_id: schoolId, provision_point_id: row.point.id, status: 'in_progress' })
+          // Named Person: name + email captured at wizard time is itself sufficient
+          // evidence — there's nothing further to attach, and no self-approval concern
+          // since the wizard is run by the approving admin at first login.
+          entryRows.push({ school_id: schoolId, provision_point_id: row.point.id, status: 'in_place' })
         }
       }
     }
