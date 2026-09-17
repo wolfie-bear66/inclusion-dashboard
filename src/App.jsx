@@ -8,6 +8,7 @@ import TeamPage from './pages/TeamPage'
 import InclusionStrategyWizard from './pages/InclusionStrategyWizard'
 import OnboardingPrompt from './components/OnboardingPrompt'
 import BootstrapWizard from './components/BootstrapWizard'
+import MyPointsQueue from './components/MyPointsQueue'
 import { PRINCIPLE_LABEL_SHORT, STATIC_REVIEW_CATEGORIES } from './constants/principles'
 import ApprovalQueueModal from './components/ApprovalQueueModal'
 import AssignmentModal from './components/AssignmentModal'
@@ -3053,7 +3054,7 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
   )
 }
 
-function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, onOpenModal, readOnly, isFlagged, onFlag, userRole, submittedAt }) {
+function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, onOpenModal, readOnly, isFlagged, onFlag, userRole, submittedAt, isSubmittingApproval }) {
   const [flagOpen, setFlagOpen] = useState(false)
   const [flagNote, setFlagNote] = useState('')
   const [flagSaving, setFlagSaving] = useState(false)
@@ -3106,13 +3107,16 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, on
             {STATUSES.map(s => {
               const isGatedInPlace = s === 'in_place' && userRole === 'contributor'
               const isPending = isGatedInPlace && !!submittedAt
-              const disabled = readOnly || isPending
-              const label = isPending ? 'Awaiting Approval' : isGatedInPlace ? 'Submit for Approval' : STATUS_LABELS[s]
+              const isSubmitting = isGatedInPlace && !!isSubmittingApproval
+              const disabled = readOnly || isPending || isSubmitting
+              const label = isSubmitting ? 'Submitting…' : isPending ? 'Awaiting Approval' : isGatedInPlace ? 'Submit for Approval' : STATUS_LABELS[s]
               const title = readOnly
                 ? 'You do not have edit access to this school'
-                : isPending
-                  ? 'Submitted — waiting for an approver to confirm'
-                  : undefined
+                : isSubmitting
+                  ? undefined
+                  : isPending
+                    ? 'Submitted — waiting for an approver to confirm'
+                    : undefined
               return (
                 <button
                   key={s}
@@ -3123,6 +3127,13 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, on
                   title={title}
                   style={disabled ? { cursor: 'default', opacity: 0.65 } : undefined}
                 >
+                  {isSubmitting && (
+                    <span aria-hidden="true" style={{
+                      display: 'inline-block', width: 9, height: 9, marginRight: 5,
+                      border: '1.5px solid currentColor', borderTopColor: 'transparent',
+                      borderRadius: '50%', animation: 'spin 0.7s linear infinite', verticalAlign: -1,
+                    }} />
+                  )}
                   {label}
                 </button>
               )
@@ -3308,8 +3319,20 @@ export default function App() {
   const [onboardingState, setOnboardingState] = useState(null)
   const [firstLoginPromptVisible, setFirstLoginPromptVisible] = useState(false)
   const [bootstrapWizardVisible, setBootstrapWizardVisible] = useState(false)
+  // Per-session-only bypass for the My Points gate — set when a contributor explicitly
+  // exits (either button) without ticking "Don't show this again", so the gate doesn't
+  // block every render for the rest of THIS session, but still reappears next login since
+  // profiles.welcomed stays false.
+  const [myPointsGateBypassed, setMyPointsGateBypassed] = useState(false)
+  // Which provision point's "Submit for Approval" RPC round trip is currently in flight, so
+  // only that row's button shows a loading state — cleared in a finally block, so it can
+  // never get stuck disabled if the RPC errors.
+  const [submittingApprovalId, setSubmittingApprovalId] = useState(null)
   const [sidebarFlashTeam, setSidebarFlashTeam] = useState(false)
   const [welcomed, setWelcomed] = useState(true)
+  // Toasts for approval_notifications rows not yet seen — shown once on dashboard load,
+  // then marked seen_at so they don't reappear on a later reload.
+  const [approvalToasts, setApprovalToasts] = useState([])
 
   // Evidence modal state
   const [modalPoint, setModalPoint] = useState(null)
@@ -3381,6 +3404,31 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
+  // Shows a toast for each not-yet-seen approval_notifications row (an approver confirmed a
+  // point this user submitted), then immediately marks them seen so a later reload doesn't
+  // show the same ones again. Declared before the profile-fetch effect below, which calls it.
+  async function loadApprovalNotifications(userId) {
+    const { data, error } = await supabase
+      .from('approval_notifications')
+      .select('id, entries(provision_points(label))')
+      .eq('user_id', userId)
+      .is('seen_at', null)
+    if (error || !data || data.length === 0) return
+
+    setApprovalToasts(data.map(n => ({ id: n.id, label: n.entries?.provision_points?.label ?? 'A point' })))
+
+    const ids = data.map(n => n.id)
+    const { error: seenErr } = await supabase
+      .from('approval_notifications')
+      .update({ seen_at: new Date().toISOString() })
+      .in('id', ids)
+    if (seenErr) console.error('Error marking approval notifications seen:', seenErr)
+  }
+
+  function dismissApprovalToast(id) {
+    setApprovalToasts(prev => prev.filter(t => t.id !== id))
+  }
+
   // When session changes: load profile (→ role + school) and domain structure.
   // authLoading is cleared here once we know which view to show.
   useEffect(() => {
@@ -3407,6 +3455,7 @@ export default function App() {
       setOnboardingState(null)
       setFirstLoginPromptVisible(false)
       setBootstrapWizardVisible(false)
+      setMyPointsGateBypassed(false)
       setSidebarFlashTeam(false)
       setWelcomed(true)
       setUserMatId(null)
@@ -3492,6 +3541,7 @@ export default function App() {
         }
         setAuthLoading(false)
         initializedUserIdRef.current = session.user.id
+        loadApprovalNotifications(session.user.id)
       })
 
     supabase
@@ -3779,6 +3829,21 @@ export default function App() {
     setSelectedDomain('')
   }
 
+  // Shared exit handler for the My Points gate — both "Browse other points" and "Go to
+  // dashboard" call this. Ticking "Don't show this again" persists profiles.welcomed so the
+  // gate stops auto-showing on future logins; leaving it unticked only bypasses the gate for
+  // the rest of this session (myPointsGateBypassed), so it reappears fresh next login.
+  async function handleMyPointsExit({ action, dontShowAgain }) {
+    setMyPointsGateBypassed(true)
+    if (dontShowAgain && session) {
+      await supabase.from('profiles').update({ welcomed: true }).eq('id', session.user.id)
+      setWelcomed(true)
+    }
+    if (action === 'browse') {
+      setSelfAssignOpen(true)
+    }
+  }
+
   function openInviteModal() {
     setInviteFirstName('')
     setInviteLastName('')
@@ -3950,34 +4015,46 @@ export default function App() {
   }
 
   async function handleSubmitForApproval(ppId) {
-    const currentEntry = entries[ppId] ?? {}
-    const nowIso = new Date().toISOString()
-    setEntries(prev => ({ ...prev, [ppId]: { ...currentEntry, submitted_for_approval_at: nowIso } }))
+    setSubmittingApprovalId(ppId)
+    try {
+      const currentEntry = entries[ppId] ?? {}
 
-    const { data, error } = await supabase
-      .from('entries')
-      .upsert(
-        [{ school_id: selectedSchool, provision_point_id: ppId, ...currentEntry, submitted_for_approval_at: nowIso }],
-        { onConflict: 'school_id,provision_point_id' }
-      )
-      .select('id')
-      .single()
+      // Ensure the entries row exists first (unchanged) — submit_entry_for_approval takes an
+      // existing entry_id, it doesn't create the row.
+      const { data, error } = await supabase
+        .from('entries')
+        .upsert(
+          [{ school_id: selectedSchool, provision_point_id: ppId, ...currentEntry }],
+          { onConflict: 'school_id,provision_point_id' }
+        )
+        .select('id')
+        .single()
 
-    if (error) {
-      console.error('Error submitting for approval:', error)
-      return
+      if (error) {
+        console.error('Error submitting for approval:', error)
+        return
+      }
+      if (data?.id && !currentEntry.id) {
+        setEntries(prev => ({ ...prev, [ppId]: { ...prev[ppId], id: data.id } }))
+      }
+
+      // Sets submitted_for_approval_at + submitted_by and inserts the point_approval_log
+      // 'submitted' row in one transaction — replaces the old two separate client-side writes
+      // (Phase 0 found the log insert was non-fatal after the entries write already committed).
+      const { error: rpcError } = await supabase.rpc('submit_entry_for_approval', {
+        p_entry_id: data.id,
+        p_submitting_user_id: session.user.id,
+      })
+      if (rpcError) {
+        console.error('Error submitting for approval:', rpcError)
+        return
+      }
+      setEntries(prev => ({ ...prev, [ppId]: { ...prev[ppId], submitted_for_approval_at: new Date().toISOString(), submitted_by: session.user.id } }))
+    } finally {
+      // Always clears — on the happy path, either early-return above, or an unexpected
+      // thrown exception — so the button never gets stuck disabled forever.
+      setSubmittingApprovalId(null)
     }
-    if (data?.id && !currentEntry.id) {
-      setEntries(prev => ({ ...prev, [ppId]: { ...prev[ppId], id: data.id } }))
-    }
-
-    const { error: logError } = await supabase.from('point_approval_log').insert({
-      entry_id: data.id,
-      school_id: selectedSchool,
-      action: 'submitted',
-      actioned_by: session.user.id,
-    })
-    if (logError) console.error('Error logging submission:', logError)
   }
 
   async function handleModalSave() {
@@ -4250,6 +4327,28 @@ export default function App() {
 
   return (
     <div className="app">
+      {approvalToasts.length > 0 && (
+        <div style={{
+          position: 'fixed', top: 16, right: 16, zIndex: 2000,
+          display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 320,
+        }}>
+          {approvalToasts.map(t => (
+            <div key={t.id} style={{
+              background: '#fff', border: '1px solid rgba(37,122,59,0.25)', borderRadius: 10,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: '12px 14px',
+              display: 'flex', alignItems: 'flex-start', gap: 10,
+            }}>
+              <i className="ti ti-circle-check" style={{ color: '#257A3B', fontSize: '1.1rem', flexShrink: 0, marginTop: 1 }} />
+              <p style={{ fontSize: '0.82rem', color: '#1A202C', margin: 0, flex: 1 }}>
+                <strong>{t.label}</strong> was confirmed.
+              </p>
+              <button type="button" onClick={() => dismissApprovalToast(t.id)} aria-label="Dismiss" style={{
+                background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '0.95rem', padding: 0, flexShrink: 0,
+              }}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
       <header className="header">
         <div className="header-left">
           <h1 className="header-title">Inclusion Dashboard</h1>
@@ -4519,6 +4618,7 @@ export default function App() {
                             onFlag={handleFlag}
                             userRole={userRole}
                             submittedAt={entries[pp.id]?.submitted_for_approval_at}
+                            isSubmittingApproval={submittingApprovalId === pp.id}
                           />
                         ))}
                         {needsTrunc && (
@@ -4769,48 +4869,21 @@ export default function App() {
                 </div>
               )}
 
-              {/* Contributor welcome banner — shown once after first assignment */}
-              {userRole === 'contributor' && !welcomed && personalAssignedPpIds.size > 0 && (
-                <div style={{
-                  background: 'rgba(27,54,93,0.05)', border: '1px solid rgba(27,54,93,0.18)',
-                  borderRadius: 12, padding: '16px 20px',
-                  display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
-                }}>
-                  <div>
-                    <p style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1B365D', marginBottom: 4 }}>
-                      Welcome{firstName ? `, ${firstName}` : ''}. You have {personalAssignedPpIds.size} provision point{personalAssignedPpIds.size !== 1 ? 's' : ''} to look after.
-                    </p>
-                    <p style={{ fontSize: '0.82rem', color: '#475569', lineHeight: 1.55 }}>
-                      Explore them below, add evidence, and track your progress.
-                    </p>
-                  </div>
-                  <button type="button"
-                    onClick={async () => {
-                      setWelcomed(true)
-                      await supabase.from('profiles').update({ welcomed: true }).eq('id', session.user.id)
-                    }}
-                    style={{
-                      background: 'none', border: 'none', cursor: 'pointer', padding: 4,
-                      color: '#94a3b8', fontSize: '1.1rem', lineHeight: 1, flexShrink: 0,
-                    }}>✕</button>
-                </div>
-              )}
-
-              {/* Empty personal view state */}
-              {isPersonalView && totalAssigned === 0 ? (
+              {/* Empty personal view state — approver browsing a teammate's (viewingAsMember)
+                  empty assignment list via the "Viewing:" dropdown only. The contributor's
+                  own empty-personal-view message used to live here too, but that moment is
+                  now handled by the My Points gate instead (App.jsx's MyPointsQueue mount),
+                  so it was removed rather than left to potentially show twice. */}
+              {isPersonalView && totalAssigned === 0 && viewingAsMember ? (
                 <div style={{
                   background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
                   padding: '32px 24px', textAlign: 'center',
                 }}>
                   <p style={{ fontSize: '0.92rem', fontWeight: 600, color: '#1A202C', marginBottom: 6 }}>
-                    {viewingAsMember
-                      ? `No points have been assigned to ${viewingAsMember.first_name} yet.`
-                      : 'Your points haven\'t been assigned yet.'}
+                    No points have been assigned to {viewingAsMember.first_name} yet.
                   </p>
                   <p style={{ fontSize: '0.82rem', color: '#94a3b8' }}>
-                    {viewingAsMember
-                      ? 'Use the Team screen to assign provision points to this person.'
-                      : 'Your headteacher will set these up shortly.'}
+                    Use the Team screen to assign provision points to this person.
                   </p>
                 </div>
               ) : (
@@ -5058,6 +5131,27 @@ export default function App() {
           />
         )}
 
+        {/* My Points gate — auto-shows for a contributor who hasn't dismissed it yet
+            (profiles.welcomed === false), and is also reachable directly at /my-points (the
+            route SetPasswordPage now redirects new colleagues to, replacing the old
+            accidental /home fallthrough, which matched no real route at all). Rendered here,
+            inside the same tree as the evidence modal below (not as an early return), so
+            opening that modal from the queue reuses it completely unmodified — no
+            extraction, no new modal component. */}
+        {session && selectedSchool && userRole === 'contributor' && !myPointsGateBypassed && (!welcomed || pathname.startsWith('/my-points')) && (
+          <MyPointsQueue
+            schoolId={selectedSchool}
+            userId={session.user.id}
+            firstName={firstName}
+            supabase={supabase}
+            openModal={openModal}
+            closeModal={closeModal}
+            modalPoint={modalPoint}
+            modalSaveMsg={modalSaveMsg}
+            onExit={handleMyPointsExit}
+          />
+        )}
+
         {/* Only offered once the bootstrap wizard is out of the way this session — the two
             first-login flows would otherwise compete for the same moment. */}
         {!bootstrapWizardVisible && firstLoginPromptVisible && session && selectedSchool && userRole === 'approver' && (
@@ -5230,6 +5324,7 @@ export default function App() {
                             onFlag={handleFlag}
                             userRole={userRole}
                             submittedAt={entries[pp.id]?.submitted_for_approval_at}
+                            isSubmittingApproval={submittingApprovalId === pp.id}
                           />
                         ))}
 

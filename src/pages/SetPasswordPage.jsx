@@ -39,7 +39,7 @@ export default function SetPasswordPage() {
     }
 
     setSuccess(true)
-    setTimeout(() => window.location.replace('/home'), 1000)
+    setTimeout(() => window.location.replace('/my-points'), 1000)
   }
 
   return (

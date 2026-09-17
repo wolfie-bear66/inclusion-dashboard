@@ -36,19 +36,15 @@ export default function ApprovalQueueModal({ schoolId, currentUserId, supabase, 
     if (isDemoMode) return
     setActioningId(entry.id)
     setError(null)
-    const { error: updErr } = await supabase
-      .from('entries')
-      .update({ status: 'in_place', submitted_for_approval_at: null })
-      .eq('id', entry.id)
-    if (updErr) { setError(updErr.message); setActioningId(null); return }
-
-    const { error: logErr } = await supabase.from('point_approval_log').insert({
-      entry_id: entry.id,
-      school_id: schoolId,
-      action: 'confirmed',
-      actioned_by: currentUserId,
+    // One transaction: sets status/submitted_for_approval_at, inserts the 'confirmed' log
+    // row, and (if the entry has a submitted_by) inserts an approval_notifications row for
+    // them — replaces the old two separate client-side writes (Phase 0 found the log insert
+    // was non-fatal after the entries write already committed).
+    const { error: rpcErr } = await supabase.rpc('confirm_entry_approval', {
+      p_entry_id: entry.id,
+      p_approver_id: currentUserId,
     })
-    if (logErr) console.error('Error logging confirmation:', logErr)
+    if (rpcErr) { setError(rpcErr.message); setActioningId(null); return }
 
     onActioned?.(entry.provision_point_id, { status: 'in_place', submitted_for_approval_at: null })
     setItems(prev => prev.filter(i => i.id !== entry.id))
@@ -60,20 +56,12 @@ export default function ApprovalQueueModal({ schoolId, currentUserId, supabase, 
     const note = (noteDrafts[entry.id] ?? '').trim()
     setActioningId(entry.id)
     setError(null)
-    const { error: updErr } = await supabase
-      .from('entries')
-      .update({ status: 'in_progress', submitted_for_approval_at: null, send_back_note: note || null })
-      .eq('id', entry.id)
-    if (updErr) { setError(updErr.message); setActioningId(null); return }
-
-    const { error: logErr } = await supabase.from('point_approval_log').insert({
-      entry_id: entry.id,
-      school_id: schoolId,
-      action: 'sent_back',
-      actioned_by: currentUserId,
-      note: note || null,
+    const { error: rpcErr } = await supabase.rpc('send_back_entry_approval', {
+      p_entry_id: entry.id,
+      p_approver_id: currentUserId,
+      p_note: note || null,
     })
-    if (logErr) console.error('Error logging send-back:', logErr)
+    if (rpcErr) { setError(rpcErr.message); setActioningId(null); return }
 
     onActioned?.(entry.provision_point_id, { status: 'in_progress', submitted_for_approval_at: null, send_back_note: note || null })
     setItems(prev => prev.filter(i => i.id !== entry.id))
