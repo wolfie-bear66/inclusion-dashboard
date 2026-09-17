@@ -7,6 +7,8 @@ import PrivacyPage from './pages/PrivacyPage'
 import TeamPage from './pages/TeamPage'
 import InclusionStrategyWizard from './pages/InclusionStrategyWizard'
 import OnboardingPrompt from './components/OnboardingPrompt'
+import BootstrapWizard from './components/BootstrapWizard'
+import { PRINCIPLE_LABEL_SHORT, STATIC_REVIEW_CATEGORIES } from './constants/principles'
 import ApprovalQueueModal from './components/ApprovalQueueModal'
 import AssignmentModal from './components/AssignmentModal'
 import SetPasswordPage from './pages/SetPasswordPage'
@@ -74,8 +76,7 @@ const PROVISION_POINT_CATEGORIES = [
   'External Partnership',
   'Family & Community Engagement',
 ]
-// Static/declarative points: reminder copy names the linked document and asks if it's still current.
-const STATIC_REVIEW_CATEGORIES = ['Named Person', 'Policy / Published Document']
+// STATIC_REVIEW_CATEGORIES is imported from ./constants/principles (shared with BootstrapWizard.jsx)
 // Live/cumulative points: reminder copy references the most recent logged entry.
 const LIVE_REVIEW_CATEGORIES = [
   'Direct Provision for Students', 'Staff Training & CPD', 'External Partnership',
@@ -268,16 +269,7 @@ const PRINCIPLES = [
 
 const RAG_COLOURS = { in_place: '#257A3B', in_progress: '#D4751A', not_in_place: '#EA4335' }
 
-// Compact principle labels — used by the Principle Coverage chart axis and the home page principle cards.
-const PRINCIPLE_LABEL_SHORT = {
-  'Leadership & Governance':          'Leadership',
-  'Early & Evidence-Based Support':   'Early Support',
-  'High Quality Adaptive Teaching':   'Adaptive Teaching',
-  'Enriching Provision':              'Enriching Provision',
-  'Safe & Respectful Culture':        'Safe Culture',
-  'Family & Wider Partnerships':      'Family Partnerships',
-  'Accessible & Inclusive Environments': 'Accessible Envs',
-}
+// PRINCIPLE_LABEL_SHORT is imported from ./constants/principles (shared with BootstrapWizard.jsx)
 
 // ── Sidebar domain colours (spec-provided) ────────────────────────────
 const SIDEBAR_DOMAIN_COLOURS = {
@@ -3315,6 +3307,7 @@ export default function App() {
   const [passwordExpired, setPasswordExpired] = useState(false)
   const [onboardingState, setOnboardingState] = useState(null)
   const [firstLoginPromptVisible, setFirstLoginPromptVisible] = useState(false)
+  const [bootstrapWizardVisible, setBootstrapWizardVisible] = useState(false)
   const [sidebarFlashTeam, setSidebarFlashTeam] = useState(false)
   const [welcomed, setWelcomed] = useState(true)
 
@@ -3413,6 +3406,7 @@ export default function App() {
       setNeedsPasswordSet(false)
       setOnboardingState(null)
       setFirstLoginPromptVisible(false)
+      setBootstrapWizardVisible(false)
       setSidebarFlashTeam(false)
       setWelcomed(true)
       setUserMatId(null)
@@ -3485,6 +3479,9 @@ export default function App() {
         setWelcomed(data.welcomed ?? false)
         if (role === 'approver' && !os.team_prompt_dismissed) {
           setFirstLoginPromptVisible(true)
+        }
+        if (role === 'approver' && !os.bootstrap_wizard_dismissed) {
+          setBootstrapWizardVisible(true)
         }
         if (role === 'mat_admin') {
           setView('mat')
@@ -5049,7 +5046,21 @@ export default function App() {
           />
         )}
 
-        {firstLoginPromptVisible && session && selectedSchool && userRole === 'approver' && (
+        {bootstrapWizardVisible && session && selectedSchool && userRole === 'approver' && (
+          <BootstrapWizard
+            schoolId={selectedSchool}
+            schoolName={schoolName}
+            userId={session.user.id}
+            firstName={firstName}
+            matId={userMatId}
+            supabase={supabase}
+            onDismiss={() => setBootstrapWizardVisible(false)}
+          />
+        )}
+
+        {/* Only offered once the bootstrap wizard is out of the way this session — the two
+            first-login flows would otherwise compete for the same moment. */}
+        {!bootstrapWizardVisible && firstLoginPromptVisible && session && selectedSchool && userRole === 'approver' && (
           <OnboardingPrompt
             onboardingState={onboardingState}
             userId={session.user.id}

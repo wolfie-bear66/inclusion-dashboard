@@ -14,7 +14,10 @@ const PRINCIPLES = [
 // Shared fetch + join powering the Principle Coverage analytics tab, the IMF-by-principle
 // funding panel, and (from Session 50) the home page principle cards. Extracted from
 // AnalyticsView so it can be called again per-school without duplicating the query/join logic.
-export function usePrincipleCoverage(sb, schoolId) {
+// refreshToken is optional — omit it and this behaves exactly as before. Pass a value
+// that changes (e.g. a counter) to force a refetch after a write made outside this hook,
+// without altering the fetch logic itself.
+export function usePrincipleCoverage(sb, schoolId, refreshToken) {
   const [analyticsEntries, setAnalyticsEntries] = useState([])
   const [domains, setDomains] = useState([])
   const [allActivePPs, setAllActivePPs] = useState([])
@@ -46,7 +49,7 @@ export function usePrincipleCoverage(sb, schoolId) {
       setAllActivePPs(ppsRes.data ?? [])
       setLoading(false)
     })
-  }, [sb, schoolId])
+  }, [sb, schoolId, refreshToken])
 
   // Principle Coverage — join active PPs with entry statuses
   const entryStatusMap = Object.fromEntries(analyticsEntries.map(e => [e.provision_point_id, e.status]))
