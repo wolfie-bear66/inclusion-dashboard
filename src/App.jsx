@@ -3052,6 +3052,68 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
   )
 }
 
+// Shared icon/control tooltip — hover-to-show on desktop, tap-to-show/tap-to-dismiss on
+// touch. Generic: wraps any trigger element (icon button, badge) and shows `text` near it.
+// Built fresh rather than extending the existing Provision Depth chart tooltip (that one is
+// mouse-only and lives in an unrelated component) — but reuses its technique of computing a
+// fixed-position rect from the trigger on show, since rows here sit inside ancestor cards
+// with `overflow: hidden` (both the Category/Principle drill-down and the Domain page) and a
+// plain absolutely-positioned tooltip would get clipped by that.
+function IconTooltip({ text, children }) {
+  const [visible, setVisible] = useState(false)
+  const [pos, setPos] = useState(null)
+  const wrapRef = useRef(null)
+
+  function show() {
+    const rect = wrapRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const halfW = 90
+    const left = Math.min(Math.max(rect.left + rect.width / 2, halfW + 8), window.innerWidth - halfW - 8)
+    setPos({ left, top: rect.top - 8 })
+    setVisible(true)
+  }
+  function hide() { setVisible(false) }
+
+  useEffect(() => {
+    if (!visible) return
+    function handleOutside(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) hide()
+    }
+    document.addEventListener('touchstart', handleOutside)
+    document.addEventListener('mousedown', handleOutside)
+    return () => {
+      document.removeEventListener('touchstart', handleOutside)
+      document.removeEventListener('mousedown', handleOutside)
+    }
+  }, [visible])
+
+  return (
+    <span
+      ref={wrapRef}
+      style={{ position: 'relative', display: 'inline-flex' }}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+      onTouchStart={() => (visible ? hide() : show())}
+    >
+      {children}
+      {visible && pos && (
+        <span role="tooltip" style={{
+          position: 'fixed', left: pos.left, top: pos.top,
+          transform: 'translate(-50%, -100%)',
+          background: '#1A202C', color: '#fff',
+          padding: '5px 9px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 500,
+          pointerEvents: 'none', zIndex: 9999, maxWidth: 180,
+          textAlign: 'center', lineHeight: 1.4, whiteSpace: 'normal',
+        }}>
+          {text}
+        </span>
+      )}
+    </span>
+  )
+}
+
 function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onOpenModal, readOnly, isFlagged, onFlag, submittedAt }) {
   const [flagOpen, setFlagOpen] = useState(false)
   const [flagNote, setFlagNote] = useState('')
@@ -3062,14 +3124,14 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onOpenModal, readO
   // what status was before submission (Phase 0: submit-for-approval never touches status).
   const isPending = !!submittedAt
   const badge = isPending
-    ? { colour: '#7C3AED', bg: 'rgba(124,58,237,0.10)', label: 'Pending Approval' }
+    ? { icon: 'ti-send-2',       colour: '#7C3AED', bg: 'rgba(124,58,237,0.10)', label: 'Pending Approval' }
     : status === 'in_place'
-      ? { colour: '#257A3B', bg: 'rgba(37,122,59,0.10)', label: 'In Place' }
+      ? { icon: 'ti-circle-check', colour: '#257A3B', bg: 'rgba(37,122,59,0.10)',  label: 'In Place' }
       : status === 'in_progress'
-        ? { colour: '#D4751A', bg: 'rgba(212,117,26,0.10)', label: 'In Progress' }
+        ? { icon: 'ti-progress',    colour: '#D4751A', bg: 'rgba(212,117,26,0.10)', label: 'In Progress' }
         : status === 'not_in_place'
-          ? { colour: '#EA4335', bg: 'rgba(234,67,53,0.10)', label: 'Not in Place' }
-          : { colour: '#94a3b8', bg: '#F0F2F5', label: 'Untouched' }
+          ? { icon: 'ti-circle-x',  colour: '#EA4335', bg: 'rgba(234,67,53,0.10)',  label: 'Not in Place' }
+          : { icon: 'ti-circle',    colour: '#94a3b8', bg: '#F0F2F5',               label: 'Untouched' }
   const stripeColour = isPending ? badge.colour : (status === 'in_place' ? '#257A3B' : status === 'in_progress' ? '#D4751A' : status === 'not_in_place' ? '#EA4335' : '#E2E8F0')
 
   async function submitFlag() {
@@ -3095,64 +3157,74 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onOpenModal, readO
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', flexWrap: 'wrap' }}>
         <span style={{ flex: 1, minWidth: 160, fontSize: 13, color: '#1A202C' }}>{pp.label}</span>
-        {pp.universal_or_targeted === 'universal' && (
-          <span style={{
-            fontSize: '0.68rem', fontWeight: 600, padding: '2px 8px', borderRadius: 20,
-            background: '#DBEAFE', color: '#1E40AF', whiteSpace: 'nowrap', flexShrink: 0,
-          }}>Universal</span>
-        )}
-        {pp.universal_or_targeted === 'targeted' && (
-          <span style={{
-            fontSize: '0.68rem', fontWeight: 600, padding: '2px 8px', borderRadius: 20,
-            background: '#EDE9FE', color: '#5B21B6', whiteSpace: 'nowrap', flexShrink: 0,
-          }}>Targeted</span>
-        )}
         {evidenceList.length > 0 && (
-          <span className="evidence-count-badge" title={`${evidenceList.length} evidence ${evidenceList.length === 1 ? 'entry' : 'entries'}`}>
-            {evidenceList.length}
-          </span>
+          <IconTooltip text={`${evidenceList.length} evidence ${evidenceList.length === 1 ? 'entry' : 'entries'}`}>
+            <span className="evidence-count-badge">
+              {evidenceList.length}
+            </span>
+          </IconTooltip>
         )}
         <div className="provision-actions">
-          {/* Single status badge — the evidence modal is now the only place status or
+          {/* Single status control — the evidence modal is now the only place status or
               submission fields get written; clicking it (or the action button) just opens
               that modal, nothing here writes anything directly. */}
-          <button
-            type="button"
-            onClick={() => onOpenModal(pp)}
-            title={isPending ? 'Submitted — waiting for an approver to confirm' : undefined}
-            style={{
-              display: 'inline-flex', alignItems: 'center', padding: '4px 12px', borderRadius: 20,
-              border: 'none', background: badge.bg, color: badge.colour,
-              fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
-            }}
-          >
-            {badge.label}
-          </button>
-          {!readOnly && (
-            <button type="button" className="evidence-btn" onClick={() => onOpenModal(pp)}>
-              {evidenceList.length > 0 ? 'View / Add Evidence' : 'Add Evidence'}
-            </button>
-          )}
-          {!readOnly && (
+          <IconTooltip text={badge.label}>
             <button
               type="button"
-              aria-label="Flag an issue with this provision point"
-              onClick={() => setFlagOpen(v => !v)}
+              onClick={() => onOpenModal(pp)}
+              aria-label={badge.label}
               style={{
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                padding: '4px 6px',
-                border: `0.5px solid ${isFlagged ? '#EA4335' : '#e2e8f0'}`,
-                borderRadius: 6,
-                background: isFlagged ? '#FCEBEB' : '#fff',
-                color: isFlagged ? '#EA4335' : '#94a3b8',
-                cursor: 'pointer', lineHeight: 1,
-                transition: 'color 0.15s, border-color 0.15s, background 0.15s',
+                width: 28, height: 28, borderRadius: '50%',
+                border: 'none', background: badge.bg, color: badge.colour,
+                cursor: 'pointer', flexShrink: 0,
               }}
-              onMouseEnter={e => { if (!isFlagged) { e.currentTarget.style.borderColor = '#EA4335'; e.currentTarget.style.color = '#EA4335' } }}
-              onMouseLeave={e => { if (!isFlagged) { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = '#94a3b8' } }}
             >
-              <i className={`ti ${isFlagged ? 'ti-flag-filled' : 'ti-flag'}`} style={{ fontSize: 14 }} />
+              <i className={`ti ${badge.icon}`} style={{ fontSize: 15 }} />
             </button>
+          </IconTooltip>
+          {!readOnly && (
+            <IconTooltip text={evidenceList.length > 0 ? 'View / Add evidence' : 'Add evidence'}>
+              <button
+                type="button"
+                aria-label={evidenceList.length > 0 ? 'View / Add evidence' : 'Add evidence'}
+                onClick={() => onOpenModal(pp)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  width: 28, height: 28, borderRadius: 6,
+                  border: '1.5px solid #1B365D', background: '#fff', color: '#1B365D',
+                  cursor: 'pointer', flexShrink: 0,
+                  transition: 'background 0.15s, color 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#1B365D'; e.currentTarget.style.color = '#fff' }}
+                onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#1B365D' }}
+              >
+                <i className="ti ti-file-plus" style={{ fontSize: 14 }} />
+              </button>
+            </IconTooltip>
+          )}
+          {!readOnly && (
+            <IconTooltip text="Flag an issue">
+              <button
+                type="button"
+                aria-label="Flag an issue with this provision point"
+                onClick={() => setFlagOpen(v => !v)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  padding: '4px 6px',
+                  border: `0.5px solid ${isFlagged ? '#EA4335' : '#e2e8f0'}`,
+                  borderRadius: 6,
+                  background: isFlagged ? '#FCEBEB' : '#fff',
+                  color: isFlagged ? '#EA4335' : '#94a3b8',
+                  cursor: 'pointer', lineHeight: 1,
+                  transition: 'color 0.15s, border-color 0.15s, background 0.15s',
+                }}
+                onMouseEnter={e => { if (!isFlagged) { e.currentTarget.style.borderColor = '#EA4335'; e.currentTarget.style.color = '#EA4335' } }}
+                onMouseLeave={e => { if (!isFlagged) { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = '#94a3b8' } }}
+              >
+                <i className={`ti ${isFlagged ? 'ti-flag-filled' : 'ti-flag'}`} style={{ fontSize: 14 }} />
+              </button>
+            </IconTooltip>
           )}
         </div>
       </div>
@@ -3384,7 +3456,6 @@ export default function App() {
   // Sidebar state
   const [activeSidebarSection, setActiveSidebarSection] = useState(null)
   const [analyticsTabRequest, setAnalyticsTabRequest] = useState(null)
-  const [expandedSDs, setExpandedSDs] = useState(new Set())
   const [expandedCatDomains, setExpandedCatDomains] = useState(new Set())
 
   const [flaggedPoints, setFlaggedPoints] = useState(new Set())
@@ -3843,7 +3914,6 @@ export default function App() {
   useEffect(() => {
     if (!selectedSchool || !selectedDomain || selectedDomain === 'analytics' || selectedDomain === 'team' || selectedDomain === 'report-builder' || selectedDomain === 'barriers' || selectedDomain === 'inclusion-strategy') {
       setSubDomains([])
-      setExpandedSDs(new Set())
       setUtFilter('all')
       return
     }
@@ -5289,12 +5359,6 @@ export default function App() {
             const domInPlace = allPoints.filter(p => entries[p.id]?.status === 'in_place').length
             const domTotal = allPoints.length
             const domPct = domTotal ? Math.round((domInPlace / domTotal) * 100) : 0
-            function toggleSD(sdId) {
-              setExpandedSDs(prev => {
-                if (prev.has(sdId)) return new Set()
-                return new Set([sdId])
-              })
-            }
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                 {/* Domain header */}
@@ -5325,9 +5389,11 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* Sub-domain collapsible sections */}
+                {/* Sub-domain sections — every point in the sub-domain renders directly, no
+                    truncation (Phase 0 confirmed sub-domain sizes are tightly clustered at
+                    4-11 points, unlike the Category/Principle drill-down's much wider spread,
+                    so there's no outlier case to design truncation around here). */}
                 {subDomains.map(sd => {
-                  const isExpanded = expandedSDs.has(sd.id)
                   const pps = utFilter === 'all'
                     ? sd.provision_points
                     : sd.provision_points.filter(p => p.universal_or_targeted === utFilter)
@@ -5336,20 +5402,14 @@ export default function App() {
                   const sdInPlace   = pps.filter(p => entries[p.id]?.status === 'in_place').length
                   const sdInProg    = pps.filter(p => entries[p.id]?.status === 'in_progress').length
                   const sdUntouched = pps.filter(p => !entries[p.id]?.status).length
-                  const needsTrunc  = ppCount > 3 && !isExpanded
-                  const visiblePPs  = needsTrunc ? pps.slice(0, 3) : pps
 
                   return (
                     <div key={sd.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, marginBottom: 8, overflow: 'hidden' }}>
-                      {/* Section header — click anywhere to toggle */}
-                      <button type="button" onClick={() => toggleSD(sd.id)}
-                        style={{
-                          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                          padding: '11px 16px', background: 'none', border: 'none', cursor: 'pointer',
-                          borderBottom: '0.5px solid #e2e8f0', fontFamily: 'inherit', textAlign: 'left',
-                        }}>
-                        <i className="ti ti-chevron-down"
-                           style={{ fontSize: '0.8rem', color: '#94a3b8', flexShrink: 0, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+                      {/* Section header — static, nothing left to expand/collapse */}
+                      <div style={{
+                        width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '11px 16px', borderBottom: '0.5px solid #e2e8f0',
+                      }}>
                         <span style={{ fontSize: 13, fontWeight: 500, color: '#1A202C' }}>{sd.name}</span>
                         <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 2 }}>({ppCount})</span>
                         <div style={{ flex: 1 }} />
@@ -5367,11 +5427,11 @@ export default function App() {
                             {sdUntouched}
                           </span>
                         </div>
-                      </button>
+                      </div>
 
-                      {/* Provision point rows */}
-                      <div style={{ position: 'relative' }}>
-                        {visiblePPs.map((pp, ppIdx) => (
+                      {/* Provision point rows — all of them, always */}
+                      <div>
+                        {pps.map((pp, ppIdx) => (
                           <ProvisionPointRow
                             key={pp.id}
                             pp={pp}
@@ -5385,18 +5445,7 @@ export default function App() {
                             submittedAt={entries[pp.id]?.submitted_for_approval_at}
                           />
                         ))}
-
-                        {/* Fade mask when truncated */}
-                        {needsTrunc && (
-                          <div style={{
-                            position: 'absolute', bottom: 0, left: 0, right: 0, height: 40,
-                            background: 'linear-gradient(to bottom, rgba(255,255,255,0), #fff)',
-                            pointerEvents: 'none',
-                          }} />
-                        )}
                       </div>
-
-                      <ShowToggle expanded={isExpanded} total={ppCount} onToggle={() => toggleSD(sd.id)} />
                     </div>
                   )
                 })}

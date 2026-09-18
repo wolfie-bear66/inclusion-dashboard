@@ -521,25 +521,6 @@ body {
   color: #EA4335;
 }
 
-/* ── Add Evidence button ── */
-.evidence-btn {
-  padding: 5px 13px;
-  border-radius: 6px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  cursor: pointer;
-  border: 1.5px solid #1B365D;
-  background: #fff;
-  color: #1B365D;
-  white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
-}
-
-.evidence-btn:hover {
-  background: #1B365D;
-  color: #fff;
-}
-
 /* ── Collapsible provision point row ── */
 .pp-row:hover {
   background: #F7F8FA !important;
