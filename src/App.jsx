@@ -681,7 +681,10 @@ function ReportBuilder({ schoolName = '', supabase: sb, school, schoolCtx = {}, 
             )
           `)
           .eq('school_id', school),
-        sb.from('domains').select('id, name, display_order').order('display_order'),
+        // sub_domains(provision_points(id)) — full catalogue count per domain, same source as
+        // the homepage/Domains index page's ppDomainMap, so Domain Readiness's denominator
+        // isn't just the touched-only entries count (see getReadinessData in generateReport.js).
+        sb.from('domains').select('id, name, display_order, sub_domains(provision_points(id))').order('display_order'),
         sb.from('barriers')
           .select('id, description, status, actions, scale, student_groups, domain_id, sub_domain_id, next_review_due, domains(name), sub_domains(name)')
           .eq('school_id', school),

@@ -235,16 +235,24 @@ function drawCoverPage(doc, { schoolName, purpose, selectedDomains, selectedGrou
 // that both the School Context and Domain Readiness sections filter/aggregate further.
 // Extracted from generateEvidenceReport's body (Session 57) so generateReportWord.js
 // can reuse the identical computation rather than re-deriving it.
+//
+// `total` is the full provision_points catalogue count for the domain (via each domain's
+// nested sub_domains(provision_points(id)), fetched alongside id/name/display_order in
+// ReportBuilder) — not the touched-only `entries` count. Using touched-only points as the
+// denominator here used to match the same bug the Analytics "Domain Readiness" tab had:
+// an untouched domain read as "no data" instead of 0%, and a partially-touched domain's
+// percentage was inflated against a smaller-than-real denominator.
 export function getReadinessData(entries, domains) {
   return domains.map(d => {
     const de = entries.filter(e => e.provision_points?.sub_domains?.domains?.id === d.id)
+    const total = (d.sub_domains ?? []).reduce((sum, sd) => sum + (sd.provision_points?.length ?? 0), 0)
     return {
       id:         d.id,
       name:       d.name,
       inPlace:    de.filter(e => e.status === 'in_place').length,
       inProgress: de.filter(e => e.status === 'in_progress').length,
       notInPlace: de.filter(e => e.status === 'not_in_place').length,
-      total:      de.length,
+      total,
     }
   })
 }
