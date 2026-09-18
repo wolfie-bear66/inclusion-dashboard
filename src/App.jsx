@@ -3059,10 +3059,24 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
 // fixed-position rect from the trigger on show, since rows here sit inside ancestor cards
 // with `overflow: hidden` (both the Category/Principle drill-down and the Domain page) and a
 // plain absolutely-positioned tooltip would get clipped by that.
-function IconTooltip({ text, children }) {
+//
+// `actionable` — pass this when the wrapped element has a real onClick (status control, Add
+// Evidence, flag icon). A real touch tap always fires the browser's native click regardless of
+// what our own touchstart handler does (confirmed live: the original tap-to-toggle logic showed
+// the tooltip AND the click fired in the same gesture, so tapping status/Add-Evidence opened the
+// modal with the tooltip flashing uselessly behind it). For those, touch instead uses a
+// long-press: holding past ~500ms shows the tooltip and calls preventDefault() on touchend to
+// swallow the click that would otherwise follow; releasing before the threshold is a normal tap
+// and the click proceeds untouched. The evidence-count badge has no click to protect and keeps
+// the original quick tap-to-show/tap-to-dismiss behaviour (`actionable` omitted/false).
+const LONG_PRESS_MS = 500
+
+function IconTooltip({ text, children, actionable = false }) {
   const [visible, setVisible] = useState(false)
   const [pos, setPos] = useState(null)
   const wrapRef = useRef(null)
+  const longPressTimer = useRef(null)
+  const longPressFired = useRef(false)
 
   function show() {
     const rect = wrapRef.current?.getBoundingClientRect()
@@ -3087,6 +3101,35 @@ function IconTooltip({ text, children }) {
     }
   }, [visible])
 
+  useEffect(() => () => clearTimeout(longPressTimer.current), [])
+
+  function handleTouchStart() {
+    if (!actionable) {
+      visible ? hide() : show()
+      return
+    }
+    longPressFired.current = false
+    longPressTimer.current = setTimeout(() => {
+      longPressFired.current = true
+      show()
+    }, LONG_PRESS_MS)
+  }
+  function handleTouchEnd(e) {
+    if (!actionable) return
+    clearTimeout(longPressTimer.current)
+    if (longPressFired.current) {
+      // Long-press already showed the tooltip — swallow the click the browser would
+      // otherwise synthesize from this same touch, so it doesn't also fire the action.
+      e.preventDefault()
+      hide()
+    }
+    longPressFired.current = false
+  }
+  function handleTouchMove() {
+    if (!actionable) return
+    clearTimeout(longPressTimer.current)
+  }
+
   return (
     <span
       ref={wrapRef}
@@ -3095,7 +3138,9 @@ function IconTooltip({ text, children }) {
       onMouseLeave={hide}
       onFocus={show}
       onBlur={hide}
-      onTouchStart={() => (visible ? hide() : show())}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchMove={handleTouchMove}
     >
       {children}
       {visible && pos && (
@@ -3168,7 +3213,7 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onOpenModal, readO
           {/* Single status control — the evidence modal is now the only place status or
               submission fields get written; clicking it (or the action button) just opens
               that modal, nothing here writes anything directly. */}
-          <IconTooltip text={badge.label}>
+          <IconTooltip text={badge.label} actionable>
             <button
               type="button"
               onClick={() => onOpenModal(pp)}
@@ -3184,7 +3229,7 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onOpenModal, readO
             </button>
           </IconTooltip>
           {!readOnly && (
-            <IconTooltip text={evidenceList.length > 0 ? 'View / Add evidence' : 'Add evidence'}>
+            <IconTooltip text={evidenceList.length > 0 ? 'View / Add evidence' : 'Add evidence'} actionable>
               <button
                 type="button"
                 aria-label={evidenceList.length > 0 ? 'View / Add evidence' : 'Add evidence'}
@@ -3204,7 +3249,7 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onOpenModal, readO
             </IconTooltip>
           )}
           {!readOnly && (
-            <IconTooltip text="Flag an issue">
+            <IconTooltip text="Flag an issue" actionable>
               <button
                 type="button"
                 aria-label="Flag an issue with this provision point"
