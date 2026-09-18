@@ -9,7 +9,7 @@ export const PRINCIPLE_LABEL_SHORT = {
   'Enriching Provision':              'Enriching Provision',
   'Safe & Respectful Culture':        'Safe Culture',
   'Family & Wider Partnerships':      'Family Partnerships',
-  'Accessible & Inclusive Environments': 'Accessible Envs',
+  'Accessible & Inclusive Environments': 'Accessible Environments',
 }
 
 // Static/declarative points: reminder copy names the linked document and asks if it's still current.

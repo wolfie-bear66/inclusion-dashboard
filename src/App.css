@@ -1057,7 +1057,9 @@ body {
   --hp-text-meta: #667085;
   --hp-card-border: rgba(27, 54, 93, 0.10);
   --hp-status-not-started: #E3E7ED;
-  --hp-status-not-in-place: #E8B4AE;
+  /* Deeper than the original #E8B4AE — still clearly lighter than --status-red (#EA4335),
+     but visibly distinct from the grey not-started track (#E3E7ED) at a glance. */
+  --hp-status-not-in-place: #D98F82;
   --hp-amber-tint-bg: #FDF1E3;
   --hp-amber-tint-border: #F0D3AE;
   --hp-amber-tint-text: #9A5210;
@@ -1089,7 +1091,7 @@ body {
   min-height: 560px;
   display: flex;
   flex-direction: column;
-  padding: 20px 0;
+  padding: 14px 0;
 }
 
 .hp-review {

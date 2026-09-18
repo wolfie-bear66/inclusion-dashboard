@@ -3838,6 +3838,11 @@ export default function App() {
           const viewingAsMember = viewMode !== 'whole_school' && viewMode !== 'personal'
             ? teamMembers.find(m => m.id === viewMode)
             : null
+          const viewingLabel = viewMode === 'whole_school'
+            ? 'Whole school'
+            : viewMode === 'personal'
+              ? 'My provision'
+              : (viewingAsMember ? `${viewingAsMember.first_name} ${viewingAsMember.last_name}` : 'Whole school')
 
           // Segmented bar for the readiness card, sourced from the same computeCounts() result
           // as "N of 166 in place" above it — zero-count buckets omitted, order fixed.
@@ -3850,7 +3855,7 @@ export default function App() {
 
           return (
             <div className="hp-content" style={{
-              display: 'flex', flexDirection: 'column', gap: 20,
+              display: 'flex', flexDirection: 'column', gap: 14,
               background: isPersonalView ? '#F5F4F0' : '#F7F8FA',
               minHeight: '100%', margin: -24, padding: 24,
               transition: 'background 0.25s',
@@ -3873,7 +3878,7 @@ export default function App() {
                   padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexShrink: 0 }}>
-                    <span className="hp-font-display" style={{ fontSize: 44, color: 'var(--brand-navy)', lineHeight: 1 }}>{readPct}%</span>
+                    <span className="hp-font-display" style={{ fontSize: 44, color: 'var(--brand-navy)', lineHeight: 1, fontVariantNumeric: 'lining-nums' }}>{readPct}%</span>
                     <span style={{ fontSize: 13, color: 'var(--hp-text-meta)', paddingBottom: 5 }}>overall readiness</span>
                   </div>
                   <div style={{ flex: '1 1 260px', minWidth: 260, maxWidth: 260, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -3938,23 +3943,36 @@ export default function App() {
                   )}
                 </div>
               ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <label style={{ fontSize: '0.78rem', color: '#64748b', fontFamily: 'inherit' }}>Viewing:</label>
-                  <select
-                    value={viewMode}
-                    onChange={e => setViewMode(e.target.value)}
-                    style={{
-                      padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: 8,
-                      fontSize: '0.82rem', fontFamily: 'inherit', color: '#1A202C',
-                      background: '#fff', cursor: 'pointer', outline: 'none',
-                    }}
-                  >
-                    <option value="whole_school">Whole school</option>
-                    <option value="personal">My provision</option>
-                    {teamMembers.map(m => (
-                      <option key={m.id} value={m.id}>{m.first_name} {m.last_name}</option>
-                    ))}
-                  </select>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {/* Styled to match the ledger's segmented control (white, 1px navy-tinted
+                      border, radius 10) — the native <select> sits on top, invisible but
+                      interactive, so keyboard/screen-reader behaviour is unchanged. */}
+                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      background: '#fff', border: '1px solid rgba(27,54,93,0.16)', borderRadius: 10,
+                      padding: '8px 12px', fontSize: '0.82rem', pointerEvents: 'none',
+                    }}>
+                      <span style={{ color: 'var(--hp-text-meta)' }}>Viewing</span>
+                      <span style={{ color: 'var(--hp-text-primary)', fontWeight: 600 }}>{viewingLabel}</span>
+                      <i className="ti ti-chevron-down" style={{ fontSize: '0.75rem', color: 'var(--hp-text-meta)' }} />
+                    </div>
+                    <select
+                      aria-label="Viewing"
+                      value={viewMode}
+                      onChange={e => setViewMode(e.target.value)}
+                      style={{
+                        position: 'absolute', inset: 0, width: '100%', height: '100%',
+                        opacity: 0, cursor: 'pointer', border: 'none',
+                      }}
+                    >
+                      <option value="whole_school">Whole school</option>
+                      <option value="personal">My provision</option>
+                      {teamMembers.map(m => (
+                        <option key={m.id} value={m.id}>{m.first_name} {m.last_name}</option>
+                      ))}
+                    </select>
+                  </div>
                   {viewingAsMember && (
                     <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
                       Showing points assigned to {viewingAsMember.first_name}
@@ -3988,7 +4006,7 @@ export default function App() {
 
                 {/* ── Ledger card ──────────────────────────────────────────── */}
                 <div className="hp-card hp-ledger">
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, padding: '0 24px 16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, padding: '0 24px 10px' }}>
                     <div className="hp-segctrl">
                       {[
                         { key: 'principles', label: 'Principles' },
@@ -4006,7 +4024,7 @@ export default function App() {
                         it filters the review list too, not just this ledger. */}
                   </div>
 
-                  <div className="hp-legend" style={{ padding: '0 24px 14px' }}>
+                  <div className="hp-legend" style={{ padding: '0 24px 8px' }}>
                     <span><span className="hp-legend-dot" style={{ background: '#257A3B' }} />In place</span>
                     <span><span className="hp-legend-dot" style={{ background: '#D4751A' }} />In progress</span>
                     {ledgerHasNotInPlace && (
@@ -4125,6 +4143,11 @@ export default function App() {
                             </div>
                           )
                         })}
+                        {reviewListItems.length < 3 && (
+                          <p style={{ fontSize: '0.75rem', color: 'var(--hp-text-meta)', textAlign: 'center', padding: '8px 4px' }}>
+                            Evidence with a review date appears here.
+                          </p>
+                        )}
                       </div>
                       <div className="hp-review-list-fade" />
                     </div>
