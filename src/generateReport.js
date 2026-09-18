@@ -611,7 +611,18 @@ export function getFundingSectionData({ entries, selectedDomains, schoolCtx }) {
     .filter(([, v]) => v > 0)
     .map(([name, value]) => ({ name, value }))
 
-  return { totalCost, bySource, byDomain, fCards, streamRows, domainRows }
+  // Plain-language explanation for any per-pupil figure that came back '—' for want of a
+  // cohort number, rather than leaving the reader to guess why a dash appeared.
+  const missingCohortFields = [
+    !schoolCtx.totalPupils && 'per pupil',
+    !schoolCtx.ppCount     && 'per PP pupil',
+    !schoolCtx.sendCount   && 'per SEND pupil',
+  ].filter(Boolean)
+  const missingCohortNote = missingCohortFields.length
+    ? `Add your pupil numbers in Report Builder to see ${missingCohortFields.join(', ')} figures.`
+    : null
+
+  return { totalCost, bySource, byDomain, fCards, streamRows, domainRows, missingCohortNote }
 }
 
 function drawFunding(doc, y, { entries, selectedDomains, schoolCtx }) {
@@ -619,7 +630,7 @@ function drawFunding(doc, y, { entries, selectedDomains, schoolCtx }) {
   y = sectionBar(doc, y, '4 — Funding & Cost')
   y += 4
 
-  const { totalCost, fCards, streamRows, domainRows } = getFundingSectionData({ entries, selectedDomains, schoolCtx })
+  const { totalCost, fCards, streamRows, domainRows, missingCohortNote } = getFundingSectionData({ entries, selectedDomains, schoolCtx })
 
   if (totalCost === 0) {
     doc.setTextColor(...MID)
@@ -646,6 +657,16 @@ function drawFunding(doc, y, { entries, selectedDomains, schoolCtx }) {
     doc.text(fCards[i].label, cx + cardW / 2, y + 13.5, { align: 'center' })
   }
   y += cardH + 5
+
+  // Plain-language note for any per-pupil figure shown as '—' above, rather than leaving the
+  // reader to guess why — never printed if every cohort field needed is present.
+  if (missingCohortNote) {
+    doc.setTextColor(...MID)
+    doc.setFontSize(7.5)
+    doc.setFont('helvetica', 'italic')
+    doc.text(missingCohortNote, ML, y)
+    y += 6
+  }
 
   // Funding streams table
   const streamBody = streamRows.map(r => [r.name, `£${r.value.toLocaleString()}`, `${r.pctOfTotal}%`])

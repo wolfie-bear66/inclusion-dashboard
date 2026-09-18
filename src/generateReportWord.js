@@ -340,7 +340,7 @@ function writeDomainReadinessWord({ readinessData, selectedDomains }) {
 // SECTION 4 — Funding & Cost
 // ─────────────────────────────────────────────────────────────────────
 function writeFundingWord({ entries, selectedDomains, schoolCtx }) {
-  const { totalCost, fCards, streamRows, domainRows } = getFundingSectionData({ entries, selectedDomains, schoolCtx })
+  const { totalCost, fCards, streamRows, domainRows, missingCohortNote } = getFundingSectionData({ entries, selectedDomains, schoolCtx })
   const children = [bar('4 — Funding & Cost')]
 
   if (totalCost === 0) {
@@ -353,6 +353,10 @@ function writeFundingWord({ entries, selectedDomains, schoolCtx }) {
     [fCards.map(c => ({ text: c.value, bold: true }))],
     fCards.map(() => Math.floor(100 / fCards.length)),
   ))
+
+  // Plain-language note for any per-pupil figure shown as '—' above, rather than leaving the
+  // reader to guess why — never rendered if every cohort field needed is present.
+  if (missingCohortNote) children.push(italicNote(missingCohortNote))
 
   children.push(subheading('Funding Streams', DARK))
   children.push(table(

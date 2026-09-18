@@ -549,7 +549,7 @@ const REPORT_PURPOSE_OPTIONS = [
   },
 ]
 
-function ReportBuilder({ schoolName = '', supabase: sb, school, schoolCtx = {}, onCreateInclusionStrategy }) {
+function ReportBuilder({ schoolName = '', supabase: sb, school, schoolCtx = {}, onCtxSave, ctxLoading = false, readOnly = false, onCreateInclusionStrategy }) {
   const [purpose,         setPurpose]         = useState('full_strategy')
   const [selectedDomains, setSelectedDomains] = useState([])   // empty = all domains
   const [selectedGroups,  setSelectedGroups]  = useState([])   // empty = all groups
@@ -721,6 +721,15 @@ function ReportBuilder({ schoolName = '', supabase: sb, school, schoolCtx = {}, 
               )
             })}
           </div>
+        </div>
+
+        {/* School cohort profile — used for the report's per-pupil funding figures */}
+        <div style={card}>
+          <p style={cardHead}>School Cohort Profile</p>
+          <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: 12 }}>
+            Used for funding-per-pupil figures in your report.
+          </p>
+          <SchoolContextPanel schoolCtx={schoolCtx} onSave={onCtxSave} ctxLoading={ctxLoading} readOnly={readOnly} />
         </div>
 
         {/* Filter 2 — Domain Scope */}
@@ -4219,6 +4228,9 @@ export default function App() {
             supabase={supabase}
             school={selectedSchool}
             schoolCtx={schoolCtx}
+            onCtxSave={handleCtxSave}
+            ctxLoading={ctxLoading}
+            readOnly={readOnly}
             onCreateInclusionStrategy={() => setSelectedDomain('inclusion-strategy')}
           />
         )}
