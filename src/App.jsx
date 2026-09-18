@@ -71,11 +71,6 @@ const PROVISION_POINT_CATEGORIES = [
   'Family & Community Engagement',
 ]
 // STATIC_REVIEW_CATEGORIES is imported from ./constants/principles (shared with BootstrapWizard.jsx)
-// Live/cumulative points: reminder copy references the most recent logged entry.
-const LIVE_REVIEW_CATEGORIES = [
-  'Direct Provision for Students', 'Staff Training & CPD', 'External Partnership',
-  'Family & Community Engagement', 'Monitoring & Data',
-]
 
 // Single source of truth for review_cycle → next_review_due. Reused by the
 // "Confirm still current" fast-confirm action so the date math never drifts
@@ -95,20 +90,6 @@ function calculateNextReviewDue(reviewCycle, fromDateStr) {
   return d.toISOString().slice(0, 10)
 }
 
-// Relative "time ago" phrase for review-reminder copy.
-function formatTimeAgo(dateStr) {
-  if (!dateStr) return null
-  const then = new Date(dateStr)
-  if (Number.isNaN(then.getTime())) return null
-  const days = Math.floor((new Date() - then) / 86400000)
-  if (days <= 0) return 'today'
-  if (days === 1) return 'yesterday'
-  if (days < 14) return `${days} days ago`
-  if (days < 60) return `${Math.round(days / 7)} weeks ago`
-  if (days < 365) return `${Math.round(days / 30)} months ago`
-  const years = Math.round(days / 365)
-  return `${years} year${years !== 1 ? 's' : ''} ago`
-}
 const PROVISION_CATEGORIES = [
   { value: 'student_facing',    label: 'Student-Facing Intervention' },
   { value: 'policy_structural', label: 'Policy / Structural' },
@@ -2285,8 +2266,9 @@ function DrillDownDetail({
   title, ppIds, domains, ppInfoMap, allStatuses, evidenceEntries, entries, flaggedPoints,
   expandedDomains, onToggleDomain, onBack, openModal, readOnly, onFlag,
 }) {
-  const total   = ppIds.length
-  const inPlace = ppIds.filter(id => allStatuses[id] === 'in_place').length
+  // Every count here comes from computeCounts() — the same helper the home ledger uses —
+  // so a ledger row and the drill-down it links to can never disagree.
+  const { total, inPlace } = computeCounts(ppIds.map(id => ({ id })), allStatuses)
 
   const domainGroupMap = {}
   for (const ppId of ppIds) {
@@ -2317,9 +2299,7 @@ function DrillDownDetail({
         const pps         = group.pps
         const ppCount     = pps.length
         const domColour   = sidebarDomainColour(group.domainName)
-        const grpInPlace  = pps.filter(p => allStatuses[p.id] === 'in_place').length
-        const grpInProg   = pps.filter(p => allStatuses[p.id] === 'in_progress').length
-        const grpUntouched = pps.filter(p => !allStatuses[p.id]).length
+        const { inPlace: grpInPlace, inProgress: grpInProg, notStarted: grpUntouched } = computeCounts(pps, allStatuses)
         const needsTrunc  = ppCount > 3 && !isExpanded
         const visiblePPs  = needsTrunc ? pps.slice(0, 3) : pps
 
@@ -2428,15 +2408,15 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState(null)
   const [selectedPrinciple, setSelectedPrinciple] = useState(null)
 
-  // School context — SchoolContextPanel now renders on the homepage (its only home since
-  // Analytics, the only other place it lived, was removed).
+  // School context — SchoolContextPanel now renders inside Report Builder only (the
+  // homepage restructure removed it from the home screen; report generation's
+  // funding-per-pupil figures are why it needed a home before that removal).
   const [schoolCtx, setSchoolCtx] = useState({ totalPupils: 0, ppCount: 0, sendCount: 0, fsmCount: 0, ealCount: 0, lacCount: 0, wwcCount: 0, socialCareCount: 0, youngCarerCount: 0, mentalHealthSupportCount: 0 })
   const [ctxLoading, setCtxLoading] = useState(true)
 
   // Home screen extras
   const [firstName, setFirstName] = useState('')
   const [overdueReviews, setOverdueReviews] = useState([])
-  const [reviewsExpanded, setReviewsExpanded] = useState(false)
   const [approvalQueueCount, setApprovalQueueCount] = useState(0)
   const [approvalQueueOpen, setApprovalQueueOpen] = useState(false)
   const [selfAssignOpen, setSelfAssignOpen] = useState(false)
@@ -2466,6 +2446,24 @@ export default function App() {
   // Personal view state — 'whole_school' | 'personal' | <userId UUID>
   const [viewMode, setViewMode] = useState('whole_school')
   const [personalAssignedPpIds, setPersonalAssignedPpIds] = useState(new Set())
+
+  // Home ledger's segmented control — 'principles' | 'domains' | 'categories'.
+  // Remembered across visits, per the restructure brief.
+  const [ledgerView, setLedgerView] = useState(() => {
+    try {
+      const stored = localStorage.getItem('hp_ledger_view')
+      return stored === 'domains' || stored === 'categories' ? stored : 'principles'
+    } catch {
+      return 'principles'
+    }
+  })
+  function changeLedgerView(next) {
+    setLedgerView(next)
+    try { localStorage.setItem('hp_ledger_view', next) } catch { /* ignore */ }
+  }
+  // "Coming up for review" tile filter — null | 'overdue' | 'this_week' | 'this_month' | 'later'
+  const [reviewTileFilter, setReviewTileFilter] = useState(null)
+  const [reviewSeeAll, setReviewSeeAll] = useState(false)
   const [teamMembers, setTeamMembers] = useState([])
   const [browsingSchoolName, setBrowsingSchoolName] = useState('')
 
@@ -2813,7 +2811,6 @@ export default function App() {
         }
         upcoming.sort((a, b) => a.nextReviewDue.localeCompare(b.nextReviewDue))
         setOverdueReviews(upcoming)
-        setReviewsExpanded(false)
       })
   }, [selectedSchool])
 
@@ -3329,7 +3326,9 @@ export default function App() {
   const isDemoMode = sessionStorage.getItem('isDemoMode') === 'true'
 
   // Home page principle cards — always whole-school, same as the readiness card above it.
-  const { principleData: homePrincipleData, analyticsEntries: homeAnalyticsEntries } = usePrincipleCoverage(supabase, selectedSchool)
+  // homePrincipleData no longer used here — the home ledger computes its own principle
+  // rows from computeCounts(); analyticsEntries still feeds CategoryHeatmap (Provision Depth).
+  const { analyticsEntries: homeAnalyticsEntries } = usePrincipleCoverage(supabase, selectedSchool)
 
   const allPoints = subDomains.flatMap(sd => sd.provision_points)
   const answeredCount = allPoints.filter(p => entries[p.id]?.status).length
@@ -3777,102 +3776,60 @@ export default function App() {
           const filteredReviews = isPersonalView
             ? overdueReviews.filter(r => personalAssignedPpIds.has(r.provisionPointId))
             : overdueReviews
-          const reviewsDueCount = filteredReviews.length
-          const overdueItems = filteredReviews.filter(r => r.isOverdue)
-          const dueSoonItems = filteredReviews.filter(r => !r.isOverdue)
-
-          function renderReviewItem(r, i) {
-            const info       = ppInfoMap[r.provisionPointId]
-            const domainId   = info?.domainId
-            const domainName = info?.domainName ?? ''
-            const category   = info?.category ?? ''
-            const label      = r.provisionName || info?.label || 'Untitled'
-            const dateStr    = new Date(r.nextReviewDue).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-
-            const isStatic = STATIC_REVIEW_CATEGORIES.includes(category)
-            const isLive   = LIVE_REVIEW_CATEGORIES.includes(category)
-
-            let reminderNode = null
-            if (isStatic) {
-              const reviewedAgo = formatTimeAgo(r.dateLastReviewed)
-              const docLabel    = r.namedRolePolicyDocument || null
-              reminderNode = (
-                <>
-                  {label}{reviewedAgo ? ` was last reviewed ${reviewedAgo}. ` : ' has no recorded review date yet. '}
-                  {'Is '}
-                  {docLabel && r.supportingDocumentLink ? (
-                    <a href={r.supportingDocumentLink} target="_blank" rel="noreferrer"
-                      onClick={e => e.stopPropagation()}
-                      style={{ color: '#0f766e', textDecoration: 'underline' }}>{docLabel}</a>
-                  ) : (docLabel || 'this')}
-                  {' still current?'}
-                </>
-              )
-            } else if (isLive) {
-              const loggedAgo = formatTimeAgo(r.dateStarted || r.createdAt)
-              const detail    = r.briefDescription || r.structuredDetail?.professional_type || ''
-              reminderNode = loggedAgo
-                ? `${label} — last logged ${loggedAgo}${detail ? ` (${detail})` : ''}. Has anything happened since?`
-                : `${label} — no engagement logged yet for this point.`
-            }
-
-            const canConfirm    = isStatic && !readOnly && !isDemoMode && r.reviewCycle && r.reviewCycle !== 'as_needed'
-            const isConfirming  = confirmingReviewId === r.evidenceEntryId
-            const hasConfirmErr = confirmReviewError === r.evidenceEntryId
-
-            return (
-              <div key={i} style={{
-                background: 'rgba(255,255,255,0.6)', border: '1px solid #99f6e4', borderRadius: 8,
-                padding: '8px 10px', flexShrink: 0,
-              }}>
-                <div
-                  role="button" tabIndex={0}
-                  onClick={() => domainId && setSelectedDomain(domainId)}
-                  onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && domainId) setSelectedDomain(domainId) }}
-                  style={{ cursor: domainId ? 'pointer' : 'default', textAlign: 'left' }}
-                >
-                  <p style={{ fontSize: '0.78rem', fontWeight: 600, color: '#134e4a', lineHeight: 1.35, marginBottom: 3 }}>
-                    {reminderNode ?? label}
-                  </p>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <p style={{ fontSize: '0.7rem', color: '#0f766e' }}>{domainName}</p>
-                    <p style={{ fontSize: '0.7rem', color: r.isOverdue ? '#dc2626' : '#0f766e', fontWeight: 600 }}>{dateStr}</p>
-                  </div>
-                </div>
-                {canConfirm && (
-                  <button type="button"
-                    onClick={() => handleConfirmStillCurrent(r)}
-                    disabled={isConfirming}
-                    style={{
-                      marginTop: 6, width: '100%', padding: '5px 8px', borderRadius: 6,
-                      border: '1px solid #0f766e', background: isConfirming ? '#e2f5f1' : '#fff',
-                      color: '#0f766e', fontSize: '0.7rem', fontWeight: 600,
-                      cursor: isConfirming ? 'default' : 'pointer', fontFamily: 'inherit',
-                    }}>
-                    {isConfirming ? 'Confirming…' : 'Confirm still current'}
-                  </button>
-                )}
-                {hasConfirmErr && (
-                  <p style={{ fontSize: '0.68rem', color: '#dc2626', marginTop: 4 }}>Couldn't save — try again.</p>
-                )}
-              </div>
-            )
+          // Ledger rows — Principles | Domains | Categories, every count from computeCounts()
+          // so a row and its drill-down (which also uses computeCounts, see DrillDownDetail)
+          // always agree. allLedgerPoints carries the fields each scope predicate needs.
+          const allLedgerPoints = allPpIds.map(id => ({
+            id, domainId: ppDomainMap[id], category: ppCategoryMap[id], principle: ppPrincipleMap[id],
+          }))
+          let ledgerRows = []
+          if (ledgerView === 'principles') {
+            ledgerRows = Object.keys(PRINCIPLE_LABEL_SHORT).map(principle => ({
+              key: principle,
+              name: PRINCIPLE_LABEL_SHORT[principle] ?? principle,
+              counts: computeCounts(allLedgerPoints, allStatuses, p => p.principle === principle),
+              onClick: () => { setOverviewMode('principle'); setSelectedPrinciple(principle) },
+            }))
+          } else if (ledgerView === 'domains') {
+            ledgerRows = domains.map(d => ({
+              key: d.id,
+              name: d.name,
+              counts: computeCounts(allLedgerPoints, allStatuses, p => p.domainId === d.id),
+              onClick: () => setSelectedDomain(d.id),
+            }))
+          } else {
+            ledgerRows = PROVISION_POINT_CATEGORIES.map(cat => ({
+              key: cat,
+              name: cat,
+              counts: computeCounts(allLedgerPoints, allStatuses, p => p.category === cat),
+              onClick: () => { setSelectedDomain(''); setOverviewMode('category'); setSelectedCategory(cat) },
+            }))
           }
+          // Legend only lists buckets that actually occur anywhere in the current view.
+          const ledgerHasNotInPlace = ledgerRows.some(r => r.counts.notInPlace > 0)
 
-          // Principle cards — always whole-school (see homePrincipleData above), same RAG colouring as before.
-          // Fixed DfE order — homePrincipleData is already in PRINCIPLES order from the hook, so no sort here (intentional: never reorder by status).
-          const principleCards = homePrincipleData.map(p => {
-            const { total, inPlace, inProgress, notInPlace } = p
-            let rag = 'untouched'
-            if (total > 0) {
-              if (notInPlace > 0) rag = 'red'
-              else if (inPlace / total >= 0.7) rag = 'green'
-              else if (inProgress > 0 || inPlace > 0) rag = 'amber'
-            }
-            return { ...p, rag }
-          })
-          const ragBg     = { untouched: '#F7F8FA', red: 'rgba(234,67,53,0.06)', amber: 'rgba(212,117,26,0.08)', green: 'rgba(37,122,59,0.06)' }
-          const ragBorder = { untouched: '#E2E8F0', red: 'rgba(234,67,53,0.25)', amber: 'rgba(212,117,26,0.25)', green: 'rgba(37,122,59,0.25)' }
+          // Coming up for review — same 60-day overdueReviews/filteredReviews as before, now
+          // bucketed into the four tiles. Definitions are relative to next_review_due vs today.
+          const todayForTiles = new Date(); todayForTiles.setHours(0, 0, 0, 0)
+          function daysUntil(dateStr) {
+            const d = new Date(dateStr); d.setHours(0, 0, 0, 0)
+            return Math.round((d - todayForTiles) / 86400000)
+          }
+          const reviewBuckets = { overdue: [], this_week: [], this_month: [], later: [] }
+          for (const r of filteredReviews) {
+            const days = daysUntil(r.nextReviewDue)
+            if (days < 0) reviewBuckets.overdue.push(r)
+            else if (days <= 7) reviewBuckets.this_week.push(r)
+            else if (days <= 30) reviewBuckets.this_month.push(r)
+            else reviewBuckets.later.push(r)
+          }
+          const reviewTiles = [
+            { key: 'overdue',    label: 'Overdue',    count: reviewBuckets.overdue.length,    amber: true },
+            { key: 'this_week',  label: 'This week',  count: reviewBuckets.this_week.length,   amber: false },
+            { key: 'this_month', label: 'This month',  count: reviewBuckets.this_month.length, amber: false },
+            { key: 'later',      label: 'Later',       count: reviewBuckets.later.length,       amber: false },
+          ]
+          const reviewListItems = reviewTileFilter ? reviewBuckets[reviewTileFilter] : filteredReviews
 
           // Empty personal view — no assignments at all
           const totalAssigned = isPersonalView ? personalAssignedPpIds.size : null
@@ -3882,8 +3839,17 @@ export default function App() {
             ? teamMembers.find(m => m.id === viewMode)
             : null
 
+          // Segmented bar for the readiness card, sourced from the same computeCounts() result
+          // as "N of 166 in place" above it — zero-count buckets omitted, order fixed.
+          const headerBarSegments = [
+            { key: 'inPlace',    count: headerCounts.inPlace,    colour: '#257A3B' },
+            { key: 'inProgress', count: headerCounts.inProgress, colour: '#D4751A' },
+            { key: 'notInPlace', count: headerCounts.notInPlace, colour: 'var(--hp-status-not-in-place)' },
+            { key: 'notStarted', count: headerCounts.notStarted, colour: 'var(--hp-status-not-started)' },
+          ].filter(s => s.count > 0)
+
           return (
-            <div style={{
+            <div className="hp-content" style={{
               display: 'flex', flexDirection: 'column', gap: 20,
               background: isPersonalView ? '#F5F4F0' : '#F7F8FA',
               minHeight: '100%', margin: -24, padding: 24,
@@ -3893,39 +3859,41 @@ export default function App() {
               {/* Greeting row + fluid-width readiness box */}
               <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
                 <div style={{ flexShrink: 0 }}>
-                  <h1 style={{ fontSize: '1.35rem', fontWeight: 600, color: '#1A202C', lineHeight: 1.25 }}>
+                  <h1 className="hp-font-display" style={{ fontSize: 34, color: 'var(--hp-text-primary)', lineHeight: 1.15 }}>
                     {greeting}{firstName ? `, ${firstName}` : ''}.
                   </h1>
                   {schoolName && (
-                    <p style={{ fontSize: '0.82rem', color: '#94a3b8', marginTop: 3 }}>{schoolName}</p>
+                    <p style={{ fontSize: 14, color: 'var(--hp-text-secondary)', marginTop: 4 }}>{schoolName}</p>
                   )}
                 </div>
 
                 {/* Overall readiness — always whole-school, fills remaining row width */}
                 <div style={{
-                  flex: '1 1 320px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12,
-                  padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap',
+                  flex: '1 1 320px', background: '#fff', border: '1px solid var(--hp-card-border)', borderRadius: 16,
+                  padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexShrink: 0 }}>
-                    <span style={{ fontSize: '2rem', fontWeight: 700, color: '#1B365D', lineHeight: 1 }}>{readPct}%</span>
-                    <span style={{ fontSize: '0.78rem', color: '#94a3b8', paddingBottom: 3 }}>overall readiness</span>
+                    <span className="hp-font-display" style={{ fontSize: 44, color: 'var(--brand-navy)', lineHeight: 1 }}>{readPct}%</span>
+                    <span style={{ fontSize: 13, color: 'var(--hp-text-meta)', paddingBottom: 5 }}>overall readiness</span>
                   </div>
-                  <div style={{ flex: '1 1 160px', minWidth: 160, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div style={{ height: 6, borderRadius: 99, background: '#E2E8F0', overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${readPct}%`, background: '#1B365D', borderRadius: 99, transition: 'width 0.4s' }} />
+                  <div style={{ flex: '1 1 260px', minWidth: 260, maxWidth: 260, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div className="hp-row-bar" style={{ width: 260 }}>
+                      {headerBarSegments.map(s => (
+                        <span key={s.key} style={{ background: s.colour, flexGrow: s.count, flexBasis: 0 }} />
+                      ))}
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{totInPlace} of {totTotal} in place</span>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--hp-text-secondary)' }}>{totInPlace} of {totTotal} in place</span>
                       {totInProgress > 0 && (
-                        <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>{totInProgress} in progress</span>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--hp-text-meta)' }}>{totInProgress} in progress</span>
                       )}
                     </div>
                   </div>
                   {(userRole === 'approver' || userRole === 'mat_admin') && approvalQueueCount > 0 && (
                     <button type="button" onClick={() => setApprovalQueueOpen(true)} style={{
                       display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0,
-                      padding: '5px 12px', borderRadius: 999, border: '1px solid #FBBF24',
-                      background: '#FEF3C7', color: '#92400E', fontSize: '0.75rem', fontWeight: 600,
+                      padding: '5px 12px', borderRadius: 999, border: '1px solid var(--hp-amber-tint-border)',
+                      background: 'var(--hp-amber-tint-bg)', color: 'var(--hp-amber-tint-text)', fontSize: '0.75rem', fontWeight: 600,
                       cursor: 'pointer', fontFamily: 'inherit',
                     }}>
                       <i className="ti ti-clipboard-check" style={{ fontSize: '0.85rem' }} />
@@ -3934,11 +3902,6 @@ export default function App() {
                   )}
                 </div>
               </div>
-
-              {/* School Context — relocated from the removed Analytics section (was the only
-                  place this cohort-profile editor lived); always whole-school, same as the
-                  readiness box above it. */}
-              <SchoolContextPanel schoolCtx={schoolCtx} onSave={handleCtxSave} ctxLoading={ctxLoading} readOnly={readOnly} />
 
               {/* View toggle — pill for contributors, dropdown for approvers/mat_admins */}
               {userRole === 'contributor' ? (
@@ -4019,119 +3982,166 @@ export default function App() {
                 </div>
               ) : (
                 <>
-              {/* Evaluate & Sustain — collapsed summary tile, expands in place */}
-              {reviewsDueCount > 0 && (
-                <div style={{ background: '#F0FDFA', border: '1px solid #99f6e4', borderRadius: 12, overflow: 'hidden' }}>
-                  <button type="button" onClick={() => setReviewsExpanded(v => !v)} style={{
-                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-                    padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
-                  }}>
-                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1A202C' }}>
-                      Evaluate &amp; Sustain —{' '}
+              {/* Two-column grid: ledger (Principles/Domains/Categories) + Coming up for review.
+                  Replaces the old principle cards, Domain|Category links, and Evaluate & Sustain. */}
+              <div className="hp-grid">
+
+                {/* ── Ledger card ──────────────────────────────────────────── */}
+                <div className="hp-card hp-ledger">
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, padding: '0 24px 16px' }}>
+                    <div className="hp-segctrl">
                       {[
-                        overdueItems.length > 0 ? `${overdueItems.length} overdue` : null,
-                        dueSoonItems.length > 0 ? `${dueSoonItems.length} due soon` : null,
-                      ].filter(Boolean).join(' · ')}
-                    </span>
-                    <i className={`ti ${reviewsExpanded ? 'ti-chevron-up' : 'ti-chevron-down'}`} style={{ fontSize: '0.85rem', color: '#0f766e', flexShrink: 0 }} />
-                  </button>
-                  {reviewsExpanded && (
-                    <div style={{ padding: '0 16px 16px' }}>
-                      <div style={{ overflowY: 'auto', maxHeight: 280, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {overdueItems.length > 0 && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            <p style={{ fontSize: '0.7rem', fontWeight: 700, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                              Overdue ({overdueItems.length})
-                            </p>
-                            {overdueItems.map((r, i) => renderReviewItem(r, `overdue-${i}`))}
+                        { key: 'principles', label: 'Principles' },
+                        { key: 'domains',    label: 'Domains' },
+                        { key: 'categories', label: 'Categories' },
+                      ].map(opt => (
+                        <button key={opt.key} type="button"
+                          className={ledgerView === opt.key ? 'hp-seg-active' : ''}
+                          onClick={() => changeLedgerView(opt.key)}>
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                    {/* "Viewing" lives above both cards (see the view-toggle block above), not here —
+                        it filters the review list too, not just this ledger. */}
+                  </div>
+
+                  <div className="hp-legend" style={{ padding: '0 24px 14px' }}>
+                    <span><span className="hp-legend-dot" style={{ background: '#257A3B' }} />In place</span>
+                    <span><span className="hp-legend-dot" style={{ background: '#D4751A' }} />In progress</span>
+                    {ledgerHasNotInPlace && (
+                      <span><span className="hp-legend-dot" style={{ background: 'var(--hp-status-not-in-place)' }} />Not in place</span>
+                    )}
+                    <span><span className="hp-legend-dot" style={{ background: 'var(--hp-status-not-started)' }} />Not started</span>
+                  </div>
+
+                  <div>
+                    {ledgerRows.map(row => {
+                      const { inPlace, inProgress, notInPlace, notStarted, total } = row.counts
+                      const segments = [
+                        { key: 'inPlace',    count: inPlace,    colour: '#257A3B' },
+                        { key: 'inProgress', count: inProgress, colour: '#D4751A' },
+                        { key: 'notInPlace', count: notInPlace, colour: 'var(--hp-status-not-in-place)' },
+                        { key: 'notStarted', count: notStarted, colour: 'var(--hp-status-not-started)' },
+                      ].filter(s => s.count > 0)
+                      const tooltipText = `${inPlace} in place · ${inProgress} in progress · ${notInPlace} not in place · ${notStarted} not started`
+                      return (
+                        <button key={row.key} type="button" className="hp-row" onClick={row.onClick}>
+                          <div>
+                            <div className="hp-row-name">{row.name}</div>
+                            <div className="hp-row-meta">{total} point{total !== 1 ? 's' : ''}</div>
                           </div>
-                        )}
-                        {dueSoonItems.length > 0 && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            <p style={{ fontSize: '0.7rem', fontWeight: 700, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                              Due soon ({dueSoonItems.length})
-                            </p>
-                            {dueSoonItems.map((r, i) => renderReviewItem(r, `due-soon-${i}`))}
+                          <div className="hp-row-bar-cell">
+                            <IconTooltip text={tooltipText} actionable>
+                              <div className="hp-row-bar">
+                                {segments.map(s => (
+                                  <span key={s.key} style={{ background: s.colour, flexGrow: s.count, flexBasis: 0 }} />
+                                ))}
+                              </div>
+                            </IconTooltip>
                           </div>
-                        )}
+                          <div className="hp-row-count">{inPlace} of {total}</div>
+                          <i className="ti ti-chevron-right" style={{ fontSize: '0.85rem', color: '#94a3b8' }} />
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* ── Coming up for review card ────────────────────────────── */}
+                <div className="hp-card hp-review">
+                  <p style={{ fontSize: 18, fontWeight: 600, color: 'var(--hp-text-primary)' }}>Coming up for review</p>
+                  <p style={{ fontSize: 13, color: 'var(--hp-text-secondary)', marginTop: 2, marginBottom: 16 }}>
+                    Evidence to revisit over the next 60 days
+                  </p>
+
+                  <div className="hp-tiles" style={{ marginBottom: 16 }}>
+                    {reviewTiles.filter(t => t.key !== 'overdue' || t.count > 0).map(t => (
+                      <button key={t.key} type="button"
+                        className={`hp-tile ${t.amber ? 'hp-tile-amber' : ''} ${reviewTileFilter === t.key ? 'hp-tile-active' : ''}`}
+                        onClick={() => setReviewTileFilter(prev => prev === t.key ? null : t.key)}
+                      >
+                        <span className="hp-tile-number">{t.count}</span>
+                        <span className="hp-tile-label">{t.label}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {reviewListItems.length === 0 ? (
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center', padding: '20px 8px' }}>
+                      <p style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--hp-text-primary)', marginBottom: 6 }}>
+                        Nothing to revisit in the next 60 days.
+                      </p>
+                      <p style={{ fontSize: '0.78rem', color: 'var(--hp-text-meta)' }}>
+                        Reviews appear here once you add a review date to evidence.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="hp-review-list-wrap">
+                      <div className="hp-review-list-scroll">
+                        {reviewListItems.map((r, i) => {
+                          const info     = ppInfoMap[r.provisionPointId]
+                          const category = info?.category ?? ''
+                          const label    = r.provisionName || info?.label || 'Untitled'
+                          const days     = daysUntil(r.nextReviewDue)
+                          const dueLine  = days < 0 ? `Overdue by ${Math.abs(days)} day${Math.abs(days) !== 1 ? 's' : ''}` : `Due in ${days} day${days !== 1 ? 's' : ''}`
+                          const isRowHidden = !reviewSeeAll && i >= 4
+                          // "Confirm still current" — kept from the old panel (feature predates this
+                          // restructure); not in the new row's visual spec, so it renders as a small
+                          // secondary action beneath the row rather than inside the clickable area.
+                          const canConfirm    = STATIC_REVIEW_CATEGORIES.includes(category) && !readOnly && !isDemoMode && r.reviewCycle && r.reviewCycle !== 'as_needed'
+                          const isConfirming  = confirmingReviewId === r.evidenceEntryId
+                          const hasConfirmErr = confirmReviewError === r.evidenceEntryId
+                          return (
+                            <div key={i} className={isRowHidden ? 'hp-review-row-hidden' : ''}>
+                              <button type="button" className="hp-review-row"
+                                onClick={() => info?.domainId && setSelectedDomain(info.domainId)}
+                              >
+                                <span className={`hp-review-dot ${r.isOverdue ? 'overdue' : 'upcoming'}`} />
+                                <span style={{ flex: 1, minWidth: 0 }}>
+                                  <span className="hp-review-name" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{label}</span>
+                                  <span className={`hp-review-due ${r.isOverdue ? 'overdue' : ''}`} style={{ display: 'block' }}>{dueLine}</span>
+                                </span>
+                                <i className="ti ti-chevron-right" style={{ fontSize: '0.8rem', color: '#94a3b8', flexShrink: 0, marginTop: 4 }} />
+                              </button>
+                              {canConfirm && (
+                                <div style={{ padding: '0 4px 6px 30px' }}>
+                                  <button type="button"
+                                    onClick={() => handleConfirmStillCurrent(r)}
+                                    disabled={isConfirming}
+                                    style={{
+                                      padding: '4px 10px', borderRadius: 6,
+                                      border: '1px solid var(--brand-navy)', background: isConfirming ? '#EEF1F5' : '#fff',
+                                      color: 'var(--brand-navy)', fontSize: '0.72rem', fontWeight: 600,
+                                      cursor: isConfirming ? 'default' : 'pointer', fontFamily: 'inherit',
+                                    }}>
+                                    {isConfirming ? 'Confirming…' : 'Confirm still current'}
+                                  </button>
+                                  {hasConfirmErr && (
+                                    <p style={{ fontSize: '0.68rem', color: '#dc2626', marginTop: 4 }}>Couldn't save — try again.</p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
+                      <div className="hp-review-list-fade" />
                     </div>
                   )}
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--hp-card-border)' }}>
+                    <span style={{ fontSize: 12, color: 'var(--hp-text-meta)' }}>{filteredReviews.length} in the next 60 days</span>
+                    {/* Desktop already shows the full scrolling list — "See all" only matters once the
+                        stacked layout caps it to 4 rows (see hp-review-row-hidden in the container query). */}
+                    {reviewListItems.length > 4 && (
+                      <button type="button" className="hp-review-seeall" onClick={() => setReviewSeeAll(v => !v)}
+                        style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, fontWeight: 600, color: 'var(--brand-navy)', cursor: 'pointer', fontFamily: 'inherit' }}>
+                        {reviewSeeAll ? 'Show less' : `See all ${reviewListItems.length}`}
+                      </button>
+                    )}
+                  </div>
                 </div>
-              )}
-
-              {/* Principle cards — 7 DfE Principles of Inclusion, fixed DfE order (never reordered by status), fluid width capped at 300px per card.
-                  Container max-width is pinned to exactly 4 cards + 3 gaps (4*300 + 3*16 = 1248px) so a 5th card can never join row 1 on very wide monitors — keeps the 4-top/3-bottom structure at every desktop/tablet width, not just one. */}
-              <div style={{
-                display: 'flex', flexWrap: isMobile ? 'nowrap' : 'wrap', flexDirection: isMobile ? 'column' : 'row',
-                justifyContent: 'center', gap: 16, width: '100%', maxWidth: isMobile ? '100%' : 1248, margin: '0 auto',
-              }}>
-                {principleCards.map(p => {
-                  const pct = p.total ? Math.round((p.inPlace / p.total) * 100) : 0
-                  return (
-                    <button key={p.principle} type="button"
-                      onClick={() => { setOverviewMode('principle'); setSelectedPrinciple(p.principle) }}
-                      style={{
-                        background: ragBg[p.rag], border: `1px solid ${ragBorder[p.rag]}`, borderRadius: 12,
-                        padding: '16px 18px', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
-                        display: 'flex', flexDirection: 'column', gap: 10,
-                        transition: 'box-shadow 0.15s',
-                        flex: isMobile ? '1 1 auto' : '1 1 calc(25% - 12px)',
-                        width: isMobile ? '100%' : undefined,
-                        minWidth: isMobile ? undefined : 160, maxWidth: isMobile ? undefined : 300,
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'}
-                      onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                        <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1A202C' }}>
-                          {PRINCIPLE_LABEL_SHORT[p.principle] ?? p.principle}
-                        </span>
-                      </div>
-                      <div>
-                        <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 5 }}>
-                          {p.inPlace} of {p.total} complete
-                        </p>
-                        <div style={{ height: 5, borderRadius: 3, background: 'rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${pct}%`, background: '#1B365D', borderRadius: 3, transition: 'width 0.4s' }} />
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        {p.inPlace > 0 && (
-                          <span style={{ fontSize: '0.7rem', color: '#257A3B', background: 'rgba(37,122,59,0.12)', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
-                            {p.inPlace} in place
-                          </span>
-                        )}
-                        {p.inProgress > 0 && (
-                          <span style={{ fontSize: '0.7rem', color: '#D4751A', background: 'rgba(212,117,26,0.15)', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
-                            {p.inProgress} in progress
-                          </span>
-                        )}
-                        {p.notInPlace > 0 && (
-                          <span style={{ fontSize: '0.7rem', color: '#EA4335', background: 'rgba(234,67,53,0.12)', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
-                            {p.notInPlace} not in place
-                          </span>
-                        )}
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-
-              {/* Quiet next-step hint below the principle cards grid — links to the existing Domains and Categories pages, no per-card links. */}
-              <div style={{ textAlign: 'center', fontSize: '0.78rem', color: '#94a3b8' }}>
-                See this broken down by:{' '}
-                <button type="button"
-                  onClick={() => { setSelectedDomain('__domains__') }}
-                  style={{ background: 'none', border: 'none', padding: 0, color: '#64748b', textDecoration: 'underline', cursor: 'pointer', font: 'inherit' }}>
-                  Domain
-                </button>
-                {'  |  '}
-                <button type="button"
-                  onClick={() => { setSelectedDomain(''); setOverviewMode('category'); setSelectedCategory(null) }}
-                  style={{ background: 'none', border: 'none', padding: 0, color: '#64748b', textDecoration: 'underline', cursor: 'pointer', font: 'inherit' }}>
-                  Category
-                </button>
               </div>
               </>
               )}
