@@ -18,6 +18,7 @@ import SchoolOnboardingView from './pages/SchoolOnboardingView'
 import { useIsReadOnlyView } from './hooks/useIsReadOnlyView'
 import { usePrincipleCoverage } from './hooks/usePrincipleCoverage'
 import ReadOnlyBanner from './components/ReadOnlyBanner'
+import { computeCounts } from './utils/computeCounts'
 import './App.css'
 import { generateEvidenceReport } from './generateReport'
 import { generateEvidenceReportWord } from './generateReportWord'
@@ -256,8 +257,9 @@ function Sidebar({
   userRole, onInviteUser,
   flashTeam, onFlashTeamEnd,
 }) {
-  const totalPP   = Object.keys(ppDomainMap).length
-  const answered  = Object.values(allStatuses).filter(Boolean).length
+  const sidebarCounts = computeCounts(Object.keys(ppDomainMap).map(id => ({ id })), allStatuses)
+  const totalPP   = sidebarCounts.total
+  const answered  = sidebarCounts.total - sidebarCounts.notStarted
 
   const isHome    = !selectedDomain
   const isReport  = selectedDomain === 'report-builder'
@@ -2407,7 +2409,7 @@ export default function App() {
   const [ppDomainMap, setPpDomainMap] = useState({})
   const [domainTotals, setDomainTotals] = useState({})
   const [allStatuses, setAllStatuses] = useState({})
-  const [allEvidenceCounts, setAllEvidenceCounts] = useState({})
+  const [, setAllEvidenceCounts] = useState({})
   const [allSubDomains, setAllSubDomains] = useState([])
   const [ppCategoryMap, setPpCategoryMap] = useState({})
   const [ppPrincipleMap, setPpPrincipleMap] = useState({})
@@ -3753,14 +3755,14 @@ export default function App() {
 
           // ── Home screen ───────────────────────────────────────────────
           const allPpIds   = Object.keys(ppDomainMap)
-          const totTotal   = allPpIds.length
-          const totInPlace = allPpIds.filter(id => allStatuses[id] === 'in_place').length
+          const headerCounts = computeCounts(allPpIds.map(id => ({ id })), allStatuses)
+          const totTotal    = headerCounts.total
+          const totInPlace  = headerCounts.inPlace
+          const totInProgress = headerCounts.inProgress
           const readPct    = totTotal ? Math.round((totInPlace / totTotal) * 100) : 0
 
           const hour     = new Date().getHours()
           const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
-
-          const untouchedCount = allPpIds.filter(id => !(allEvidenceCounts[id] > 0)).length
 
           const isPersonalView = viewMode !== 'whole_school'
 
@@ -3907,8 +3909,8 @@ export default function App() {
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{totInPlace} of {totTotal} in place</span>
-                      {untouchedCount > 0 && (
-                        <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>{untouchedCount} not started yet</span>
+                      {totInProgress > 0 && (
+                        <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>{totInProgress} in progress</span>
                       )}
                     </div>
                   </div>
