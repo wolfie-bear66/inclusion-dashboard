@@ -141,8 +141,9 @@ const EV_GROUPS = [
 
 // provision_points.category values for which a contributor's "In Place" (with real
 // evidence attached) writes status directly instead of going through approval —
-// a one-line change to extend.
-const DIRECT_INPLACE_CATEGORIES = ['Named Person']
+// a one-line change to extend. Empty as of the Named Person unification: Named Person
+// (the only entry this ever held) now follows the same approval fork as every other category.
+const DIRECT_INPLACE_CATEGORIES = []
 
 // Provision point that gets the structured expert-engagement evidence fields
 // (in addition to, not instead of, the generic evidence fields above).
@@ -2269,8 +2270,8 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onOpenModal, readO
 // which points to include (ppIds) and what to label the header with; this component doesn't
 // care which field the filter came from. `pp.category` for each row is always the point's own
 // real category from ppInfoMap (not the filter value) — required so ProvisionPointRow's save
-// path (Named Person direct-write check, category-specific document field) stays correct even
-// when the filter itself is principle, where points span multiple categories.
+// path (category-specific document field routing) stays correct even when the filter itself
+// is principle, where points span multiple categories.
 function DrillDownDetail({
   title, ppIds, domains, ppInfoMap, allStatuses, evidenceEntries, entries, flaggedPoints,
   expandedDomains, onToggleDomain, onBack, openModal, readOnly, onFlag,
@@ -3182,12 +3183,9 @@ export default function App() {
     // Same role-fork the tracker row's status buttons used to apply directly, before status
     // moved into this modal: a contributor choosing In Place never writes status directly —
     // it goes through submit-for-approval instead, below, once the evidence in this same
-    // save has been persisted.
-    //
-    // Exception: for a small allow-list of provision_points.category values (starting with
-    // Named Person), a contributor's In Place writes status directly — same as an approver —
-    // provided the point's primary evidence field (or Notes) actually has content. An empty
-    // allow-listed point still falls through to the normal submit-for-approval path below.
+    // save has been persisted. DIRECT_INPLACE_CATEGORIES is empty (Named Person, its only
+    // past member, no longer bypasses approval) but the mechanism is left in place in case a
+    // future category genuinely needs it.
     const chosenStatus = draft.status || null
     const isContributor = userRole === 'contributor'
     const isInPlaceChoice = chosenStatus === 'in_place'

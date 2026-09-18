@@ -122,20 +122,6 @@ export default function MyPointsQueue({ schoolId, userId, firstName, supabase, o
     })
   }
 
-  async function handleConfirmNamedPerson(ppId) {
-    setBusyPpId(ppId)
-    setError(null)
-    setSuccessNote(null)
-    const { error: err } = await supabase.from('my_points_queue_state').upsert(
-      [{ user_id: userId, school_id: schoolId, provision_point_id: ppId, acknowledged_at: new Date().toISOString() }],
-      { onConflict: 'user_id,school_id,provision_point_id' }
-    )
-    setBusyPpId(null)
-    if (err) { setError(err.message); return }
-    setSuccessNote('Confirmed.')
-    refillSlotByPointId(ppId)
-  }
-
   function handleOpenEvidence(point) {
     setPendingRefillPpId(point.id)
     openModal({ id: point.id, label: point.label, category: point.category })
@@ -152,18 +138,13 @@ export default function MyPointsQueue({ schoolId, userId, firstName, supabase, o
     setBusyPpId(null)
     if (err) { setError(err.message); return }
     setQueue(prev => ({ ...prev, slots: prev.slots.map(s => s.point.id === point.id ? { ...s, pool: 1 } : s) }))
-    if (point.category === NAMED_PERSON) {
-      handleConfirmNamedPerson(point.id)
-    } else {
-      handleOpenEvidence(point)
-    }
+    handleOpenEvidence(point)
   }
 
   function handleSlotAction(slot) {
     if (busyPpId) return
     if (slot.pool !== 1) { handleClaim(slot.point); return }
-    if (slot.point.category === NAMED_PERSON) handleConfirmNamedPerson(slot.point.id)
-    else handleOpenEvidence(slot.point)
+    handleOpenEvidence(slot.point)
   }
 
   async function handleSkip(ppId) {
@@ -256,7 +237,6 @@ export default function MyPointsQueue({ schoolId, userId, firstName, supabase, o
           {!loading && queue.slots.map(slot => {
             const { point, pool } = slot
             const isBusy = busyPpId === point.id
-            const isNamedPerson = point.category === NAMED_PERSON
             return (
               <div key={point.id} style={{
                 display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
@@ -277,8 +257,8 @@ export default function MyPointsQueue({ schoolId, userId, firstName, supabase, o
                     {isBusy
                       ? 'Saving…'
                       : pool !== 1
-                        ? (isNamedPerson ? 'This is mine — confirm' : 'This is mine — add evidence')
-                        : (isNamedPerson ? `Confirm you're the ${point.label}` : 'Add evidence')}
+                        ? 'This is mine — add evidence'
+                        : 'Add evidence'}
                   </button>
                   <button type="button" onClick={() => handleSkip(point.id)} disabled={isBusy} aria-label="Skip this point" style={{
                     background: 'none', border: 'none', cursor: isBusy ? 'default' : 'pointer',
