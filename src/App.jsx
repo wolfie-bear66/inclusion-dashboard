@@ -53,13 +53,6 @@ const FUNDING_SOURCES = [
   { value: 'school_general_budget',     label: 'School General Budget' },
   { value: 'experts_at_hand',           label: 'Experts at Hand' },
 ]
-const REVIEW_CYCLES = [
-  { value: 'weekly',      label: 'Weekly' },
-  { value: 'half_termly', label: 'Half-termly' },
-  { value: 'termly',      label: 'Termly' },
-  { value: 'annual',      label: 'Annual' },
-  { value: 'as_needed',   label: 'As needed' },
-]
 const INDICATOR_TYPES = [
   { value: 'named_role',         label: 'Named Role' },
   { value: 'policy',             label: 'Policy' },
@@ -145,6 +138,11 @@ const EV_GROUPS = [
   { value: 'grp_mental_health_support', label: 'Mental Health Support' },
   { value: 'grp_other', label: 'Other' },
 ]
+
+// provision_points.category values for which a contributor's "In Place" (with real
+// evidence attached) writes status directly instead of going through approval —
+// a one-line change to extend.
+const DIRECT_INPLACE_CATEGORIES = ['Named Person']
 
 // Provision point that gets the structured expert-engagement evidence fields
 // (in addition to, not instead of, the generic evidence fields above).
@@ -3054,13 +3052,25 @@ function AnalyticsView({ school, supabase: sb, schoolName = '', tabRequest = nul
   )
 }
 
-function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, onOpenModal, readOnly, isFlagged, onFlag, userRole, submittedAt, isSubmittingApproval }) {
+function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onOpenModal, readOnly, isFlagged, onFlag, submittedAt }) {
   const [flagOpen, setFlagOpen] = useState(false)
   const [flagNote, setFlagNote] = useState('')
   const [flagSaving, setFlagSaving] = useState(false)
   const [flagError, setFlagError] = useState(false)
 
-  const stripeColour = status === 'in_place' ? '#257A3B' : status === 'in_progress' ? '#D4751A' : status === 'not_in_place' ? '#EA4335' : '#E2E8F0'
+  // Pending checked first — it's a distinct state from status and must win regardless of
+  // what status was before submission (Phase 0: submit-for-approval never touches status).
+  const isPending = !!submittedAt
+  const badge = isPending
+    ? { colour: '#7C3AED', bg: 'rgba(124,58,237,0.10)', label: 'Pending Approval' }
+    : status === 'in_place'
+      ? { colour: '#257A3B', bg: 'rgba(37,122,59,0.10)', label: 'In Place' }
+      : status === 'in_progress'
+        ? { colour: '#D4751A', bg: 'rgba(212,117,26,0.10)', label: 'In Progress' }
+        : status === 'not_in_place'
+          ? { colour: '#EA4335', bg: 'rgba(234,67,53,0.10)', label: 'Not in Place' }
+          : { colour: '#94a3b8', bg: '#F0F2F5', label: 'Untouched' }
+  const stripeColour = isPending ? badge.colour : (status === 'in_place' ? '#257A3B' : status === 'in_progress' ? '#D4751A' : status === 'not_in_place' ? '#EA4335' : '#E2E8F0')
 
   async function submitFlag() {
     setFlagSaving(true)
@@ -3103,45 +3113,24 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onStatusChange, on
           </span>
         )}
         <div className="provision-actions">
-          <div className="status-group">
-            {STATUSES.map(s => {
-              const isGatedInPlace = s === 'in_place' && userRole === 'contributor'
-              const isPending = isGatedInPlace && !!submittedAt
-              const isSubmitting = isGatedInPlace && !!isSubmittingApproval
-              const disabled = readOnly || isPending || isSubmitting
-              const label = isSubmitting ? 'Submitting…' : isPending ? 'Awaiting Approval' : isGatedInPlace ? 'Submit for Approval' : STATUS_LABELS[s]
-              const title = readOnly
-                ? 'You do not have edit access to this school'
-                : isSubmitting
-                  ? undefined
-                  : isPending
-                    ? 'Submitted — waiting for an approver to confirm'
-                    : undefined
-              return (
-                <button
-                  key={s}
-                  type="button"
-                  className={`status-btn status-btn--${s.replace(/_/g, '-')}${status === s ? ' active' : ''}`}
-                  onClick={disabled ? undefined : () => onStatusChange(pp.id, s)}
-                  disabled={disabled}
-                  title={title}
-                  style={disabled ? { cursor: 'default', opacity: 0.65 } : undefined}
-                >
-                  {isSubmitting && (
-                    <span aria-hidden="true" style={{
-                      display: 'inline-block', width: 9, height: 9, marginRight: 5,
-                      border: '1.5px solid currentColor', borderTopColor: 'transparent',
-                      borderRadius: '50%', animation: 'spin 0.7s linear infinite', verticalAlign: -1,
-                    }} />
-                  )}
-                  {label}
-                </button>
-              )
-            })}
-          </div>
+          {/* Single status badge — the evidence modal is now the only place status or
+              submission fields get written; clicking it (or the action button) just opens
+              that modal, nothing here writes anything directly. */}
+          <button
+            type="button"
+            onClick={() => onOpenModal(pp)}
+            title={isPending ? 'Submitted — waiting for an approver to confirm' : undefined}
+            style={{
+              display: 'inline-flex', alignItems: 'center', padding: '4px 12px', borderRadius: 20,
+              border: 'none', background: badge.bg, color: badge.colour,
+              fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+            }}
+          >
+            {badge.label}
+          </button>
           {!readOnly && (
             <button type="button" className="evidence-btn" onClick={() => onOpenModal(pp)}>
-              Add Evidence
+              {evidenceList.length > 0 ? 'View / Add Evidence' : 'Add Evidence'}
             </button>
           )}
           {!readOnly && (
@@ -3324,10 +3313,6 @@ export default function App() {
   // block every render for the rest of THIS session, but still reappears next login since
   // profiles.welcomed stays false.
   const [myPointsGateBypassed, setMyPointsGateBypassed] = useState(false)
-  // Which provision point's "Submit for Approval" RPC round trip is currently in flight, so
-  // only that row's button shows a loading state — cleared in a finally block, so it can
-  // never get stuck disabled if the RPC errors.
-  const [submittingApprovalId, setSubmittingApprovalId] = useState(null)
   const [sidebarFlashTeam, setSidebarFlashTeam] = useState(false)
   const [welcomed, setWelcomed] = useState(true)
   // Toasts for approval_notifications rows not yet seen — shown once on dashboard load,
@@ -3341,6 +3326,10 @@ export default function App() {
   const [modalSaving, setModalSaving] = useState(false)
   const [modalSaveMsg, setModalSaveMsg] = useState(null)
   const [modalSaveError, setModalSaveError] = useState(false)
+  const [modalExpanded, setModalExpanded] = useState(false)
+  // Whether the user has manually picked a Status value this modal session — once true,
+  // typing into the document/notes fields never auto-selects a status again.
+  const [statusTouched, setStatusTouched] = useState(false)
   const modalRef = useRef(null)
   // Freeze pathname at mount — window.location.replace() updates window.location.pathname
   // synchronously, so re-reading it on every render causes the /demo route to fall through
@@ -3751,7 +3740,7 @@ export default function App() {
 
     supabase
       .from('sub_domains')
-      .select('id, name, provision_points(id, label, display_order, universal_or_targeted)')
+      .select('id, name, provision_points(id, label, display_order, universal_or_targeted, category)')
       .eq('domain_id', selectedDomain)
       .order('name')
       .then(subDomainsRes => {
@@ -3783,10 +3772,15 @@ export default function App() {
   // evidenceEntry = null → new; evidenceEntry = existing row → edit
   function openModal(pp, evidenceEntry = null) {
     setModalPoint(pp)
-    setDraft(evidenceEntry ? { ...evidenceEntry } : {})
+    // status is a transient draft field — it drives the entries write on save, then gets
+    // stripped before the evidence_entries payload is built (that table has no such column).
+    const currentStatus = entries[pp.id]?.status ?? null
+    setDraft(evidenceEntry ? { ...evidenceEntry, status: currentStatus } : { provision_name: pp.label, status: currentStatus })
     setDraftId(evidenceEntry?.id ?? null)
     setModalSaveMsg(null)
     setModalSaveError(false)
+    setModalExpanded(false)
+    setStatusTouched(false)
   }
 
   function closeModal() {
@@ -3794,11 +3788,32 @@ export default function App() {
     setDraft({})
     setDraftId(null)
     setModalSaveMsg(null)
+    setModalExpanded(false)
+    setStatusTouched(false)
   }
 
   function handleDraftChange(field, value) {
     setModalSaveMsg(null)
-    setDraft(prev => ({ ...prev, [field]: value }))
+    setDraft(prev => {
+      const next = { ...prev, [field]: value }
+      // Auto-select In Progress the moment the primary document field or Notes gets typed
+      // into — only while the user hasn't manually touched the dropdown themselves, and
+      // only if nothing's already selected (manual choice always wins, never overridden).
+      if (!statusTouched && !next.status) {
+        const cat = next.provision_category ?? ''
+        const primaryDocField = cat === 'policy_structural' ? 'named_role_policy_document' : 'supporting_document_link'
+        if ((field === primaryDocField || field === 'notes') && String(value ?? '').trim()) {
+          next.status = 'in_progress'
+        }
+      }
+      return next
+    })
+  }
+
+  function handleStatusSelect(value) {
+    setModalSaveMsg(null)
+    setStatusTouched(true)
+    setDraft(prev => ({ ...prev, status: value }))
   }
 
   async function handleForgotPassword() {
@@ -3984,93 +3999,40 @@ export default function App() {
     setOverdueReviews(prev => prev.filter(r => r.evidenceEntryId !== ev.evidenceEntryId))
   }
 
-  async function handleStatusChange(ppId, status) {
-    if (isDemoMode) return
-
-    // Contributors can't set 'in_place' directly — clicking it submits the point for
-    // an approver/mat_admin to confirm instead. Approver/mat_admin keep full direct
-    // status-write, including 'in_place', with no approval step.
-    if (userRole === 'contributor' && status === 'in_place') {
-      return handleSubmitForApproval(ppId)
-    }
-
-    const currentEntry = entries[ppId] ?? {}
-    setEntries(prev => ({ ...prev, [ppId]: { ...currentEntry, status } }))
-    setAllStatuses(prev => ({ ...prev, [ppId]: status }))
-
-    const { data, error } = await supabase
-      .from('entries')
-      .upsert(
-        [{ school_id: selectedSchool, provision_point_id: ppId, ...currentEntry, status }],
-        { onConflict: 'school_id,provision_point_id' }
-      )
-      .select('id')
-      .single()
-
-    if (error) {
-      console.error('Error saving status:', error)
-    } else if (data?.id && !currentEntry.id) {
-      setEntries(prev => ({ ...prev, [ppId]: { ...prev[ppId], id: data.id } }))
-    }
-  }
-
-  async function handleSubmitForApproval(ppId) {
-    setSubmittingApprovalId(ppId)
-    try {
-      const currentEntry = entries[ppId] ?? {}
-
-      // Ensure the entries row exists first (unchanged) — submit_entry_for_approval takes an
-      // existing entry_id, it doesn't create the row.
-      const { data, error } = await supabase
-        .from('entries')
-        .upsert(
-          [{ school_id: selectedSchool, provision_point_id: ppId, ...currentEntry }],
-          { onConflict: 'school_id,provision_point_id' }
-        )
-        .select('id')
-        .single()
-
-      if (error) {
-        console.error('Error submitting for approval:', error)
-        return
-      }
-      if (data?.id && !currentEntry.id) {
-        setEntries(prev => ({ ...prev, [ppId]: { ...prev[ppId], id: data.id } }))
-      }
-
-      // Sets submitted_for_approval_at + submitted_by and inserts the point_approval_log
-      // 'submitted' row in one transaction — replaces the old two separate client-side writes
-      // (Phase 0 found the log insert was non-fatal after the entries write already committed).
-      const { error: rpcError } = await supabase.rpc('submit_entry_for_approval', {
-        p_entry_id: data.id,
-        p_submitting_user_id: session.user.id,
-      })
-      if (rpcError) {
-        console.error('Error submitting for approval:', rpcError)
-        return
-      }
-      setEntries(prev => ({ ...prev, [ppId]: { ...prev[ppId], submitted_for_approval_at: new Date().toISOString(), submitted_by: session.user.id } }))
-    } finally {
-      // Always clears — on the happy path, either early-return above, or an unexpected
-      // thrown exception — so the button never gets stuck disabled forever.
-      setSubmittingApprovalId(null)
-    }
-  }
-
   async function handleModalSave() {
     if (isDemoMode) return
     if (!selectedSchool || !modalPoint) return
     setModalSaving(true)
     setModalSaveMsg(null)
 
-    // Step 1: ensure entries row exists and get its id
+    // Same role-fork the tracker row's status buttons used to apply directly, before status
+    // moved into this modal: a contributor choosing In Place never writes status directly —
+    // it goes through submit-for-approval instead, below, once the evidence in this same
+    // save has been persisted.
+    //
+    // Exception: for a small allow-list of provision_points.category values (starting with
+    // Named Person), a contributor's In Place writes status directly — same as an approver —
+    // provided the point's primary evidence field (or Notes) actually has content. An empty
+    // allow-listed point still falls through to the normal submit-for-approval path below.
+    const chosenStatus = draft.status || null
+    const isContributor = userRole === 'contributor'
+    const isInPlaceChoice = chosenStatus === 'in_place'
+    const primaryDocField = (draft.provision_category ?? '') === 'policy_structural'
+      ? 'named_role_policy_document' : 'supporting_document_link'
+    const hasPrimaryEvidence = !!((draft[primaryDocField] ?? '').trim() || (draft.notes ?? '').trim())
+    const allowsDirectInPlace = DIRECT_INPLACE_CATEGORIES.includes(modalPoint.category) && hasPrimaryEvidence
+    const isContributorInPlace = isContributor && isInPlaceChoice && !allowsDirectInPlace
+
+    // Step 1: ensure entries row exists, and write the chosen status directly unless this is
+    // the contributor/in_place case (that path never touches status here at all).
     const currentEntry = entries[modalPoint.id] ?? {}
+    const entriesPatch = { school_id: selectedSchool, provision_point_id: modalPoint.id, ...currentEntry }
+    if (chosenStatus && !isContributorInPlace) {
+      entriesPatch.status = chosenStatus
+    }
     const { data: entryRow, error: entryError } = await supabase
       .from('entries')
-      .upsert(
-        [{ school_id: selectedSchool, provision_point_id: modalPoint.id, ...currentEntry }],
-        { onConflict: 'school_id,provision_point_id' }
-      )
+      .upsert([entriesPatch], { onConflict: 'school_id,provision_point_id' })
       .select('id')
       .single()
 
@@ -4084,36 +4046,74 @@ export default function App() {
     if (!currentEntry.id) {
       setEntries(prev => ({ ...prev, [modalPoint.id]: { ...prev[modalPoint.id], id: entryRow.id } }))
     }
+    if (chosenStatus && !isContributorInPlace) {
+      setEntries(prev => ({ ...prev, [modalPoint.id]: { ...prev[modalPoint.id], status: chosenStatus } }))
+      setAllStatuses(prev => ({ ...prev, [modalPoint.id]: chosenStatus }))
+    }
 
-    // Step 2: insert or update evidence_entry
-    const evidencePayload = modalPoint.id === EXPERTS_AT_HAND_PP_ID
-      ? { ...draft, evidence_type: 'expert_engagement' }
-      : draft
+    // Step 2: insert or update evidence_entry. `status` and `review_cycle` are stripped —
+    // status belongs to `entries` (handled above), not a column here at all; review_cycle is
+    // being retired from this modal (existing values on old rows are left alone simply by
+    // never being included in a payload again, not by being nulled out).
+    const { status: _draftStatus, review_cycle: _draftReviewCycle, ...evidenceFields } = draft
+    const isExperts = modalPoint.id === EXPERTS_AT_HAND_PP_ID
+    const detail = draft.structured_detail ?? {}
+    const hasStructuredDetail = isExperts && !!(
+      detail.professional_type || detail.commissioning_route || detail.activity_type ||
+      (detail.pupils_reached !== null && detail.pupils_reached !== undefined) ||
+      detail.report_received === true
+    )
+    const evidencePayload = isExperts
+      ? { ...evidenceFields, evidence_type: hasStructuredDetail ? 'expert_engagement' : 'standard', structured_detail: hasStructuredDetail ? detail : null }
+      : evidenceFields
+
     const { data: saved, error: saveError } = draftId
       ? await supabase.from('evidence_entries').update(evidencePayload).eq('id', draftId).select().single()
       : await supabase.from('evidence_entries').insert([{ entry_id: entryRow.id, ...evidencePayload }]).select().single()
 
-    setModalSaving(false)
-    setModalSaveError(!!saveError)
-
     if (saveError) {
+      setModalSaving(false)
+      setModalSaveError(true)
       setModalSaveMsg(saveError.message)
-    } else {
-      if (draftId) {
-        setEvidenceEntries(prev => ({
-          ...prev,
-          [modalPoint.id]: (prev[modalPoint.id] ?? []).map(e => e.id === draftId ? saved : e),
-        }))
-      } else {
-        setEvidenceEntries(prev => ({
-          ...prev,
-          [modalPoint.id]: [...(prev[modalPoint.id] ?? []), saved],
-        }))
-          setDraftId(saved.id)
-        setAllEvidenceCounts(prev => ({ ...prev, [modalPoint.id]: (prev[modalPoint.id] ?? 0) + 1 }))
-      }
-      setModalSaveMsg('Saved.')
+      return
     }
+
+    if (draftId) {
+      setEvidenceEntries(prev => ({
+        ...prev,
+        [modalPoint.id]: (prev[modalPoint.id] ?? []).map(e => e.id === draftId ? saved : e),
+      }))
+    } else {
+      setEvidenceEntries(prev => ({
+        ...prev,
+        [modalPoint.id]: [...(prev[modalPoint.id] ?? []), saved],
+      }))
+      setDraftId(saved.id)
+      setAllEvidenceCounts(prev => ({ ...prev, [modalPoint.id]: (prev[modalPoint.id] ?? 0) + 1 }))
+    }
+
+    // Step 3: contributor chose In Place — submit for approval now, atomically with the
+    // evidence just saved above (same Save action, not a separate step the user could miss).
+    if (isContributorInPlace) {
+      const { error: rpcError } = await supabase.rpc('submit_entry_for_approval', {
+        p_entry_id: entryRow.id,
+        p_submitting_user_id: session.user.id,
+      })
+      if (rpcError) {
+        setModalSaving(false)
+        setModalSaveError(true)
+        setModalSaveMsg(`Evidence saved, but submitting for approval failed: ${rpcError.message}`)
+        return
+      }
+      setEntries(prev => ({
+        ...prev,
+        [modalPoint.id]: { ...prev[modalPoint.id], submitted_for_approval_at: new Date().toISOString(), submitted_by: session.user.id },
+      }))
+    }
+
+    setModalSaving(false)
+    setModalSaveError(false)
+    setModalSaveMsg(isContributorInPlace ? 'Submitted for approval.' : 'Saved.')
   }
 
   async function handleModalDelete() {
@@ -4537,7 +4537,7 @@ export default function App() {
               if (!domainGroupMap[info.domainId]) {
                 domainGroupMap[info.domainId] = { domainId: info.domainId, domainName: info.domainName, pps: [] }
               }
-              domainGroupMap[info.domainId].pps.push({ id: ppId, label: info.label })
+              domainGroupMap[info.domainId].pps.push({ id: ppId, label: info.label, category: selectedCategory })
             }
             const domainGroupList = domains.filter(d => domainGroupMap[d.id]).map(d => domainGroupMap[d.id])
 
@@ -4611,14 +4611,11 @@ export default function App() {
                             ppIdx={ppIdx}
                             status={allStatuses[pp.id]}
                             evidenceList={evidenceEntries[pp.id] ?? []}
-                            onStatusChange={handleStatusChange}
                             onOpenModal={openModal}
                             readOnly={readOnly}
                             isFlagged={flaggedPoints.has(pp.id)}
                             onFlag={handleFlag}
-                            userRole={userRole}
                             submittedAt={entries[pp.id]?.submitted_for_approval_at}
-                            isSubmittingApproval={submittingApprovalId === pp.id}
                           />
                         ))}
                         {needsTrunc && (
@@ -5148,6 +5145,7 @@ export default function App() {
             closeModal={closeModal}
             modalPoint={modalPoint}
             modalSaveMsg={modalSaveMsg}
+            modalSaveError={modalSaveError}
             onExit={handleMyPointsExit}
           />
         )}
@@ -5317,14 +5315,11 @@ export default function App() {
                             ppIdx={ppIdx}
                             status={entries[pp.id]?.status}
                             evidenceList={evidenceEntries[pp.id] ?? []}
-                            onStatusChange={handleStatusChange}
                             onOpenModal={openModal}
                             readOnly={readOnly}
                             isFlagged={flaggedPoints.has(pp.id)}
                             onFlag={handleFlag}
-                            userRole={userRole}
                             submittedAt={entries[pp.id]?.submitted_for_approval_at}
-                            isSubmittingApproval={submittingApprovalId === pp.id}
                           />
                         ))}
 
@@ -5372,8 +5367,34 @@ export default function App() {
             )}
 
             <div className="modal-body">
+              {(() => {
+                const currentEntry = entries[modalPoint.id] ?? {}
+                const isPending = !!currentEntry.submitted_for_approval_at
+                return (isPending || currentEntry.send_back_note) && (
+                  <div style={{
+                    margin: '0 20px 16px', padding: '12px 16px', borderRadius: 10,
+                    background: 'rgba(212,117,26,0.08)', border: '1px solid rgba(212,117,26,0.3)',
+                  }}>
+                    {isPending && (
+                      <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#92400E', margin: 0 }}>
+                        Pending approval — submitted, waiting for an approver to confirm.
+                      </p>
+                    )}
+                    {currentEntry.send_back_note && (
+                      <p style={{ fontSize: '0.8rem', color: '#78350F', margin: isPending ? '6px 0 0' : 0 }}>
+                        Sent back previously with a note: &ldquo;{currentEntry.send_back_note}&rdquo;
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
               <div className="detail-grid">
                 {(() => {
+                  const currentEntry = entries[modalPoint.id] ?? {}
+                  const isPending = !!currentEntry.submitted_for_approval_at
+                  const fieldsDisabled = readOnly || isPending
+                  const showExpanded = modalExpanded || isPending
+
                   const cat = draft.provision_category ?? ''
                   const isStudentFacing  = cat === 'student_facing'
                   const isPolicyStruct   = cat === 'policy_structural'
@@ -5382,277 +5403,314 @@ export default function App() {
                   const showReach        = isStudentFacing || isWholeSchool
                   const showCost         = isStudentFacing || isWholeSchool || isLegacy
                   const showOutcomes     = isStudentFacing || isWholeSchool || isLegacy
-                  const showDates        = isStudentFacing || isWholeSchool || isLegacy || isPolicyStruct
+                  const showSecondaryDoc = isPolicyStruct || isLegacy
+
+                  // Primary doc field per category (Phase 0/1 decision): named_role_policy_document
+                  // only for policy_structural; supporting_document_link for everything else
+                  // (student_facing, whole_school, legacy, and — since it's never anything but
+                  // student_facing in practice — Experts at Hand).
+                  const primaryDocField = isPolicyStruct ? 'named_role_policy_document' : 'supporting_document_link'
+                  const secondaryDocField = isPolicyStruct ? 'supporting_document_link' : 'named_role_policy_document'
+                  const primaryDocLabel = primaryDocField === 'named_role_policy_document' ? 'Named Role / Policy / Document' : 'Supporting Document Link'
+                  const secondaryDocLabel = secondaryDocField === 'named_role_policy_document' ? 'Named Role / Policy / Document' : 'Supporting Document Link'
 
                   const reachInputStyle = { padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: '0.85rem', width: '100%' }
 
                   return (
                     <>
-                      {/* ── Always: name + provision type ── */}
+                      {/* ── Default (always-visible): Title, Provision Type, Status, primary document, next review due ── */}
                       <div className="df df--half">
-                        <label>Provision Name</label>
-                        <input type="text" value={draft.provision_name ?? ''} onChange={e => handleDraftChange('provision_name', e.target.value)} />
+                        <label>Title</label>
+                        <input type="text" value={draft.provision_name ?? ''} onChange={e => handleDraftChange('provision_name', e.target.value)} disabled={fieldsDisabled} />
                       </div>
 
                       <div className="df df--half">
                         <label>Provision Type</label>
-                        <select value={cat} onChange={e => handleDraftChange('provision_category', e.target.value)}>
+                        <select value={cat} onChange={e => handleDraftChange('provision_category', e.target.value)} disabled={fieldsDisabled}>
                           <option value="">— Select type —</option>
                           {PROVISION_CATEGORIES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                         </select>
                       </div>
 
-                      {/* ── Policy/Structural or Legacy: named role doc ── */}
-                      {(isPolicyStruct || isLegacy) && (
-                        <div className="df df--half">
-                          <label>Named Role / Policy / Document</label>
-                          <input type="text" value={draft.named_role_policy_document ?? ''} onChange={e => handleDraftChange('named_role_policy_document', e.target.value)} />
-                        </div>
-                      )}
-
-                      {/* ── All except policy: brief description ── */}
-                      {!isPolicyStruct && (
-                        <div className={`df ${isPolicyStruct ? 'df--half' : 'df--full'}`}>
-                          <label>Brief Description</label>
-                          <textarea rows={2} value={draft.brief_description ?? ''} onChange={e => handleDraftChange('brief_description', e.target.value)} />
-                        </div>
-                      )}
-
-                      {/* ── Student-Facing: SEND tiers ── */}
-                      {(isStudentFacing || isLegacy) && (
-                        <div className="df df--half">
-                          <label>SEND Tiers</label>
-                          <div className="tier-checkbox-group">
-                            {SEND_TIERS.map(t => {
-                              const selected = Array.isArray(draft.send_tiers) ? draft.send_tiers : []
-                              const checked = selected.includes(t.value)
-                              return (
-                                <label key={t.value} className="tier-checkbox-label">
-                                  <input type="checkbox" checked={checked} onChange={() => {
-                                    const next = checked ? selected.filter(v => v !== t.value) : [...selected, t.value]
-                                    handleDraftChange('send_tiers', next)
-                                  }} />
-                                  {t.label}
-                                </label>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* ── Delivered By ── */}
                       <div className="df df--half">
-                        <label>Delivered By</label>
-                        <input type="text" value={draft.delivered_by ?? ''} onChange={e => handleDraftChange('delivered_by', e.target.value)} />
+                        <label>Status</label>
+                        <select value={draft.status ?? ''} onChange={e => handleStatusSelect(e.target.value)} disabled={fieldsDisabled}>
+                          <option value="">— Select status —</option>
+                          <option value="not_in_place">Not in Place</option>
+                          <option value="in_progress">In Progress</option>
+                          <option value="in_place">In Place</option>
+                        </select>
                       </div>
 
-                      {/* ── Experts at Hand: structured expert-engagement detail ── */}
-                      {modalPoint.id === EXPERTS_AT_HAND_PP_ID && (() => {
-                        const detail = draft.structured_detail ?? {}
-                        function handleDetailChange(field, value) {
-                          handleDraftChange('structured_detail', { ...detail, [field]: value })
-                        }
-                        return (
-                          <>
-                            <div className="df df--half">
-                              <label>Professional Type</label>
-                              <select value={detail.professional_type ?? ''} onChange={e => handleDetailChange('professional_type', e.target.value)}>
-                                <option value="">— Select type —</option>
-                                {EXPERT_PROFESSIONAL_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                              </select>
-                            </div>
-                            <div className="df df--half">
-                              <label>Commissioning Route</label>
-                              <select value={detail.commissioning_route ?? ''} onChange={e => handleDetailChange('commissioning_route', e.target.value)}>
-                                <option value="">— Select route —</option>
-                                {EXPERT_COMMISSIONING_ROUTES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                              </select>
-                            </div>
-                            <div className="df df--half">
-                              <label>Activity Type</label>
-                              <select value={detail.activity_type ?? ''} onChange={e => handleDetailChange('activity_type', e.target.value)}>
-                                <option value="">— Select activity —</option>
-                                {EXPERT_ACTIVITY_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
-                              </select>
-                            </div>
-                            <div className="df df--quarter">
-                              <label>Pupils Reached</label>
-                              <input type="number" min="0" step="1"
-                                value={detail.pupils_reached ?? ''}
-                                onChange={e => handleDetailChange('pupils_reached', e.target.value === '' ? null : Number(e.target.value))} />
-                            </div>
-                            <div className="df df--quarter" style={{ justifyContent: 'flex-end' }}>
-                              <label className="tier-checkbox-label" style={{ marginTop: 'auto', marginBottom: 6 }}>
-                                <input type="checkbox" checked={detail.report_received ?? false}
-                                  onChange={e => handleDetailChange('report_received', e.target.checked)} />
-                                Written Report Received
-                              </label>
-                            </div>
-                          </>
-                        )
-                      })()}
+                      <div className="df df--half">
+                        <label>{primaryDocLabel}</label>
+                        {primaryDocField === 'supporting_document_link' ? (
+                          <input type="url" placeholder="https://…" value={draft.supporting_document_link ?? ''} onChange={e => handleDraftChange('supporting_document_link', e.target.value)} disabled={fieldsDisabled} />
+                        ) : (
+                          <input type="text" value={draft.named_role_policy_document ?? ''} onChange={e => handleDraftChange('named_role_policy_document', e.target.value)} disabled={fieldsDisabled} />
+                        )}
+                      </div>
 
-                      {/* ── Student Reach numbers ── */}
-                      {showReach && (
+                      <div className="df df--half">
+                        <label>Next Review Due</label>
+                        <input type="date" value={draft.next_review_due ?? ''} onChange={e => handleDraftChange('next_review_due', e.target.value || null)} disabled={fieldsDisabled} />
+                      </div>
+
+                      {!isPending && (
                         <div className="df df--full">
-                          <label>
-                            Students Reached
-                            {isWholeSchool && <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: '0.75rem', marginLeft: 6 }}>(optional)</span>}
-                          </label>
-                          {isStudentFacing && <span className="field-hint">Group counts can overlap — a student may belong to multiple groups</span>}
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px 12px', marginTop: 8 }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                              <label style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Total</label>
-                              <input type="number" min="0" step="1" style={reachInputStyle}
-                                value={draft.reach_total ?? ''}
-                                onChange={e => handleDraftChange('reach_total', e.target.value === '' ? null : Number(e.target.value))} />
-                            </div>
-                            {REACH_GROUPS.map(g => (
-                              <div key={g.field} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                <label style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>{g.label}</label>
-                                <input type="number" min="0" step="1" style={reachInputStyle}
-                                  value={draft[g.field] ?? ''}
-                                  onChange={e => handleDraftChange(g.field, e.target.value === '' ? null : Number(e.target.value))} />
-                              </div>
-                            ))}
-                          </div>
+                          <button type="button" onClick={() => setModalExpanded(v => !v)} style={{
+                            background: 'none', border: 'none', padding: 0, color: '#1B365D',
+                            fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                          }}>
+                            {modalExpanded ? '– Hide extra fields' : '+ Add more'}
+                          </button>
                         </div>
                       )}
 
-                      {/* ── Legacy: old checkboxes + pupils_reached ── */}
-                      {isLegacy && (
+                      {showExpanded && (
                         <>
-                          <div className="df df--half">
-                            <label>Student Groups</label>
-                            <div className="tier-checkbox-group">
-                              {EV_GROUPS.map(g => (
-                                <label key={g.value} className="tier-checkbox-label">
-                                  <input type="checkbox" checked={draft[g.value] ?? false} onChange={e => handleDraftChange(g.value, e.target.checked)} />
-                                  {g.label}
-                                </label>
-                              ))}
+                          {/* ── All except policy: brief description ── */}
+                          {!isPolicyStruct && (
+                            <div className="df df--full">
+                              <label>Brief Description</label>
+                              <textarea rows={2} value={draft.brief_description ?? ''} onChange={e => handleDraftChange('brief_description', e.target.value)} disabled={fieldsDisabled} />
                             </div>
-                          </div>
-                          <div className="df df--quarter">
-                            <label>Pupils / People Reached</label>
-                            <input type="number" min="0" step="1"
-                              value={draft.pupils_reached ?? ''}
-                              onChange={e => handleDraftChange('pupils_reached', e.target.value === '' ? null : Number(e.target.value))} />
-                          </div>
-                        </>
-                      )}
+                          )}
 
-                      {/* ── Cost & funding ── */}
-                      {showCost && (
-                        <>
-                          <div className="df df--quarter">
-                            <label>Annual Cost £</label>
-                            <input type="number" min="0" step="1"
-                              value={draft.cost ?? ''}
-                              onChange={e => handleDraftChange('cost', e.target.value === '' ? null : Number(e.target.value))} />
-                          </div>
+                          {/* ── Student-Facing: SEND tiers ── */}
+                          {(isStudentFacing || isLegacy) && (
+                            <div className="df df--half">
+                              <label>SEND Tiers</label>
+                              <div className="tier-checkbox-group">
+                                {SEND_TIERS.map(t => {
+                                  const selected = Array.isArray(draft.send_tiers) ? draft.send_tiers : []
+                                  const checked = selected.includes(t.value)
+                                  return (
+                                    <label key={t.value} className="tier-checkbox-label">
+                                      <input type="checkbox" checked={checked} disabled={fieldsDisabled} onChange={() => {
+                                        const next = checked ? selected.filter(v => v !== t.value) : [...selected, t.value]
+                                        handleDraftChange('send_tiers', next)
+                                      }} />
+                                      {t.label}
+                                    </label>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* ── Delivered By ── */}
                           <div className="df df--half">
-                            <label>Funding Source</label>
-                            <select value={draft.funding_source ?? ''} onChange={e => handleDraftChange('funding_source', e.target.value)}>
-                              <option value="">—</option>
-                              {FUNDING_SOURCES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
-                            </select>
+                            <label>Delivered By</label>
+                            <input type="text" value={draft.delivered_by ?? ''} onChange={e => handleDraftChange('delivered_by', e.target.value)} disabled={fieldsDisabled} />
                           </div>
-                        </>
-                      )}
 
-                      {/* ── Date fields ── */}
-                      {showDates && (
-                        <>
+                          {/* ── Experts at Hand: structured expert-engagement detail ── */}
+                          {modalPoint.id === EXPERTS_AT_HAND_PP_ID && (() => {
+                            const detail = draft.structured_detail ?? {}
+                            function handleDetailChange(field, value) {
+                              handleDraftChange('structured_detail', { ...detail, [field]: value })
+                            }
+                            return (
+                              <>
+                                <div className="df df--half">
+                                  <label>Professional Type</label>
+                                  <select value={detail.professional_type ?? ''} onChange={e => handleDetailChange('professional_type', e.target.value)} disabled={fieldsDisabled}>
+                                    <option value="">— Select type —</option>
+                                    {EXPERT_PROFESSIONAL_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                  </select>
+                                </div>
+                                <div className="df df--half">
+                                  <label>Commissioning Route</label>
+                                  <select value={detail.commissioning_route ?? ''} onChange={e => handleDetailChange('commissioning_route', e.target.value)} disabled={fieldsDisabled}>
+                                    <option value="">— Select route —</option>
+                                    {EXPERT_COMMISSIONING_ROUTES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                                  </select>
+                                </div>
+                                <div className="df df--half">
+                                  <label>Activity Type</label>
+                                  <select value={detail.activity_type ?? ''} onChange={e => handleDetailChange('activity_type', e.target.value)} disabled={fieldsDisabled}>
+                                    <option value="">— Select activity —</option>
+                                    {EXPERT_ACTIVITY_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+                                  </select>
+                                </div>
+                                <div className="df df--quarter">
+                                  <label>Pupils Reached</label>
+                                  <input type="number" min="0" step="1" disabled={fieldsDisabled}
+                                    value={detail.pupils_reached ?? ''}
+                                    onChange={e => handleDetailChange('pupils_reached', e.target.value === '' ? null : Number(e.target.value))} />
+                                </div>
+                                <div className="df df--quarter" style={{ justifyContent: 'flex-end' }}>
+                                  <label className="tier-checkbox-label" style={{ marginTop: 'auto', marginBottom: 6 }}>
+                                    <input type="checkbox" checked={detail.report_received ?? false} disabled={fieldsDisabled}
+                                      onChange={e => handleDetailChange('report_received', e.target.checked)} />
+                                    Written Report Received
+                                  </label>
+                                </div>
+                              </>
+                            )
+                          })()}
+
+                          {/* ── Student Reach numbers ── */}
+                          {showReach && (
+                            <div className="df df--full">
+                              <label>
+                                Students Reached
+                                {isWholeSchool && <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: '0.75rem', marginLeft: 6 }}>(optional)</span>}
+                              </label>
+                              {isStudentFacing && <span className="field-hint">Group counts can overlap — a student may belong to multiple groups</span>}
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px 12px', marginTop: 8 }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  <label style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Total</label>
+                                  <input type="number" min="0" step="1" style={reachInputStyle} disabled={fieldsDisabled}
+                                    value={draft.reach_total ?? ''}
+                                    onChange={e => handleDraftChange('reach_total', e.target.value === '' ? null : Number(e.target.value))} />
+                                </div>
+                                {REACH_GROUPS.map(g => (
+                                  <div key={g.field} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                    <label style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>{g.label}</label>
+                                    <input type="number" min="0" step="1" style={reachInputStyle} disabled={fieldsDisabled}
+                                      value={draft[g.field] ?? ''}
+                                      onChange={e => handleDraftChange(g.field, e.target.value === '' ? null : Number(e.target.value))} />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* ── Legacy: old checkboxes + pupils_reached ── */}
+                          {isLegacy && (
+                            <>
+                              <div className="df df--half">
+                                <label>Student Groups</label>
+                                <div className="tier-checkbox-group">
+                                  {EV_GROUPS.map(g => (
+                                    <label key={g.value} className="tier-checkbox-label">
+                                      <input type="checkbox" checked={draft[g.value] ?? false} disabled={fieldsDisabled} onChange={e => handleDraftChange(g.value, e.target.checked)} />
+                                      {g.label}
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="df df--quarter">
+                                <label>Pupils / People Reached</label>
+                                <input type="number" min="0" step="1" disabled={fieldsDisabled}
+                                  value={draft.pupils_reached ?? ''}
+                                  onChange={e => handleDraftChange('pupils_reached', e.target.value === '' ? null : Number(e.target.value))} />
+                              </div>
+                            </>
+                          )}
+
+                          {/* ── Cost & funding ── */}
+                          {showCost && (
+                            <>
+                              <div className="df df--quarter">
+                                <label>Annual Cost £</label>
+                                <input type="number" min="0" step="1" disabled={fieldsDisabled}
+                                  value={draft.cost ?? ''}
+                                  onChange={e => handleDraftChange('cost', e.target.value === '' ? null : Number(e.target.value))} />
+                              </div>
+                              <div className="df df--half">
+                                <label>Funding Source</label>
+                                <select value={draft.funding_source ?? ''} onChange={e => handleDraftChange('funding_source', e.target.value)} disabled={fieldsDisabled}>
+                                  <option value="">—</option>
+                                  {FUNDING_SOURCES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                                </select>
+                              </div>
+                            </>
+                          )}
+
+                          {/* ── Date fields (Next Review Due is now a default field above, not here) ── */}
                           <div className="df df--half">
                             <label>Date Provision Started</label>
-                            <input type="date" value={draft.date_started ?? ''} onChange={e => handleDraftChange('date_started', e.target.value || null)} />
+                            <input type="date" value={draft.date_started ?? ''} onChange={e => handleDraftChange('date_started', e.target.value || null)} disabled={fieldsDisabled} />
                           </div>
                           <div className="df df--half">
                             <label>Date Last Evaluated &amp; Sustained</label>
-                            <input type="date" value={draft.date_last_reviewed ?? ''} onChange={e => handleDraftChange('date_last_reviewed', e.target.value || null)} />
+                            <input type="date" value={draft.date_last_reviewed ?? ''} onChange={e => handleDraftChange('date_last_reviewed', e.target.value || null)} disabled={fieldsDisabled} />
                           </div>
-                          <div className="df df--half">
-                            <label>Next Evaluate &amp; Sustain Date</label>
-                            <input type="date" value={draft.next_review_due ?? ''} onChange={e => handleDraftChange('next_review_due', e.target.value || null)} />
-                          </div>
-                          <div className="df df--half">
-                            <label>Evaluate &amp; Sustain Cycle</label>
-                            <select value={draft.review_cycle ?? ''} onChange={e => handleDraftChange('review_cycle', e.target.value)}>
-                              <option value="">—</option>
-                              {REVIEW_CYCLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                            </select>
-                            <small style={{ fontSize: '0.75rem', color: 'var(--color-text-muted, #94a3b8)', marginTop: 4, lineHeight: 1.5 }}>
-                              Regular evaluation cycles are the foundation of the EEF's Sustain phase — keeping provision active and improving.
-                            </small>
+
+                          {/* ── Intended outcomes ── */}
+                          {showOutcomes && (
+                            <div className="df df--full">
+                              <label>Intended Outcomes</label>
+                              {isStudentFacing && <span className="field-hint">What barriers are you aiming to remove for this group?</span>}
+                              <textarea rows={3} value={draft.intended_outcomes ?? ''} onChange={e => handleDraftChange('intended_outcomes', e.target.value)} disabled={fieldsDisabled} />
+                            </div>
+                          )}
+
+                          {/* ── Impact on outcomes (student-facing + legacy) ── */}
+                          {(isStudentFacing || isLegacy) && (
+                            <div className="df df--full">
+                              <label>Impact on Outcomes</label>
+                              <textarea rows={3} value={draft.impact_on_outcomes ?? ''} onChange={e => handleDraftChange('impact_on_outcomes', e.target.value)} disabled={fieldsDisabled} />
+                            </div>
+                          )}
+
+                          {/* ── Evidence / implementation evidence ── */}
+                          {(isStudentFacing || isWholeSchool || isLegacy) && (
+                            <div className="df df--full">
+                              <label>{isWholeSchool ? 'Implementation Evidence' : 'Evidence of Impact'}</label>
+                              <textarea rows={3} value={draft.evidence_notes ?? ''} onChange={e => handleDraftChange('evidence_notes', e.target.value)} disabled={fieldsDisabled} />
+                            </div>
+                          )}
+
+                          {/* ── Secondary document field — whichever one isn't the category's default ── */}
+                          {showSecondaryDoc && (
+                            <div className="df df--full">
+                              <label>{secondaryDocLabel}</label>
+                              {secondaryDocField === 'supporting_document_link' ? (
+                                <input type="url" placeholder="https://…" value={draft.supporting_document_link ?? ''} onChange={e => handleDraftChange('supporting_document_link', e.target.value)} disabled={fieldsDisabled} />
+                              ) : (
+                                <input type="text" value={draft.named_role_policy_document ?? ''} onChange={e => handleDraftChange('named_role_policy_document', e.target.value)} disabled={fieldsDisabled} />
+                              )}
+                            </div>
+                          )}
+
+                          <div className="df df--full">
+                            <label>Notes</label>
+                            <textarea rows={2} value={draft.notes ?? ''} onChange={e => handleDraftChange('notes', e.target.value)} disabled={fieldsDisabled} />
                           </div>
                         </>
                       )}
-
-                      {/* ── Intended outcomes ── */}
-                      {showOutcomes && (
-                        <div className="df df--full">
-                          <label>Intended Outcomes</label>
-                          {isStudentFacing && <span className="field-hint">What barriers are you aiming to remove for this group?</span>}
-                          <textarea rows={3} value={draft.intended_outcomes ?? ''} onChange={e => handleDraftChange('intended_outcomes', e.target.value)} />
-                        </div>
-                      )}
-
-                      {/* ── Impact on outcomes (student-facing + legacy) ── */}
-                      {(isStudentFacing || isLegacy) && (
-                        <div className="df df--full">
-                          <label>Impact on Outcomes</label>
-                          <textarea rows={3} value={draft.impact_on_outcomes ?? ''} onChange={e => handleDraftChange('impact_on_outcomes', e.target.value)} />
-                        </div>
-                      )}
-
-                      {/* ── Evidence / implementation evidence ── */}
-                      {(isStudentFacing || isWholeSchool || isLegacy) && (
-                        <div className="df df--full">
-                          <label>{isWholeSchool ? 'Implementation Evidence' : 'Evidence of Impact'}</label>
-                          <textarea rows={3} value={draft.evidence_notes ?? ''} onChange={e => handleDraftChange('evidence_notes', e.target.value)} />
-                        </div>
-                      )}
-
-                      {/* ── Always: document link + notes ── */}
-                      <div className="df df--full">
-                        <label>Supporting Document Link</label>
-                        <input type="url" placeholder="https://…" value={draft.supporting_document_link ?? ''} onChange={e => handleDraftChange('supporting_document_link', e.target.value)} />
-                      </div>
-
-                      <div className="df df--full">
-                        <label>Notes</label>
-                        <textarea rows={2} value={draft.notes ?? ''} onChange={e => handleDraftChange('notes', e.target.value)} />
-                      </div>
                     </>
                   )
                 })()}
               </div>
             </div>
 
-            <div className="modal-footer">
-              {draftId && !readOnly && (
-                <button type="button" className="delete-btn" onClick={handleModalDelete} disabled={modalSaving}>
-                  Delete
-                </button>
-              )}
-              <div className="modal-footer-right">
-                {readOnly && (
-                  <span style={{ fontSize: '0.78rem', color: '#64748b', fontStyle: 'italic' }}>Read only — viewing {browsingSchoolName}</span>
-                )}
-                {!readOnly && modalSaveMsg && (
-                  <span className={`save-msg${modalSaveError ? ' save-msg--error' : ' save-msg--ok'}`}>
-                    {modalSaveMsg}
-                  </span>
-                )}
-                <button type="button" className="modal-cancel-btn" onClick={closeModal}>Close</button>
-                {!readOnly && (
-                  <button type="button" className="save-btn" onClick={handleModalSave} disabled={modalSaving}>
-                    {modalSaving ? 'Saving…' : 'Save'}
-                  </button>
-                )}
-              </div>
-            </div>
+            {(() => {
+              const currentEntry = entries[modalPoint.id] ?? {}
+              const isPending = !!currentEntry.submitted_for_approval_at
+              return (
+                <div className="modal-footer">
+                  {draftId && !readOnly && !isPending && (
+                    <button type="button" className="delete-btn" onClick={handleModalDelete} disabled={modalSaving}>
+                      Delete
+                    </button>
+                  )}
+                  <div className="modal-footer-right">
+                    {readOnly && (
+                      <span style={{ fontSize: '0.78rem', color: '#64748b', fontStyle: 'italic' }}>Read only — viewing {browsingSchoolName}</span>
+                    )}
+                    {!readOnly && isPending && (
+                      <span style={{ fontSize: '0.78rem', color: '#92400E', fontStyle: 'italic' }}>Pending approval — no changes until an approver actions it.</span>
+                    )}
+                    {!readOnly && !isPending && modalSaveMsg && (
+                      <span className={`save-msg${modalSaveError ? ' save-msg--error' : ' save-msg--ok'}`}>
+                        {modalSaveMsg}
+                      </span>
+                    )}
+                    <button type="button" className="modal-cancel-btn" onClick={closeModal}>Close</button>
+                    {!readOnly && !isPending && (
+                      <button type="button" className="save-btn" onClick={handleModalSave} disabled={modalSaving}>
+                        {modalSaving ? 'Saving…' : 'Save'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
 
           </div>
         </div>

@@ -14,10 +14,10 @@ function categoryRank(category) {
 }
 
 // props: schoolId, userId, firstName, supabase, openModal, closeModal, modalPoint,
-// modalSaveMsg, onExit — the queue does its own live fetch of entries/assignments rather
-// than reading App.jsx's own `entries` state, so it's correct regardless of what that
-// state has loaded yet.
-export default function MyPointsQueue({ schoolId, userId, firstName, supabase, openModal, closeModal, modalPoint, modalSaveMsg, onExit }) {
+// modalSaveMsg, modalSaveError, onExit — the queue does its own live fetch of
+// entries/assignments rather than reading App.jsx's own `entries` state, so it's correct
+// regardless of what that state has loaded yet.
+export default function MyPointsQueue({ schoolId, userId, firstName, supabase, openModal, closeModal, modalPoint, modalSaveMsg, modalSaveError, onExit }) {
   const [loading, setLoading] = useState(true)
   // { slots: [{ point, pool }], pending: [{ point, pool }] } — kept as one state object so
   // popping the next candidate into a slot is a single atomic update, not two racing setters.
@@ -92,42 +92,24 @@ export default function MyPointsQueue({ schoolId, userId, firstName, supabase, o
   useEffect(() => { loadQueue() }, [supabase, schoolId, userId])
 
   // Detects a successful save from the shared evidence modal (App.jsx's own
-  // openModal/handleModalSave, unmodified) for whichever point this queue opened it for.
-  // handleModalSave itself never touches entries.status (confirmed by tracing it — it only
-  // ever writes evidence_entries), so this submits the entry for approval itself right after
-  // the save, via the atomic submit_entry_for_approval RPC, rather than leaving it evidenced
-  // but with no status at all.
+  // openModal/handleModalSave) for whichever point this queue opened it for, then closes it
+  // and refills that slot. The modal now has its own Status dropdown and handles the
+  // in_place/submit-for-approval role-fork internally (it didn't when this effect was first
+  // written, which used to call submit_entry_for_approval itself unconditionally after any
+  // save — that would now double-submit an In Place save, and wrongly force a submission for
+  // an In Progress/Not in Place choice the user actually made). This just reflects whatever
+  // handleModalSave already decided and reports back via modalSaveMsg.
   useEffect(() => {
-    if (pendingRefillPpId && modalPoint?.id === pendingRefillPpId && modalSaveMsg === 'Saved.') {
+    if (pendingRefillPpId && modalPoint?.id === pendingRefillPpId && modalSaveMsg && !modalSaveError) {
       const ppId = pendingRefillPpId
       setPendingRefillPpId(null)
       closeModal()
-      ;(async () => {
-        const { data: entryRow, error: entryErr } = await supabase
-          .from('entries')
-          .select('id')
-          .eq('school_id', schoolId)
-          .eq('provision_point_id', ppId)
-          .single()
-        if (entryErr || !entryRow) {
-          setError(entryErr?.message ?? 'Could not find the saved entry to submit for approval.')
-          return
-        }
-        const { error: rpcErr } = await supabase.rpc('submit_entry_for_approval', {
-          p_entry_id: entryRow.id,
-          p_submitting_user_id: userId,
-        })
-        if (rpcErr) {
-          setError(rpcErr.message)
-          return
-        }
-        setSuccessNote('Submitted for approval.')
-        refillSlotByPointId(ppId)
-        setRefreshToken(t => t + 1)
-      })()
+      setSuccessNote(modalSaveMsg)
+      refillSlotByPointId(ppId)
+      setRefreshToken(t => t + 1)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modalPoint, modalSaveMsg, pendingRefillPpId])
+  }, [modalPoint, modalSaveMsg, modalSaveError, pendingRefillPpId])
 
   function refillSlotByPointId(ppId) {
     setQueue(prev => {
@@ -156,7 +138,7 @@ export default function MyPointsQueue({ schoolId, userId, firstName, supabase, o
 
   function handleOpenEvidence(point) {
     setPendingRefillPpId(point.id)
-    openModal({ id: point.id, label: point.label })
+    openModal({ id: point.id, label: point.label, category: point.category })
   }
 
   async function handleClaim(point) {
