@@ -3213,6 +3213,112 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onOpenModal, readO
   )
 }
 
+// Shared drill-down detail view — renders a header + domain-grouped, truncated list of
+// provision points for a given filter value (category or principle). The caller decides
+// which points to include (ppIds) and what to label the header with; this component doesn't
+// care which field the filter came from. `pp.category` for each row is always the point's own
+// real category from ppInfoMap (not the filter value) — required so ProvisionPointRow's save
+// path (Named Person direct-write check, category-specific document field) stays correct even
+// when the filter itself is principle, where points span multiple categories.
+function DrillDownDetail({
+  title, ppIds, domains, ppInfoMap, allStatuses, evidenceEntries, entries, flaggedPoints,
+  expandedDomains, onToggleDomain, onBack, openModal, readOnly, onFlag,
+}) {
+  const total   = ppIds.length
+  const inPlace = ppIds.filter(id => allStatuses[id] === 'in_place').length
+
+  const domainGroupMap = {}
+  for (const ppId of ppIds) {
+    const info = ppInfoMap[ppId]
+    if (!info) continue
+    if (!domainGroupMap[info.domainId]) {
+      domainGroupMap[info.domainId] = { domainId: info.domainId, domainName: info.domainName, pps: [] }
+    }
+    domainGroupMap[info.domainId].pps.push({ id: ppId, label: info.label, category: info.category })
+  }
+  const domainGroupList = domains.filter(d => domainGroupMap[d.id]).map(d => domainGroupMap[d.id])
+
+  return (
+    <div>
+      <button type="button" onClick={onBack} style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 16, padding: '6px 14px',
+        border: '1px solid #CBD5E0', borderRadius: 8, background: 'transparent', color: '#4A5568',
+        fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+      }}>← Back</button>
+
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 14, fontWeight: 500, color: '#1A202C' }}>{title}</span>
+        <span style={{ fontSize: 12, color: '#94a3b8' }}>{total} point{total !== 1 ? 's' : ''} · {inPlace} in place</span>
+      </div>
+
+      {domainGroupList.map(group => {
+        const isExpanded  = expandedDomains.has(group.domainId)
+        const pps         = group.pps
+        const ppCount     = pps.length
+        const domColour   = sidebarDomainColour(group.domainName)
+        const grpInPlace  = pps.filter(p => allStatuses[p.id] === 'in_place').length
+        const grpInProg   = pps.filter(p => allStatuses[p.id] === 'in_progress').length
+        const grpUntouched = pps.filter(p => !allStatuses[p.id]).length
+        const needsTrunc  = ppCount > 3 && !isExpanded
+        const visiblePPs  = needsTrunc ? pps.slice(0, 3) : pps
+
+        return (
+          <div key={group.domainId} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, marginBottom: 8, overflow: 'hidden' }}>
+            <button type="button" onClick={() => onToggleDomain(group.domainId)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                padding: '11px 16px', background: 'none', border: 'none', cursor: 'pointer',
+                borderBottom: '0.5px solid #e2e8f0', fontFamily: 'inherit', textAlign: 'left',
+              }}>
+              <i className="ti ti-chevron-down" style={{ fontSize: '0.8rem', color: '#94a3b8', flexShrink: 0, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: domColour, flexShrink: 0 }} />
+              <span style={{ fontSize: 13, fontWeight: 500, color: '#1A202C' }}>{group.domainName}</span>
+              <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 2 }}>({ppCount})</span>
+              <div style={{ flex: 1 }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#334155' }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#257A3B', display: 'inline-block', flexShrink: 0 }} />
+                  {grpInPlace}
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#334155' }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#D4751A', display: 'inline-block', flexShrink: 0 }} />
+                  {grpInProg}
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#94a3b8' }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#cbd5e1', display: 'inline-block', flexShrink: 0 }} />
+                  {grpUntouched}
+                </span>
+              </div>
+            </button>
+
+            <div style={{ position: 'relative' }}>
+              {visiblePPs.map((pp, ppIdx) => (
+                <ProvisionPointRow
+                  key={pp.id}
+                  pp={pp}
+                  ppIdx={ppIdx}
+                  status={allStatuses[pp.id]}
+                  evidenceList={evidenceEntries[pp.id] ?? []}
+                  onOpenModal={openModal}
+                  readOnly={readOnly}
+                  isFlagged={flaggedPoints.has(pp.id)}
+                  onFlag={onFlag}
+                  submittedAt={entries[pp.id]?.submitted_for_approval_at}
+                />
+              ))}
+              {needsTrunc && (
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 40, background: 'linear-gradient(to bottom, rgba(255,255,255,0), #fff)', pointerEvents: 'none' }} />
+              )}
+            </div>
+
+            <ShowToggle expanded={isExpanded} total={ppCount} onToggle={() => onToggleDomain(group.domainId)} />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function ShowToggle({ expanded, total, onToggle }) {
   if (total <= 3) return null
   return (
@@ -3255,9 +3361,11 @@ export default function App() {
   const [allEvidenceCounts, setAllEvidenceCounts] = useState({})
   const [allSubDomains, setAllSubDomains] = useState([])
   const [ppCategoryMap, setPpCategoryMap] = useState({})
+  const [ppPrincipleMap, setPpPrincipleMap] = useState({})
   const [ppInfoMap, setPpInfoMap]         = useState({})
   const [overviewMode, setOverviewMode]   = useState('domain')
   const [selectedCategory, setSelectedCategory] = useState(null)
+  const [selectedPrinciple, setSelectedPrinciple] = useState(null)
 
   // School context — lifted from AnalyticsView so home screen and analytics share it
   const [schoolCtx, setSchoolCtx] = useState({ totalPupils: 0, ppCount: 0, sendCount: 0, fsmCount: 0, ealCount: 0, lacCount: 0, wwcCount: 0, socialCareCount: 0, youngCarerCount: 0, mentalHealthSupportCount: 0 })
@@ -3432,9 +3540,11 @@ export default function App() {
       setAllEvidenceCounts({})
       setAllSubDomains([])
       setPpCategoryMap({})
+      setPpPrincipleMap({})
       setPpInfoMap({})
       setOverviewMode('domain')
       setSelectedCategory(null)
+      setSelectedPrinciple(null)
       setUserRole('contributor')
       setViewMode('whole_school')
       setPersonalAssignedPpIds(new Set())
@@ -3535,7 +3645,7 @@ export default function App() {
 
     supabase
       .from('domains')
-      .select('id, name, display_order, sub_domains(id, name, provision_points(id, label, category))')
+      .select('id, name, display_order, sub_domains(id, name, provision_points(id, label, category, principle))')
       .order('display_order')
       .then(({ data, error }) => {
         if (error) { console.error('Error loading domains:', error); return }
@@ -3543,6 +3653,7 @@ export default function App() {
         const newDomainTotals   = {}
         const newSubDomains     = []
         const newPpCategoryMap  = {}
+        const newPpPrincipleMap = {}
         const newPpInfoMap      = {}
         for (const domain of data ?? []) {
           let count = 0
@@ -3551,6 +3662,7 @@ export default function App() {
             for (const pp of sd.provision_points ?? []) {
               newPpDomainMap[pp.id] = domain.id
               newPpCategoryMap[pp.id] = pp.category ?? ''
+              newPpPrincipleMap[pp.id] = pp.principle ?? ''
               newPpInfoMap[pp.id] = { label: pp.label, domainId: domain.id, domainName: domain.name, subDomainName: sd.name, category: pp.category ?? '' }
               count++
             }
@@ -3562,6 +3674,7 @@ export default function App() {
         setDomainTotals(newDomainTotals)
         setAllSubDomains(newSubDomains)
         setPpCategoryMap(newPpCategoryMap)
+        setPpPrincipleMap(newPpPrincipleMap)
         setPpInfoMap(newPpInfoMap)
       })
   }, [session])
@@ -3756,7 +3869,16 @@ export default function App() {
       })
   }, [selectedSchool, selectedDomain])
 
-  useEffect(() => { setExpandedCatDomains(new Set()) }, [selectedCategory])
+  useEffect(() => { setExpandedCatDomains(new Set()) }, [selectedCategory, selectedPrinciple])
+
+  function toggleDrillDomain(domainId) {
+    setExpandedCatDomains(prev => {
+      const next = new Set(prev)
+      if (next.has(domainId)) next.delete(domainId)
+      else next.add(domainId)
+      return next
+    })
+  }
 
   useEffect(() => {
     document.body.style.overflow = modalPoint ? 'hidden' : ''
@@ -4526,108 +4648,49 @@ export default function App() {
             }
 
             // Category detail — provision points grouped by domain
-            const catPpIds   = Object.entries(ppCategoryMap).filter(([, c]) => c === selectedCategory).map(([id]) => id)
-            const catTotal   = catPpIds.length
-            const catInPlace = catPpIds.filter(id => allStatuses[id] === 'in_place').length
-
-            const domainGroupMap = {}
-            for (const ppId of catPpIds) {
-              const info = ppInfoMap[ppId]
-              if (!info) continue
-              if (!domainGroupMap[info.domainId]) {
-                domainGroupMap[info.domainId] = { domainId: info.domainId, domainName: info.domainName, pps: [] }
-              }
-              domainGroupMap[info.domainId].pps.push({ id: ppId, label: info.label, category: selectedCategory })
-            }
-            const domainGroupList = domains.filter(d => domainGroupMap[d.id]).map(d => domainGroupMap[d.id])
-
-            function toggleCatDomain(domainId) {
-              setExpandedCatDomains(prev => {
-                const next = new Set(prev)
-                if (next.has(domainId)) next.delete(domainId)
-                else next.add(domainId)
-                return next
-              })
-            }
+            const catPpIds = Object.entries(ppCategoryMap).filter(([, c]) => c === selectedCategory).map(([id]) => id)
 
             return (
-              <div>
-                <button type="button" onClick={() => setSelectedCategory(null)} style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 16, padding: '6px 14px',
-                  border: '1px solid #CBD5E0', borderRadius: 8, background: 'transparent', color: '#4A5568',
-                  fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-                }}>← Back</button>
+              <DrillDownDetail
+                title={selectedCategory}
+                ppIds={catPpIds}
+                domains={domains}
+                ppInfoMap={ppInfoMap}
+                allStatuses={allStatuses}
+                evidenceEntries={evidenceEntries}
+                entries={entries}
+                flaggedPoints={flaggedPoints}
+                expandedDomains={expandedCatDomains}
+                onToggleDomain={toggleDrillDomain}
+                onBack={() => setSelectedCategory(null)}
+                openModal={openModal}
+                readOnly={readOnly}
+                onFlag={handleFlag}
+              />
+            )
+          }
 
-                <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 14, fontWeight: 500, color: '#1A202C' }}>{selectedCategory}</span>
-                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{catTotal} point{catTotal !== 1 ? 's' : ''} · {catInPlace} in place</span>
-                </div>
+          // ── Principle view ──────────────────────────────────────────────
+          if (overviewMode === 'principle') {
+            const principlePpIds = Object.entries(ppPrincipleMap).filter(([, p]) => p === selectedPrinciple).map(([id]) => id)
 
-                {domainGroupList.map(group => {
-                  const isExpanded  = expandedCatDomains.has(group.domainId)
-                  const pps         = group.pps
-                  const ppCount     = pps.length
-                  const domColour   = sidebarDomainColour(group.domainName)
-                  const grpInPlace  = pps.filter(p => allStatuses[p.id] === 'in_place').length
-                  const grpInProg   = pps.filter(p => allStatuses[p.id] === 'in_progress').length
-                  const grpUntouched = pps.filter(p => !allStatuses[p.id]).length
-                  const needsTrunc  = ppCount > 3 && !isExpanded
-                  const visiblePPs  = needsTrunc ? pps.slice(0, 3) : pps
-
-                  return (
-                    <div key={group.domainId} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, marginBottom: 8, overflow: 'hidden' }}>
-                      <button type="button" onClick={() => toggleCatDomain(group.domainId)}
-                        style={{
-                          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                          padding: '11px 16px', background: 'none', border: 'none', cursor: 'pointer',
-                          borderBottom: '0.5px solid #e2e8f0', fontFamily: 'inherit', textAlign: 'left',
-                        }}>
-                        <i className="ti ti-chevron-down" style={{ fontSize: '0.8rem', color: '#94a3b8', flexShrink: 0, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }} />
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: domColour, flexShrink: 0 }} />
-                        <span style={{ fontSize: 13, fontWeight: 500, color: '#1A202C' }}>{group.domainName}</span>
-                        <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 2 }}>({ppCount})</span>
-                        <div style={{ flex: 1 }} />
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#334155' }}>
-                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#257A3B', display: 'inline-block', flexShrink: 0 }} />
-                            {grpInPlace}
-                          </span>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#334155' }}>
-                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#D4751A', display: 'inline-block', flexShrink: 0 }} />
-                            {grpInProg}
-                          </span>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#94a3b8' }}>
-                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#cbd5e1', display: 'inline-block', flexShrink: 0 }} />
-                            {grpUntouched}
-                          </span>
-                        </div>
-                      </button>
-
-                      <div style={{ position: 'relative' }}>
-                        {visiblePPs.map((pp, ppIdx) => (
-                          <ProvisionPointRow
-                            key={pp.id}
-                            pp={pp}
-                            ppIdx={ppIdx}
-                            status={allStatuses[pp.id]}
-                            evidenceList={evidenceEntries[pp.id] ?? []}
-                            onOpenModal={openModal}
-                            readOnly={readOnly}
-                            isFlagged={flaggedPoints.has(pp.id)}
-                            onFlag={handleFlag}
-                            submittedAt={entries[pp.id]?.submitted_for_approval_at}
-                          />
-                        ))}
-                        {needsTrunc && (
-                          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 40, background: 'linear-gradient(to bottom, rgba(255,255,255,0), #fff)', pointerEvents: 'none' }} />
-                        )}
-                      </div>
-
-                      <ShowToggle expanded={isExpanded} total={ppCount} onToggle={() => toggleCatDomain(group.domainId)} />
-                    </div>
-                  )
-                })}
-              </div>
+            return (
+              <DrillDownDetail
+                title={PRINCIPLE_LABEL_SHORT[selectedPrinciple] ?? selectedPrinciple}
+                ppIds={principlePpIds}
+                domains={domains}
+                ppInfoMap={ppInfoMap}
+                allStatuses={allStatuses}
+                evidenceEntries={evidenceEntries}
+                entries={entries}
+                flaggedPoints={flaggedPoints}
+                expandedDomains={expandedCatDomains}
+                onToggleDomain={toggleDrillDomain}
+                onBack={() => { setOverviewMode('domain'); setSelectedPrinciple(null) }}
+                openModal={openModal}
+                readOnly={readOnly}
+                onFlag={handleFlag}
+              />
             )
           }
 
@@ -4936,7 +4999,7 @@ export default function App() {
                   const pct = p.total ? Math.round((p.inPlace / p.total) * 100) : 0
                   return (
                     <button key={p.principle} type="button"
-                      onClick={() => { setSelectedDomain('analytics'); setAnalyticsTabRequest('principle') }}
+                      onClick={() => { setOverviewMode('principle'); setSelectedPrinciple(p.principle) }}
                       style={{
                         background: ragBg[p.rag], border: `1px solid ${ragBorder[p.rag]}`, borderRadius: 12,
                         padding: '16px 18px', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
