@@ -375,11 +375,12 @@ function Sidebar({
           )
         })}
 
-        {/* Categories */}
+        {/* Categories — clicking the label navigates straight to the categories overview page and opens the submenu */}
         {expanderBtn({
           id: 'cats-expander', icon: 'ti-tag', label: 'Categories',
-          open: activeSidebarSection === 'categories', onToggle: () => setActiveSidebarSection(prev => prev === 'categories' ? null : 'categories'),
-          active: !selectedDomain && overviewMode === 'category',
+          open: activeSidebarSection === 'categories',
+          onToggle: () => { setSelectedDomain(''); setOverviewMode('category'); setSelectedCategory(null); setActiveSidebarSection('categories'); onClose() },
+          active: !selectedDomain && overviewMode === 'category' && !selectedCategory,
         })}
         {activeSidebarSection === 'categories' && PROVISION_POINT_CATEGORIES.map(cat => {
           const active = !selectedDomain && overviewMode === 'category' && selectedCategory === cat
@@ -2403,6 +2404,63 @@ function ReviewSheet({ item, ppInfoMap, entries, evidenceEntries, readOnly, isDe
   )
 }
 
+// Shared ledger legend + rows markup — used by the homepage ledger and by the Domains and
+// Categories sidebar pages, so all three stay pixel-identical. Each row: { key, name, counts,
+// onClick, dotColour? }. dotColour is optional — when present a small coloured dot is shown
+// before the name (used by the Domains/Categories pages); the homepage omits it.
+function LedgerRows({ rows }) {
+  const hasNotInPlace = rows.some(r => r.counts.notInPlace > 0)
+  return (
+    <>
+      <div className="hp-legend" style={{ padding: '0 24px 8px' }}>
+        <span><span className="hp-legend-dot" style={{ background: '#257A3B' }} />In place</span>
+        <span><span className="hp-legend-dot" style={{ background: '#D4751A' }} />In progress</span>
+        {hasNotInPlace && (
+          <span><span className="hp-legend-dot" style={{ background: 'var(--hp-status-not-in-place)' }} />Not in place</span>
+        )}
+        <span><span className="hp-legend-dot" style={{ background: 'var(--hp-status-not-started)' }} />Not started</span>
+      </div>
+
+      <div>
+        {rows.map(row => {
+          const { inPlace, inProgress, notInPlace, notStarted, total } = row.counts
+          const segments = [
+            { key: 'inPlace',    count: inPlace,    colour: '#257A3B' },
+            { key: 'inProgress', count: inProgress, colour: '#D4751A' },
+            { key: 'notInPlace', count: notInPlace, colour: 'var(--hp-status-not-in-place)' },
+            { key: 'notStarted', count: notStarted, colour: 'var(--hp-status-not-started)' },
+          ].filter(s => s.count > 0)
+          const tooltipText = `${inPlace} in place · ${inProgress} in progress · ${notInPlace} not in place · ${notStarted} not started`
+          return (
+            <button key={row.key} type="button" className="hp-row" onClick={row.onClick}>
+              <div>
+                <div className="hp-row-name">
+                  {row.dotColour && (
+                    <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: row.dotColour, marginRight: 8 }} />
+                  )}
+                  {row.name}
+                </div>
+                <div className="hp-row-meta">{total} point{total !== 1 ? 's' : ''}</div>
+              </div>
+              <div className="hp-row-bar-cell">
+                <IconTooltip text={tooltipText} actionable>
+                  <div className="hp-row-bar">
+                    {segments.map(s => (
+                      <span key={s.key} style={{ background: s.colour, flexGrow: s.count, flexBasis: 0 }} />
+                    ))}
+                  </div>
+                </IconTooltip>
+              </div>
+              <div className="hp-row-count">{inPlace} of {total}</div>
+              <i className="ti ti-chevron-right" style={{ fontSize: '0.85rem', color: '#94a3b8' }} />
+            </button>
+          )
+        })}
+      </div>
+    </>
+  )
+}
+
 // Shared drill-down detail view — renders a header + domain-grouped, truncated list of
 // provision points for a given filter value (category or principle). The caller decides
 // which points to include (ppIds) and what to label the header with; this component doesn't
@@ -3823,33 +3881,30 @@ export default function App() {
           // ── Category view ─────────────────────────────────────────────
           if (overviewMode === 'category') {
             if (!selectedCategory) {
+              // Categories ledger — same look and counting formula as the homepage
+              // ledger's Categories view (computeCounts). No personal-view scoping,
+              // matching the previous card grid's behaviour.
+              const categoryPoints = Object.entries(ppCategoryMap).map(([id, category]) => ({ id, category }))
+              const categoryRows = PROVISION_POINT_CATEGORIES.map(cat => ({
+                key: cat,
+                name: cat,
+                counts: computeCounts(categoryPoints, allStatuses, p => p.category === cat),
+                onClick: () => setSelectedCategory(cat),
+              }))
               return (
-                <div className="dash-grid">
-                  {PROVISION_POINT_CATEGORIES.map(cat => {
-                    const ppIds   = Object.entries(ppCategoryMap).filter(([, c]) => c === cat).map(([id]) => id)
-                    const total   = ppIds.length
-                    const inPlace = ppIds.filter(id => allStatuses[id] === 'in_place').length
-                    const inProg  = ppIds.filter(id => allStatuses[id] === 'in_progress').length
-                    const notIn   = ppIds.filter(id => allStatuses[id] === 'not_in_place').length
-                    const answered = inPlace + inProg + notIn
-                    const pct     = total ? Math.round((answered / total) * 100) : 0
-                    return (
-                      <button key={cat} type="button" className="dash-card" onClick={() => setSelectedCategory(cat)}>
-                        <h3 className="dash-card-name">{cat}</h3>
-                        <div className="dash-progress">
-                          <div className="dash-progress-track">
-                            <div className="dash-progress-fill" style={{ width: `${pct}%` }} />
-                          </div>
-                          <span className="dash-progress-label">{answered}/{total}</span>
-                        </div>
-                        <div className="dash-counts">
-                          <span className="dash-count dash-count--green">{inPlace} in place</span>
-                          <span className="dash-count dash-count--amber">{inProg} in progress</span>
-                          <span className="dash-count dash-count--red">{notIn} not in place</span>
-                        </div>
-                      </button>
-                    )
-                  })}
+                <div className="hp-content hp-index-canvas" style={{
+                  display: 'flex', flexDirection: 'column', gap: 14,
+                  minHeight: '100%', margin: -24, padding: 24,
+                }}>
+                  <div>
+                    <h1 className="hp-font-display" style={{ fontSize: 28, color: 'var(--hp-text-primary)' }}>Categories</h1>
+                    <p style={{ fontSize: 14, color: 'var(--hp-text-secondary)', marginTop: 4 }}>
+                      The same provision, grouped by type.
+                    </p>
+                  </div>
+                  <div className="hp-card hp-ledger hp-ledger--index">
+                    <LedgerRows rows={categoryRows} />
+                  </div>
                 </div>
               )
             }
@@ -3956,9 +4011,6 @@ export default function App() {
               onClick: () => { setSelectedDomain(''); setOverviewMode('category'); setSelectedCategory(cat) },
             }))
           }
-          // Legend only lists buckets that actually occur anywhere in the current view.
-          const ledgerHasNotInPlace = ledgerRows.some(r => r.counts.notInPlace > 0)
-
           // Coming up for review — same 60-day overdueReviews/filteredReviews as before, now
           // bucketed into the four tiles. Definitions are relative to next_review_due vs today.
           const todayForTiles = new Date(); todayForTiles.setHours(0, 0, 0, 0)
@@ -4175,46 +4227,7 @@ export default function App() {
                         it filters the review list too, not just this ledger. */}
                   </div>
 
-                  <div className="hp-legend" style={{ padding: '0 24px 8px' }}>
-                    <span><span className="hp-legend-dot" style={{ background: '#257A3B' }} />In place</span>
-                    <span><span className="hp-legend-dot" style={{ background: '#D4751A' }} />In progress</span>
-                    {ledgerHasNotInPlace && (
-                      <span><span className="hp-legend-dot" style={{ background: 'var(--hp-status-not-in-place)' }} />Not in place</span>
-                    )}
-                    <span><span className="hp-legend-dot" style={{ background: 'var(--hp-status-not-started)' }} />Not started</span>
-                  </div>
-
-                  <div>
-                    {ledgerRows.map(row => {
-                      const { inPlace, inProgress, notInPlace, notStarted, total } = row.counts
-                      const segments = [
-                        { key: 'inPlace',    count: inPlace,    colour: '#257A3B' },
-                        { key: 'inProgress', count: inProgress, colour: '#D4751A' },
-                        { key: 'notInPlace', count: notInPlace, colour: 'var(--hp-status-not-in-place)' },
-                        { key: 'notStarted', count: notStarted, colour: 'var(--hp-status-not-started)' },
-                      ].filter(s => s.count > 0)
-                      const tooltipText = `${inPlace} in place · ${inProgress} in progress · ${notInPlace} not in place · ${notStarted} not started`
-                      return (
-                        <button key={row.key} type="button" className="hp-row" onClick={row.onClick}>
-                          <div>
-                            <div className="hp-row-name">{row.name}</div>
-                            <div className="hp-row-meta">{total} point{total !== 1 ? 's' : ''}</div>
-                          </div>
-                          <div className="hp-row-bar-cell">
-                            <IconTooltip text={tooltipText} actionable>
-                              <div className="hp-row-bar">
-                                {segments.map(s => (
-                                  <span key={s.key} style={{ background: s.colour, flexGrow: s.count, flexBasis: 0 }} />
-                                ))}
-                              </div>
-                            </IconTooltip>
-                          </div>
-                          <div className="hp-row-count">{inPlace} of {total}</div>
-                          <i className="ti ti-chevron-right" style={{ fontSize: '0.85rem', color: '#94a3b8' }} />
-                        </button>
-                      )
-                    })}
-                  </div>
+                  <LedgerRows rows={ledgerRows} />
                 </div>
 
                 {/* ── Coming up for review card ────────────────────────────── */}
@@ -4299,83 +4312,33 @@ export default function App() {
         })()}
 
         {view !== 'mat' && selectedSchool && selectedDomain === '__domains__' && (() => {
-          // Domain cards with RAG triage — scoped to assigned points in personal view.
-          // Verbatim extraction of the pre-Session-50 home page domain grid.
+          // Domains ledger — same look and counting formula as the homepage ledger's
+          // Domains view (computeCounts), scoped to assigned points in personal view.
           const isPersonalView = viewMode !== 'whole_school'
-          const domainCards = domains.map(d => {
-            let ppIds = Object.entries(ppDomainMap).filter(([, did]) => did === d.id).map(([id]) => id)
-            if (isPersonalView) ppIds = ppIds.filter(id => personalAssignedPpIds.has(id))
-            const total      = ppIds.length
-            const inPlace    = ppIds.filter(id => allStatuses[id] === 'in_place').length
-            const inProgress = ppIds.filter(id => allStatuses[id] === 'in_progress').length
-            const notInPlace = ppIds.filter(id => allStatuses[id] === 'not_in_place').length
-            const untouched  = ppIds.filter(id => !allStatuses[id]).length
-            let rag = 'untouched'
-            if (total > 0) {
-              if (notInPlace > 0) rag = 'red'
-              else if (inPlace / total >= 0.7) rag = 'green'
-              else if (inProgress > 0 || inPlace > 0) rag = 'amber'
-            }
-            return { ...d, total, inPlace, inProgress, notInPlace, untouched, rag }
-          })
-          const ragOrder    = { untouched: 0, red: 1, amber: 2, green: 3 }
-          const sortedDomains = [...domainCards].sort((a, b) => ragOrder[a.rag] - ragOrder[b.rag])
-          const ragBg     = { untouched: '#F7F8FA', red: 'rgba(234,67,53,0.06)', amber: 'rgba(212,117,26,0.08)', green: 'rgba(37,122,59,0.06)' }
-          const ragBorder = { untouched: '#E2E8F0', red: 'rgba(234,67,53,0.25)', amber: 'rgba(212,117,26,0.25)', green: 'rgba(37,122,59,0.25)' }
+          let domainPoints = Object.entries(ppDomainMap).map(([id, domainId]) => ({ id, domainId }))
+          if (isPersonalView) domainPoints = domainPoints.filter(p => personalAssignedPpIds.has(p.id))
+          const domainRows = domains.map(d => ({
+            key: d.id,
+            name: d.name,
+            counts: computeCounts(domainPoints, allStatuses, p => p.domainId === d.id),
+            onClick: () => setSelectedDomain(d.id),
+            dotColour: sidebarDomainColour(d.name),
+          }))
 
           return (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-              {sortedDomains.map(d => {
-                const colour = sidebarDomainColour(d.name)
-                const pct    = d.total ? Math.round((d.inPlace / d.total) * 100) : 0
-                return (
-                  <button key={d.id} type="button" onClick={() => setSelectedDomain(d.id)}
-                    style={{
-                      background: ragBg[d.rag], border: `1px solid ${ragBorder[d.rag]}`, borderRadius: 12,
-                      padding: '16px 18px', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
-                      display: 'flex', flexDirection: 'column', gap: 10,
-                      transition: 'box-shadow 0.15s',
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'}
-                    onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      <span style={{ width: 9, height: 9, borderRadius: '50%', background: colour, flexShrink: 0 }} />
-                      <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1A202C' }}>{d.name}</span>
-                    </div>
-                    <div>
-                      <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 5 }}>
-                        {d.inPlace} of {d.total} complete
-                      </p>
-                      <div style={{ height: 5, borderRadius: 3, background: 'rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${pct}%`, background: colour, borderRadius: 3, transition: 'width 0.4s' }} />
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {d.inPlace > 0 && (
-                        <span style={{ fontSize: '0.7rem', color: '#257A3B', background: 'rgba(37,122,59,0.12)', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
-                          {d.inPlace} in place
-                        </span>
-                      )}
-                      {d.inProgress > 0 && (
-                        <span style={{ fontSize: '0.7rem', color: '#D4751A', background: 'rgba(212,117,26,0.15)', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
-                          {d.inProgress} in progress
-                        </span>
-                      )}
-                      {d.notInPlace > 0 && (
-                        <span style={{ fontSize: '0.7rem', color: '#EA4335', background: 'rgba(234,67,53,0.12)', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
-                          {d.notInPlace} not in place
-                        </span>
-                      )}
-                      {d.untouched > 0 && (
-                        <span style={{ fontSize: '0.7rem', color: '#64748B', background: '#E2E8F0', padding: '2px 7px', borderRadius: 99, fontWeight: 500 }}>
-                          {d.untouched} untouched
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                )
-              })}
+            <div className="hp-content hp-index-canvas" style={{
+              display: 'flex', flexDirection: 'column', gap: 14,
+              minHeight: '100%', margin: -24, padding: 24,
+            }}>
+              <div>
+                <h1 className="hp-font-display" style={{ fontSize: 28, color: 'var(--hp-text-primary)' }}>Domains</h1>
+                <p style={{ fontSize: 14, color: 'var(--hp-text-secondary)', marginTop: 4 }}>
+                  How provision is coming along in each domain.
+                </p>
+              </div>
+              <div className="hp-card hp-ledger hp-ledger--index">
+                <LedgerRows rows={domainRows} />
+              </div>
             </div>
           )
         })()}
