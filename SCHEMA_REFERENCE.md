@@ -70,6 +70,34 @@ no other constraints beyond `id`/`name` being `NOT NULL`.
 
 ---
 
+## domains
+
+The framework's 6 top-level domains (SEND Support & Needs, Equity & Disadvantage, Attendance &
+Engagement, Enrichment, Belonging, Wellbeing — see the UUIDs already listed under `barriers`
+below). Not previously documented here — live-verified 2026-09-20.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK, default `gen_random_uuid()` |
+| name | text | NOT NULL |
+| display_order | integer | NOT NULL |
+
+---
+
+## sub_domains
+
+Sub-groupings within a domain (see the sub-domain UUID table under `barriers` below). Not
+previously documented here — live-verified 2026-09-20.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK, default `gen_random_uuid()` |
+| domain_id | uuid | NOT NULL. FK → domains.id, `ON DELETE CASCADE` |
+| name | text | NOT NULL |
+| display_order | integer | NOT NULL |
+
+---
+
 ## provision_points
 
 | Column | Type | Notes |
@@ -280,6 +308,77 @@ evidence modal instead, which can call `submit_entry_for_approval` as normal.
 | step9_expert_engagement_evidence.sql | Adds `evidence_type` + `structured_detail` (jsonb) to evidence_entries; adds `experts_at_hand` to the funding_source CHECK constraint |
 | supabase/migrations/20260715094811_add_social_care_young_carer_mh_support.sql | Adds `grp_social_care`/`grp_young_carer`/`grp_mental_health_support` (boolean, default false) and `reach_social_care`/`reach_young_carer`/`reach_mental_health_support` (integer, nullable) to `evidence_entries`; adds `social_care_count`/`young_carer_count`/`mental_health_support_count` (integer, default 0) to `school_context` |
 | supabase/migrations/20260919022235_evidence_entries_last_reviewed_by.sql | Adds `last_reviewed_by` (uuid, nullable, FK → profiles.id, `ON DELETE SET NULL`) to `evidence_entries` |
+
+---
+
+## inclusion_strategy_drafts
+
+The Inclusion Strategy statement, edited via `InclusionStrategyWizard.jsx` and read by
+`generateReport.js` for the strategy-statement export. Not previously documented here —
+live-verified 2026-09-20. No unique constraint on `school_id` — "one active draft per school"
+is enforced by application logic, not the database: the wizard always queries the most recent
+row (`order('created_at', desc).limit(1)`) and creates a new one only if none exists yet.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK, default `gen_random_uuid()` |
+| school_id | uuid | NOT NULL. FK → schools.id, `ON DELETE NO ACTION` |
+| academic_year_label | text | Nullable |
+| review_date | date | Nullable |
+| authorised_by | text | Nullable. Free text, defaulted from the creating user's name |
+| barrier_ids | uuid[] | Nullable, default `'{}'` |
+| statement_of_intent | text | Nullable |
+| intended_outcomes | text | Nullable |
+| further_information | text | Nullable |
+| status | text | NOT NULL, default `'draft'`. CHECK: `draft` / `published` |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+---
+
+## inclusion_strategy_priorities
+
+Child rows of `inclusion_strategy_drafts` — individual priority/action line items on the
+strategy statement. Edited via `InclusionStrategyWizard.jsx`, read by `generateReport.js`.
+Not previously documented here — live-verified 2026-09-20.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK, default `gen_random_uuid()` |
+| strategy_id | uuid | NOT NULL. FK → inclusion_strategy_drafts.id, `ON DELETE CASCADE` |
+| principle | text | NOT NULL |
+| source_point_id | uuid | Nullable. FK → provision_points.id, `ON DELETE NO ACTION` |
+| point_description | text | Nullable |
+| activity_description | text | Nullable |
+| budgeted_cost | numeric | Nullable |
+| funding_source | text | Nullable. CHECK: `pupil_premium` / `send_budget` / `inclusive_mainstream_fund` / `sport_premium` / `school_general_budget` — **no `experts_at_hand` option**, unlike `evidence_entries.funding_source`/`entries.funding_source` |
+| sort_order | integer | Nullable, default `0` |
+| created_at | timestamptz | NOT NULL, default `now()` |
+
+---
+
+## team_member_reassignment_log
+
+Audit log for removing a team member and reassigning their points. **Not written by any
+client-side code in `src/`** — per its own migration's comment
+(`migrations/step10_team_member_reassignment_log.sql`), it is written only by the
+"remove-team-member" Edge Function via the service role, which bypasses RLS; there is
+deliberately no client-side INSERT/UPDATE/DELETE policy. Approvers/mat_admins can `SELECT`
+it for their own school. Not previously documented here — live-verified 2026-09-20.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK, default `gen_random_uuid()` |
+| school_id | uuid | NOT NULL. FK → schools.id, `ON DELETE CASCADE` |
+| removed_first_name | text | NOT NULL |
+| removed_last_name | text | NOT NULL |
+| removed_job_title | text | Nullable |
+| replacement_user_id | uuid | Nullable. FK → profiles.id, `ON DELETE NO ACTION` |
+| replacement_name | text | Nullable |
+| performed_by | uuid | NOT NULL. FK → profiles.id, `ON DELETE NO ACTION` |
+| points_reassigned_count | integer | NOT NULL, default `0` |
+| points_unassigned_count | integer | NOT NULL, default `0` |
+| created_at | timestamptz | NOT NULL, default `now()` |
 
 ---
 
