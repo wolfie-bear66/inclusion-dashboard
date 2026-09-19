@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 19 September 2026 (Session 86 — Two Phase 1D follow-up fixes: evidence_entries.last_reviewed_by FK corrected to ON DELETE SET NULL; handleModalSave now strips last_reviewed_by defensively too)
+Last updated: 20 September 2026 (Session 87 — SCHEMA_REFERENCE.md brought up to date: last_reviewed_by, approval columns/RPCs, my_points_queue_state, computeCounts() coverage, and undocumented tables — docs only, no code changes)
 
 ---
 
@@ -18,6 +18,8 @@ Last updated: 19 September 2026 (Session 86 — Two Phase 1D follow-up fixes: ev
 ---
 
 ## Completed
+
+- [x] **Session 87 — SCHEMA_REFERENCE.md brought up to date (docs only, no code/migrations)** — Added/corrected `evidence_entries.last_reviewed_by` (FK + delete rule, migration filename), `entries`' approval columns, `review_cycle`'s legacy status, `next_review_due`/`date_last_reviewed`'s review-sheet write path, a new "Approval workflow" section (the three RPCs plus `approval_notifications`/`point_approval_log`), `my_points_queue_state`, a new "Status counting definitions" section (`computeCounts()`'s four buckets and exactly which surfaces use it vs. their own formula, verified by grep), `friction_logs`, and corrected `school_context`'s stale "Group Reach analytics" note (that feature was removed Session 79; verified by grep that the only live consumers now are `SchoolContextPanel` in Report Builder and the two report generators — `GroupReach` still reads it but is dead code, never rendered). One draft error caught and fixed before finalizing: `friction_logs.school_id`/`provision_point_id` were initially written up as not FK-constrained — checked and found they are (`ON DELETE CASCADE` both). `domains`, `sub_domains`, `inclusion_strategy_drafts`, `inclusion_strategy_priorities`, `team_member_reassignment_log` verified to exist but left undocumented in this pass — see the next entry.
 
 - [x] **Session 86 — Two small Phase 1D follow-up fixes** — (A) The `evidence_entries.last_reviewed_by` FK (added Session 85) was live with `delete_rule = NO ACTION` instead of the approved `ON DELETE SET NULL`. Confirmed the actual constraint name via `information_schema` first (`evidence_entries_last_reviewed_by_fkey`) rather than assuming it, reported it, then on explicit confirmation ran `DROP CONSTRAINT` / `ADD CONSTRAINT ... ON DELETE SET NULL` and re-verified `delete_rule = SET NULL` live. No profile was deleted to test it. Updated the original migration file (`20260919022235_evidence_entries_last_reviewed_by.sql`) to include `ON DELETE SET NULL` directly, so the repo's migration text matches what production now actually has, rather than leaving a second patch migration to reconcile mentally later. (B) `handleModalSave`'s Step 2 destructure (`App.jsx`) now also strips `last_reviewed_by`, alongside the existing `status`/`review_cycle` strip — belt-and-suspenders on top of the read-only investigation's finding that `draft` never carries this key today (since `ENTRY_SELECT` doesn't fetch it): if that column is ever added to `ENTRY_SELECT` for display later, the full modal still can't round-trip it, since only the review sheet's own `handleConfirmReview` should ever set it.
 

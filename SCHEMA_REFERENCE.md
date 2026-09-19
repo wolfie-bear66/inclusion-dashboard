@@ -93,9 +93,14 @@ One row per `(school_id, provision_point_id)` pair. Records the current complian
 | school_id | uuid | FK → schools.id |
 | provision_point_id | uuid | FK → provision_points.id |
 | status | text | **Only valid values: `in_place`, `in_progress`, `not_in_place`.** The value `complete` does not exist and must never be used. |
+| submitted_for_approval_at | timestamptz | Nullable. **Pending approval means this is set.** Cleared by `confirm_entry_approval`/`send_back_entry_approval`; set by `submit_entry_for_approval` |
+| submitted_by | uuid | FK → profiles.id, `ON DELETE NO ACTION`. Nullable. The contributor who last submitted this entry |
+| send_back_note | text | Nullable. Set by `send_back_entry_approval`; not cleared on the next submission, so a re-submission after a send-back still shows the old note until overwritten by a later send-back |
 | updated_at | timestamptz | |
 
 Unique constraint: `(school_id, provision_point_id)`.
+
+See "Approval workflow" below for the RPCs that write `submitted_for_approval_at`/`submitted_by`/`send_back_note`, and the log/notification tables they write to.
 
 ---
 
@@ -113,7 +118,7 @@ wider than earlier versions of this doc suggested — verified against the live 
 | brief_description | text | |
 | delivered_by_role | text | |
 | funding_source | text | CHECK: `pupil_premium` / `send_budget` / `inclusive_mainstream_fund` / `sport_premium` / `school_general_budget` / `experts_at_hand`. Plain text + CHECK constraint, **not** a Postgres enum type |
-| review_cycle | text | CHECK: `weekly` / `half_termly` / `termly` / `annual` / `as_needed` |
+| review_cycle | text | **Legacy.** CHECK: `weekly` / `half_termly` / `termly` / `annual` / `as_needed`. No current save path writes it — the evidence modal strips it on every save (existing values on old rows are left as-is, never nulled). The review sheet and "Coming up for review" both ignore it entirely; the next review date comes only from the review sheet's own interval chips/date picker |
 | indicator_type | text | |
 | named_role_policy_document | text | |
 | owner | text | |
@@ -127,8 +132,8 @@ wider than earlier versions of this doc suggested — verified against the live 
 | delivered_by | text | |
 | pupils_reached | integer | Legacy generic field, used when `provision_category` is unset. Distinct from `structured_detail.pupils_reached` on expert-engagement rows |
 | date_started | date | |
-| date_last_reviewed | date | |
-| next_review_due | date | Used for reviews-due panels |
+| date_last_reviewed | date | Set by the evidence modal on any save, and by the review sheet's "Still current" action (via `handleConfirmReview`) |
+| next_review_due | date | Used for "Coming up for review" (60-day window). Set by the evidence modal on any save, and by the review sheet's "Still current" action. A date-only review confirmation from the review sheet deliberately does **not** go through approval — it only ever writes `date_last_reviewed`/`next_review_due`/`last_reviewed_by`, never `status`, and never calls `submit_entry_for_approval` |
 | impact_on_outcomes | text | |
 | supporting_document_link | text | |
 | intended_outcomes | text | |
@@ -137,6 +142,7 @@ wider than earlier versions of this doc suggested — verified against the live 
 | updated_at | timestamptz | Default `now()` |
 | evidence_type | text | NOT NULL, default `'standard'`. CHECK: `standard` / `expert_engagement` |
 | structured_detail | jsonb | Nullable. Populated only when `evidence_type = 'expert_engagement'` (currently just the "Experts at Hand service accessed and used" provision point, id `f8509db3-b3d7-44a8-a061-b6f8a05848f1`). Shape: `{ professional_type, commissioning_route, activity_type, pupils_reached, report_received }` |
+| last_reviewed_by | uuid | Nullable. FK → profiles.id, `ON DELETE SET NULL`. Written only by the review sheet's "Still current" action; deliberately excluded from the full evidence modal's save (stripped in `handleModalSave`'s Step 2 destructure alongside `status`/`review_cycle`, so it can't be round-tripped even if this column is ever added to the modal's fetch query) |
 
 Note: `entries` also has its own `funding_source` column with an identical CHECK constraint,
 but it is never read or written by the app — `evidence_entries.funding_source` is the one
@@ -153,9 +159,15 @@ whether anything has started relying on it.
 
 ## school_context
 
-One row per school (`UNIQUE` on `school_id`), holds pupil cohort sizes used as the
-denominator for % reach in Group Reach analytics. Not previously documented here —
-verified against the live schema 2026-07-15.
+One row per school (`UNIQUE` on `school_id`), holds pupil cohort sizes. Its original purpose
+was the denominator for % reach in Group Reach analytics, but that Analytics section was
+removed (Session 79). **Verified by grep (2026-09-20): the only live consumers now are**
+`SchoolContextPanel` (edit path — rendered in exactly one place, the "School Cohort Profile"
+card inside Report Builder) and `generateReport.js`/`generateReportWord.js` (read path — the
+School Context section display and the Funding & Cost section's per-pupil figures). A
+`GroupReach` component in `App.jsx` still reads this data but is defined and never rendered
+anywhere — dead code, not a live consumer. Not previously documented here — verified against
+the live schema 2026-07-15.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -166,7 +178,91 @@ verified against the live schema 2026-07-15.
 | social_care_count / young_carer_count / mental_health_support_count | integer | NOT NULL, default `0` each. Added Session 46, alongside the matching `evidence_entries` grp_*/reach_* columns above |
 | updated_at | timestamptz | |
 
-No `other_count` — "Other" has no cohort denominator in Group Reach (raw reach count only, same as before Session 46).
+No `other_count` column exists — there has never been an "Other" cohort size field here.
+
+---
+
+## my_points_queue_state
+
+Per-user, per-school, per-point queue state for the "My Points" onboarding queue (contributor
+role). Not previously documented here — live-verified 2026-09-20.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK, default `gen_random_uuid()` |
+| user_id | uuid | NOT NULL. FK → profiles.id, `ON DELETE CASCADE` |
+| provision_point_id | uuid | NOT NULL. FK → provision_points.id, `ON DELETE NO ACTION` |
+| school_id | uuid | NOT NULL. FK → schools.id, `ON DELETE CASCADE` |
+| skip_count | integer | NOT NULL, default `0` |
+| acknowledged_at | timestamptz | Nullable. **No longer written by the app as of Session 81** — it was the old Named Person "This is mine — confirm" flow's only write, removed when Named Person was unified with the standard role-based approval fork. The column and any pre-existing values are left in place; `skip_count >= 3` or a non-null `acknowledged_at` still permanently excludes a point from the queue if either is already set |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+Unique constraint: `(user_id, school_id, provision_point_id)`.
+
+---
+
+## Status counting definitions
+
+`src/utils/computeCounts.js` is the one shared helper for turning `entries.status` into
+counts, over active provision points only. Four buckets, always non-overlapping and always
+summing to the total: **in place** (`status = 'in_place'`), **in progress**
+(`status = 'in_progress'`), **not in place** (`status = 'not_in_place'`, explicit only), and
+**not started** (no `entries` row at all — not the same as an explicit `not_in_place`).
+
+Verified by grep (2026-09-20):
+
+- **Use `computeCounts()`**: the homepage header/readiness card, the sidebar's "N of 166
+  recorded" figure, the homepage ledger (Principles/Domains/Categories rows), and
+  `DrillDownDetail` (the shared Category/Principle drill-down page).
+- **Still use their own, independent formula** (not `computeCounts()`): `usePrincipleCoverage`
+  (the hook now only feeding `BootstrapWizard.jsx`'s and `MyPointsQueue.jsx`'s own principle
+  progress bars — the homepage stopped using its `principleData` when the ledger replaced the
+  principle cards); the standalone Categories index page and the standalone Domains index page
+  (both reached via the sidebar, `App.jsx`); the standalone Domain detail page's per-sub-domain
+  counts (which track in place/in progress/untouched only — no explicit not-in-place bucket at
+  all); `MATDashboard.jsx`'s own inline reduces; and `generateReport.js`'s `getReadinessData`
+  (shared by both the PDF and Word report generators).
+
+---
+
+## Approval workflow
+
+Three RPCs, called via `supabase.rpc(...)`, plus two supporting tables. Live-verified
+2026-09-20 (arguments and column lists only — function bodies not reproduced here).
+
+| Function | Arguments | What it does |
+|---|---|---|
+| `submit_entry_for_approval` | `p_entry_id uuid, p_submitting_user_id uuid` | Sets `entries.submitted_for_approval_at`/`submitted_by`; logs a `'submitted'` row to `point_approval_log`. Called by a contributor's evidence-modal save when they choose "In Place" |
+| `confirm_entry_approval` | `p_entry_id uuid, p_approver_id uuid` | **SECURITY DEFINER.** Sets `entries.status = 'in_place'`, clears `submitted_for_approval_at`; logs a `'confirmed'` row to `point_approval_log`; inserts a row into `approval_notifications` for the original submitter |
+| `send_back_entry_approval` | `p_entry_id uuid, p_approver_id uuid, p_note text DEFAULT NULL` | Sets `entries.status = 'in_progress'`, clears `submitted_for_approval_at`, sets `send_back_note`; logs a `'sent_back'` row to `point_approval_log` |
+
+None of these three are involved in the review sheet's date-only "Still current" confirmation —
+that writes directly to `evidence_entries` and never calls any of them (a deliberate, recorded
+exemption from approval). "Needs updating" (the review sheet's secondary action) opens the full
+evidence modal instead, which can call `submit_entry_for_approval` as normal.
+
+### approval_notifications
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK, default `gen_random_uuid()` |
+| user_id | uuid | NOT NULL. FK → profiles.id, `ON DELETE CASCADE`. The original submitter being notified |
+| entry_id | uuid | NOT NULL. FK → entries.id, `ON DELETE CASCADE` |
+| approved_at | timestamptz | NOT NULL, default `now()` |
+| seen_at | timestamptz | Nullable. Set once the submitter's next load has shown the notification |
+
+### point_approval_log
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK, default `gen_random_uuid()` |
+| entry_id | uuid | NOT NULL. FK → entries.id, `ON DELETE CASCADE` |
+| school_id | uuid | NOT NULL. FK → schools.id, `ON DELETE CASCADE` |
+| action | text | NOT NULL. CHECK: `submitted` / `confirmed` / `sent_back` |
+| actioned_by | uuid | NOT NULL. FK → profiles.id, `ON DELETE NO ACTION` |
+| note | text | Nullable. Only set on `sent_back` rows |
+| created_at | timestamptz | NOT NULL, default `now()` |
 
 ---
 
@@ -183,6 +279,7 @@ No `other_count` — "Other" has no cohort denominator in Group Reach (raw reach
 | step8_school_phase.sql | Adds `phase` text column to schools (CHECK: primary / secondary / all_through / special) |
 | step9_expert_engagement_evidence.sql | Adds `evidence_type` + `structured_detail` (jsonb) to evidence_entries; adds `experts_at_hand` to the funding_source CHECK constraint |
 | supabase/migrations/20260715094811_add_social_care_young_carer_mh_support.sql | Adds `grp_social_care`/`grp_young_carer`/`grp_mental_health_support` (boolean, default false) and `reach_social_care`/`reach_young_carer`/`reach_mental_health_support` (integer, nullable) to `evidence_entries`; adds `social_care_count`/`young_carer_count`/`mental_health_support_count` (integer, default 0) to `school_context` |
+| supabase/migrations/20260919022235_evidence_entries_last_reviewed_by.sql | Adds `last_reviewed_by` (uuid, nullable, FK → profiles.id, `ON DELETE SET NULL`) to `evidence_entries` |
 
 ---
 
@@ -267,3 +364,21 @@ ON CONFLICT DO NOTHING;
 ```
 
 **Note:** Rydell High barrier "No designated named person for LAC" has no provision link — no matching provision point label exists in the framework. Barrier is intentionally unlinked. Do not attempt to fix this.
+
+---
+
+## friction_logs
+
+The "Flag an issue" note on a provision point row. Not previously documented here —
+live-verified 2026-09-20.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK, default `gen_random_uuid()` |
+| school_id | uuid | Nullable. FK → schools.id, `ON DELETE CASCADE` |
+| provision_point_id | uuid | Nullable. FK → provision_points.id, `ON DELETE CASCADE` |
+| provision_label | text | Denormalised copy of the point's label at the time it was flagged |
+| domain_name | text | Denormalised |
+| sub_domain_name | text | Denormalised |
+| note | text | The flag's free-text note |
+| created_at | timestamptz | Default `now()` |
