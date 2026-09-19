@@ -1377,3 +1377,98 @@ body {
     display: inline;
   }
 }
+
+/* ── Review sheet ("Coming up for review" row tap) ────────────────────────
+   Reuses .modal-header/.modal-title/.modal-close/.modal-body for the header and
+   scrolling body (existing modal styling); the overlay/panel wrapper is its own,
+   since it needs to become a bottom sheet on phones, which .modal-overlay/.modal
+   don't support. */
+.review-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  z-index: 210;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.review-sheet {
+  background: #fff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+}
+.review-sheet-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.review-sheet-chip {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(27,54,93,0.16);
+  background: #fff;
+  color: var(--hp-text-primary, #16233A);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.review-sheet-chip.active {
+  border-color: var(--brand-navy, #1B365D);
+  background: rgba(27,54,93,0.08);
+  color: var(--brand-navy, #1B365D);
+  font-weight: 600;
+}
+.review-sheet-primary {
+  min-height: 44px;
+  width: 100%;
+  border-radius: 10px;
+  border: none;
+  background: var(--brand-navy, #1B365D);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.review-sheet-primary:disabled {
+  background: #94a3b8;
+  cursor: default;
+}
+.review-sheet-secondary {
+  min-height: 44px;
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(27,54,93,0.16);
+  background: #fff;
+  color: var(--hp-text-primary, #16233A);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* Phone: anchor to the bottom of the viewport instead of centring, so it's usable
+   one-handed — a real viewport-width media query (this is a fixed overlay, not part
+   of the homepage content grid, so the earlier @container approach doesn't apply here). */
+@media (max-width: 640px) {
+  .review-sheet-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .review-sheet {
+    max-width: 100%;
+    max-height: 88vh;
+    border-radius: 16px 16px 0 0;
+  }
+}

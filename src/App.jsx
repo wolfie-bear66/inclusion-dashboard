@@ -9,7 +9,7 @@ import InclusionStrategyWizard from './pages/InclusionStrategyWizard'
 import OnboardingPrompt from './components/OnboardingPrompt'
 import BootstrapWizard from './components/BootstrapWizard'
 import MyPointsQueue from './components/MyPointsQueue'
-import { PRINCIPLE_LABEL_SHORT, STATIC_REVIEW_CATEGORIES } from './constants/principles'
+import { PRINCIPLE_LABEL_SHORT } from './constants/principles'
 import ApprovalQueueModal from './components/ApprovalQueueModal'
 import AssignmentModal from './components/AssignmentModal'
 import SetPasswordPage from './pages/SetPasswordPage'
@@ -70,24 +70,38 @@ const PROVISION_POINT_CATEGORIES = [
   'External Partnership',
   'Family & Community Engagement',
 ]
-// STATIC_REVIEW_CATEGORIES is imported from ./constants/principles (shared with BootstrapWizard.jsx)
 
-// Single source of truth for review_cycle → next_review_due. Reused by the
-// "Confirm still current" fast-confirm action so the date math never drifts
-// out of sync with wherever else this gets called from later.
-function calculateNextReviewDue(reviewCycle, fromDateStr) {
-  if (!reviewCycle || reviewCycle === 'as_needed') return null
-  const from = fromDateStr ? new Date(fromDateStr) : new Date()
-  if (Number.isNaN(from.getTime())) return null
-  const d = new Date(from)
-  switch (reviewCycle) {
-    case 'weekly':      d.setDate(d.getDate() + 7); break
-    case 'half_termly': d.setDate(d.getDate() + 42); break // 6 weeks
-    case 'termly':      d.setDate(d.getDate() + 84); break // 12 weeks — flat approximation, not calendar-term-aware
-    case 'annual':      d.setFullYear(d.getFullYear() + 1); break
-    default: return null
-  }
+// Review-sheet interval chips — deliberately independent of review_cycle (retired; legacy
+// values on old rows are read nowhere now and left untouched in the database).
+const REVIEW_INTERVAL_CHIPS = [
+  { key: '3m', label: 'In 3 months', months: 3 },
+  { key: '6m', label: 'In 6 months', months: 6 },
+  { key: '1y', label: 'In 1 year',   months: 12 },
+]
+function addMonths(fromDateStr, months) {
+  const d = fromDateStr ? new Date(fromDateStr) : new Date()
+  d.setMonth(d.getMonth() + months)
   return d.toISOString().slice(0, 10)
+}
+// Preselects the chip nearest the point's own previous review gap (next_review_due minus
+// whichever of date_last_reviewed/created_at it was set from) — defaults to 6 months when
+// that gap can't be worked out (first-ever review date, or dates missing/malformed).
+function nearestIntervalChipKey(item) {
+  if (!item?.nextReviewDue) return '6m'
+  const from = item.dateLastReviewed || item.dateStarted || item.createdAt
+  if (!from) return '6m'
+  const fromDate = new Date(from)
+  const dueDate = new Date(item.nextReviewDue)
+  if (Number.isNaN(fromDate.getTime()) || Number.isNaN(dueDate.getTime())) return '6m'
+  const gapDays = (dueDate - fromDate) / 86400000
+  if (gapDays <= 0) return '6m'
+  let nearest = REVIEW_INTERVAL_CHIPS[0]
+  let bestDiff = Infinity
+  for (const chip of REVIEW_INTERVAL_CHIPS) {
+    const diff = Math.abs(chip.months * 30.44 - gapDays)
+    if (diff < bestDiff) { bestDiff = diff; nearest = chip }
+  }
+  return nearest.key
 }
 
 const PROVISION_CATEGORIES = [
@@ -2255,6 +2269,140 @@ function ProvisionPointRow({ pp, ppIdx, status, evidenceList, onOpenModal, readO
   )
 }
 
+// Review sheet — opened by tapping a row in "Coming up for review". Writes are strictly
+// date-only (date_last_reviewed, next_review_due, last_reviewed_by) and never call
+// submit_entry_for_approval or touch status/content — a deliberate, recorded exemption from
+// the approval fork (see TASKS.md). Acts on exactly the evidence_entries.id the tapped row
+// carried (item.evidenceEntryId), never re-derived.
+function ReviewSheet({ item, ppInfoMap, entries, evidenceEntries, readOnly, isDemoMode, onClose, onConfirm, onNeedsUpdating }) {
+  const info = ppInfoMap[item.provisionPointId]
+  const pointLabel = info?.label || item.provisionName || 'Untitled'
+  const fullRow = (evidenceEntries[item.provisionPointId] ?? []).find(e => e.id === item.evidenceEntryId)
+  const evidenceTitle = fullRow?.provision_name || item.provisionName || pointLabel
+  const provisionCategory = fullRow?.provision_category ?? ''
+  const docField = provisionCategory === 'policy_structural' ? 'named_role_policy_document' : 'supporting_document_link'
+  const docLink = fullRow ? fullRow[docField] : (item.namedRolePolicyDocument || item.supportingDocumentLink || null)
+  const lastReviewed = fullRow?.date_last_reviewed || item.dateLastReviewed || null
+
+  // Same pending-lock detection the evidence modal already uses (entries.submitted_for_approval_at).
+  const isPending = !!entries[item.provisionPointId]?.submitted_for_approval_at
+  const locked = isPending || readOnly || isDemoMode
+
+  const [chip, setChip] = useState(() => nearestIntervalChipKey(item))
+  const [useCustom, setUseCustom] = useState(false)
+  const [customDate, setCustomDate] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(false)
+  const [successDate, setSuccessDate] = useState(null)
+
+  const tomorrow = new Date()
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const minDate = tomorrow.toISOString().slice(0, 10)
+
+  function chosenDateIso() {
+    if (useCustom) return customDate || null
+    const chipDef = REVIEW_INTERVAL_CHIPS.find(c => c.key === chip)
+    return chipDef ? addMonths(new Date().toISOString().slice(0, 10), chipDef.months) : null
+  }
+
+  async function handleStillCurrent() {
+    const nextDate = chosenDateIso()
+    if (!nextDate) return
+    setSaving(true)
+    setError(false)
+    const { error: err } = await onConfirm(item.evidenceEntryId, nextDate)
+    setSaving(false)
+    if (err) { setError(true); return }
+    setSuccessDate(nextDate)
+    setTimeout(onClose, 1400)
+  }
+
+  const fmt = d => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+
+  return (
+    <div className="review-sheet-overlay" onClick={onClose}>
+      <div className="review-sheet" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <span className="modal-title">{pointLabel}</span>
+          <button type="button" className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          {successDate ? (
+            <p style={{ fontSize: '0.9rem', fontWeight: 600, color: '#166534' }}>
+              Confirmed. Next review on {fmt(successDate)}.
+            </p>
+          ) : (
+            <>
+              <p style={{ fontSize: '0.85rem', color: 'var(--hp-text-secondary)', marginBottom: 4 }}>{evidenceTitle}</p>
+              {docLink && (
+                <a href={docLink} target="_blank" rel="noreferrer"
+                  style={{ fontSize: '0.82rem', color: 'var(--brand-navy)', textDecoration: 'underline', display: 'inline-block', marginBottom: 8 }}>
+                  View document
+                </a>
+              )}
+              {lastReviewed && (
+                <p style={{ fontSize: '0.78rem', color: 'var(--hp-text-meta)', marginBottom: 16 }}>
+                  Last reviewed {fmt(lastReviewed)}
+                </p>
+              )}
+
+              {isPending ? (
+                <p style={{ fontSize: '0.82rem', color: '#92400E', fontStyle: 'italic', margin: '12px 0' }}>
+                  Waiting for approval, so this can't be reviewed yet.
+                </p>
+              ) : (readOnly || isDemoMode) ? (
+                <p style={{ fontSize: '0.82rem', color: 'var(--hp-text-meta)', margin: '12px 0' }}>
+                  Read-only — no changes can be made here.
+                </p>
+              ) : (
+                <>
+                  <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--hp-text-primary)', margin: '12px 0 8px' }}>Next review</p>
+                  <div className="review-sheet-chips" style={{ marginBottom: 12 }}>
+                    {REVIEW_INTERVAL_CHIPS.map(c => (
+                      <button key={c.key} type="button"
+                        className={`review-sheet-chip ${!useCustom && chip === c.key ? 'active' : ''}`}
+                        onClick={() => { setUseCustom(false); setChip(c.key) }}>
+                        {c.label}
+                      </button>
+                    ))}
+                    <button type="button"
+                      className={`review-sheet-chip ${useCustom ? 'active' : ''}`}
+                      onClick={() => setUseCustom(true)}>
+                      Pick a date
+                    </button>
+                  </div>
+                  {useCustom && (
+                    <input type="date" min={minDate} value={customDate}
+                      onChange={e => setCustomDate(e.target.value)}
+                      style={{ padding: '10px 12px', border: '1px solid rgba(27,54,93,0.16)', borderRadius: 10, fontSize: '0.85rem', marginBottom: 12, minHeight: 44, width: '100%' }}
+                    />
+                  )}
+                  {error && (
+                    <p style={{ fontSize: '0.78rem', color: '#dc2626', marginBottom: 8 }}>Couldn't save — try again.</p>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
+        {!successDate && !locked && (
+          <div className="modal-footer" style={{ flexDirection: 'column', gap: 8, alignItems: 'stretch' }}>
+            <button type="button" className="review-sheet-primary"
+              disabled={saving || (useCustom && !customDate)}
+              onClick={handleStillCurrent}>
+              {saving ? 'Saving…' : 'Still current'}
+            </button>
+            <button type="button" className="review-sheet-secondary"
+              onClick={() => onNeedsUpdating(item.provisionPointId, fullRow)}>
+              Needs updating
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // Shared drill-down detail view — renders a header + domain-grouped, truncated list of
 // provision points for a given filter value (category or principle). The caller decides
 // which points to include (ppIds) and what to label the header with; this component doesn't
@@ -2420,8 +2568,10 @@ export default function App() {
   const [approvalQueueCount, setApprovalQueueCount] = useState(0)
   const [approvalQueueOpen, setApprovalQueueOpen] = useState(false)
   const [selfAssignOpen, setSelfAssignOpen] = useState(false)
-  const [confirmingReviewId, setConfirmingReviewId] = useState(null)
-  const [confirmReviewError, setConfirmReviewError] = useState(null)
+  // The review sheet ("Coming up for review" row tap) — one at a time, holds the tapped
+  // review item; sheet-local UI state (chip choice, saving, success, error) lives in the
+  // sheet component itself, not here.
+  const [reviewSheetItem, setReviewSheetItem] = useState(null)
 
   // Sidebar state
   const [activeSidebarSection, setActiveSidebarSection] = useState(null)
@@ -2771,7 +2921,9 @@ export default function App() {
   // from 30 to 60 days when the Analytics "Domain Readiness" tab was removed, so this panel's
   // coverage absorbs its former "Compliance Forecast" widget's 60-day window rather than
   // standing up a second, competing "what's due for review" list alongside this one.
-  useEffect(() => {
+  // Named (not inline in the effect) so the review sheet can call it again after a successful
+  // confirm — the list/tile counts always come from a fresh read, never an optimistic edit.
+  function loadOverdueReviews() {
     if (!selectedSchool) { setOverdueReviews([]); return }
     const todayDate = new Date()
     const today = todayDate.toISOString().slice(0, 10)
@@ -2812,7 +2964,9 @@ export default function App() {
         upcoming.sort((a, b) => a.nextReviewDue.localeCompare(b.nextReviewDue))
         setOverdueReviews(upcoming)
       })
-  }, [selectedSchool])
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadOverdueReviews() }, [selectedSchool])
 
   // Approval queue count for the dashboard pill — approver/mat_admin only.
   function loadApprovalQueueCount() {
@@ -3158,26 +3312,19 @@ export default function App() {
     return false
   }
 
-  // Fast-confirm for static/declarative reminders — stamps date_last_reviewed
-  // and advances next_review_due via the shared calculateNextReviewDue, without
-  // opening the evidence modal or touching any other field.
-  async function handleConfirmStillCurrent(ev) {
-    if (isDemoMode || readOnly) return
+  // Date-only review confirmation — deliberately exempt from approval (decision recorded in
+  // TASKS.md): changes only date_last_reviewed/next_review_due/last_reviewed_by, never status
+  // or any content field, so it never calls submit_entry_for_approval. The list/tile counts
+  // are recomputed from a fresh read (loadOverdueReviews), never edited optimistically —
+  // the row only leaves if the new date genuinely falls outside the 60-day window.
+  async function handleConfirmReview(evidenceEntryId, nextDateIso) {
     const todayIso = new Date().toISOString().slice(0, 10)
-    const nextDue = calculateNextReviewDue(ev.reviewCycle, todayIso)
-    setConfirmingReviewId(ev.evidenceEntryId)
-    setConfirmReviewError(null)
     const { error } = await supabase
       .from('evidence_entries')
-      .update({ date_last_reviewed: todayIso, next_review_due: nextDue })
-      .eq('id', ev.evidenceEntryId)
-    setConfirmingReviewId(null)
-    if (error) {
-      console.error('Error confirming still current:', error)
-      setConfirmReviewError(ev.evidenceEntryId)
-      return
-    }
-    setOverdueReviews(prev => prev.filter(r => r.evidenceEntryId !== ev.evidenceEntryId))
+      .update({ date_last_reviewed: todayIso, next_review_due: nextDateIso, last_reviewed_by: session?.user?.id ?? null })
+      .eq('id', evidenceEntryId)
+    if (!error) loadOverdueReviews()
+    return { error }
   }
 
   async function handleModalSave() {
@@ -4098,22 +4245,14 @@ export default function App() {
                     <div className="hp-review-list-wrap">
                       <div className="hp-review-list-scroll">
                         {reviewListItems.map((r, i) => {
-                          const info     = ppInfoMap[r.provisionPointId]
-                          const category = info?.category ?? ''
-                          const label    = r.provisionName || info?.label || 'Untitled'
                           const days     = daysUntil(r.nextReviewDue)
                           const dueLine  = days < 0 ? `Overdue by ${Math.abs(days)} day${Math.abs(days) !== 1 ? 's' : ''}` : `Due in ${days} day${days !== 1 ? 's' : ''}`
                           const isRowHidden = !reviewSeeAll && i >= 4
-                          // "Confirm still current" — kept from the old panel (feature predates this
-                          // restructure); not in the new row's visual spec, so it renders as a small
-                          // secondary action beneath the row rather than inside the clickable area.
-                          const canConfirm    = STATIC_REVIEW_CATEGORIES.includes(category) && !readOnly && !isDemoMode && r.reviewCycle && r.reviewCycle !== 'as_needed'
-                          const isConfirming  = confirmingReviewId === r.evidenceEntryId
-                          const hasConfirmErr = confirmReviewError === r.evidenceEntryId
+                          const label = r.provisionName || ppInfoMap[r.provisionPointId]?.label || 'Untitled'
                           return (
                             <div key={i} className={isRowHidden ? 'hp-review-row-hidden' : ''}>
                               <button type="button" className="hp-review-row"
-                                onClick={() => info?.domainId && setSelectedDomain(info.domainId)}
+                                onClick={() => setReviewSheetItem(r)}
                               >
                                 <span className={`hp-review-dot ${r.isOverdue ? 'overdue' : 'upcoming'}`} />
                                 <span style={{ flex: 1, minWidth: 0 }}>
@@ -4122,24 +4261,6 @@ export default function App() {
                                 </span>
                                 <i className="ti ti-chevron-right" style={{ fontSize: '0.8rem', color: '#94a3b8', flexShrink: 0, marginTop: 4 }} />
                               </button>
-                              {canConfirm && (
-                                <div style={{ padding: '0 4px 6px 30px' }}>
-                                  <button type="button"
-                                    onClick={() => handleConfirmStillCurrent(r)}
-                                    disabled={isConfirming}
-                                    style={{
-                                      padding: '4px 10px', borderRadius: 6,
-                                      border: '1px solid var(--brand-navy)', background: isConfirming ? '#EEF1F5' : '#fff',
-                                      color: 'var(--brand-navy)', fontSize: '0.72rem', fontWeight: 600,
-                                      cursor: isConfirming ? 'default' : 'pointer', fontFamily: 'inherit',
-                                    }}>
-                                    {isConfirming ? 'Confirming…' : 'Confirm still current'}
-                                  </button>
-                                  {hasConfirmErr && (
-                                    <p style={{ fontSize: '0.68rem', color: '#dc2626', marginTop: 4 }}>Couldn't save — try again.</p>
-                                  )}
-                                </div>
-                              )}
                             </div>
                           )
                         })}
@@ -4356,6 +4477,24 @@ export default function App() {
               setEntries(prev => ({ ...prev, [ppId]: { ...prev[ppId], ...patch } }))
               if (patch.status) setAllStatuses(prev => ({ ...prev, [ppId]: patch.status }))
               loadApprovalQueueCount()
+            }}
+          />
+        )}
+
+        {reviewSheetItem && (
+          <ReviewSheet
+            item={reviewSheetItem}
+            ppInfoMap={ppInfoMap}
+            entries={entries}
+            evidenceEntries={evidenceEntries}
+            readOnly={readOnly}
+            isDemoMode={isDemoMode}
+            onClose={() => setReviewSheetItem(null)}
+            onConfirm={handleConfirmReview}
+            onNeedsUpdating={(pointId, evidenceRow) => {
+              const info = ppInfoMap[pointId]
+              setReviewSheetItem(null)
+              openModal({ id: pointId, label: info?.label, category: info?.category }, evidenceRow)
             }}
           />
         )}
