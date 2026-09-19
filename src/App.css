@@ -581,12 +581,21 @@ body {
 }
 
 .modal-close {
+  /* 44px hit area (was ~20px, a real mis-tap risk on the bottom sheet) without changing how
+     it looks: no visible border/background, so growing the invisible box doesn't change the
+     glyph's size, colour, or position relative to the modal corner — just what you can tap. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: -12px;
   background: none;
   border: none;
   font-size: 1rem;
   color: #64748B;
   cursor: pointer;
-  padding: 2px 4px;
+  padding: 0;
   line-height: 1;
   flex-shrink: 0;
   border-radius: 4px;
