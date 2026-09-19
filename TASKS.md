@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 19 September 2026 (Session 85 — "Confirm still current" replaced by a proper review sheet: interval chips, date-only writes deliberately exempt from approval, "Needs updating" routes into the normal evidence-modal fork)
+Last updated: 19 September 2026 (Session 86 — Two Phase 1D follow-up fixes: evidence_entries.last_reviewed_by FK corrected to ON DELETE SET NULL; handleModalSave now strips last_reviewed_by defensively too)
 
 ---
 
@@ -18,6 +18,10 @@ Last updated: 19 September 2026 (Session 85 — "Confirm still current" replaced
 ---
 
 ## Completed
+
+- [x] **Session 86 — Two small Phase 1D follow-up fixes** — (A) The `evidence_entries.last_reviewed_by` FK (added Session 85) was live with `delete_rule = NO ACTION` instead of the approved `ON DELETE SET NULL`. Confirmed the actual constraint name via `information_schema` first (`evidence_entries_last_reviewed_by_fkey`) rather than assuming it, reported it, then on explicit confirmation ran `DROP CONSTRAINT` / `ADD CONSTRAINT ... ON DELETE SET NULL` and re-verified `delete_rule = SET NULL` live. No profile was deleted to test it. Updated the original migration file (`20260919022235_evidence_entries_last_reviewed_by.sql`) to include `ON DELETE SET NULL` directly, so the repo's migration text matches what production now actually has, rather than leaving a second patch migration to reconcile mentally later. (B) `handleModalSave`'s Step 2 destructure (`App.jsx`) now also strips `last_reviewed_by`, alongside the existing `status`/`review_cycle` strip — belt-and-suspenders on top of the read-only investigation's finding that `draft` never carries this key today (since `ENTRY_SELECT` doesn't fetch it): if that column is ever added to `ENTRY_SELECT` for display later, the full modal still can't round-trip it, since only the review sheet's own `handleConfirmReview` should ever set it.
+
+  `npx eslint` — 67 problems (58 errors/9 warnings), exact baseline match; `npx vite build` clean. Diff reviewed before commit — confirmed only `src/App.jsx` and the one migration file changed, nothing else touched.
 
 - [x] **Session 85 — Replaced "Confirm still current" with a proper review sheet** — The small secondary button preserved during the Session 83 restructure (it had no evidence context, no 44px touch target, no real interval logic, and silently bypassed approval by accident of implementation — see the standalone investigation before this session) is now a full review sheet: bottom sheet on phone, compact modal on desktop, opened by tapping a "Coming up for review" row directly (the row no longer navigates to the domain page — the sheet is the primary interaction now).
 

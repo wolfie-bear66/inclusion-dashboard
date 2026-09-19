@@ -3379,8 +3379,12 @@ export default function App() {
     // Step 2: insert or update evidence_entry. `status` and `review_cycle` are stripped —
     // status belongs to `entries` (handled above), not a column here at all; review_cycle is
     // being retired from this modal (existing values on old rows are left alone simply by
-    // never being included in a payload again, not by being nulled out).
-    const { status: _draftStatus, review_cycle: _draftReviewCycle, ...evidenceFields } = draft
+    // never being included in a payload again, not by being nulled out). `last_reviewed_by`
+    // is stripped too — it's currently absent from ENTRY_SELECT so `draft` never has it in
+    // practice, but stripping it explicitly means the full modal still can't round-trip it
+    // even if that column is ever added to ENTRY_SELECT for display later (only the review
+    // sheet's own handleConfirmReview should ever set this column).
+    const { status: _draftStatus, review_cycle: _draftReviewCycle, last_reviewed_by: _draftLastReviewedBy, ...evidenceFields } = draft
     const isExperts = modalPoint.id === EXPERTS_AT_HAND_PP_ID
     const detail = draft.structured_detail ?? {}
     const hasStructuredDetail = isExperts && !!(
