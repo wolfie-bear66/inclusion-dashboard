@@ -23,8 +23,7 @@ import { computeCounts } from './utils/computeCounts'
 import { fetchDueForReviewRows } from './utils/dueForReview'
 import './App.css'
 import { generateEvidenceReport, DFE_PRINCIPLES, statusLabel, fmt } from './generateReport'
-// generateEvidenceReportWord (Word export) is reintroduced once its generator is rebuilt
-// to match the new Report Builder shape — see TASKS.md. PDF-only for now.
+import { generateEvidenceReportWord } from './generateReportWord'
 
 // ── Invite-link detection ─────────────────────────────────────────────
 // Must run at module evaluation, before Supabase auth initialises and
@@ -796,6 +795,26 @@ function ReportBuilder({ schoolName = '', supabase: sb, school, onCreateInclusio
     setGenerating(false)
   }
 
+  async function handleDownloadWord() {
+    if (!data) return
+    setGenerating(true)
+    setGenError(null)
+    try {
+      await generateEvidenceReportWord({
+        schoolName,
+        userProfile: data.userProfile,
+        team: data.teamRows,
+        progressSections,
+        barrierRows,
+        reviewRows,
+      })
+    } catch (err) {
+      console.error('[ReportBuilder] Word generation error:', err)
+      setGenError('Could not generate the Word document — check console for details.')
+    }
+    setGenerating(false)
+  }
+
   const card     = { background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '16px 18px', marginBottom: 12 }
   const cardHead = { fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }
   const pill     = (active) => ({
@@ -1045,11 +1064,12 @@ function ReportBuilder({ schoolName = '', supabase: sb, school, onCreateInclusio
             <i className="ti ti-download" style={{ fontSize: '0.9rem', lineHeight: 1 }} />
             {generating ? 'Generating…' : 'Download PDF'}
           </button>
-          <button type="button" disabled title="Word export is being rebuilt for the new report — coming shortly." style={{
-            padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e2e8f0', cursor: 'default',
-            background: '#f8fafc', color: '#94a3b8', fontSize: '0.85rem', fontWeight: 600, fontFamily: 'inherit',
+          <button type="button" onClick={handleDownloadWord} disabled={generating || !data} style={{
+            padding: '9px 18px', borderRadius: 8, border: '1.5px solid #1B365D', cursor: (generating || !data) ? 'default' : 'pointer',
+            background: '#fff', color: '#1B365D', fontSize: '0.85rem', fontWeight: 600, fontFamily: 'inherit',
+            opacity: (generating || !data) ? 0.6 : 1,
           }}>
-            Download Word
+            {generating ? 'Generating…' : 'Download Word'}
           </button>
         </div>
       </div>
