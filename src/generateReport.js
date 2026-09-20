@@ -39,39 +39,6 @@ export function hexToRgb(hex) {
   return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]
 }
 
-// ── Student group boolean keys ────────────────────────────────────────
-export const GROUP_TO_BOOL = {
-  'Pupil Premium':      'grp_pp',
-  'SEND':               'grp_send',
-  'FSM':                'grp_fsm',
-  'EAL':                'grp_eal',
-  'LAC':                'grp_lac',
-  'White Working Class':'grp_wwc',
-  'Social Care':             'grp_social_care',
-  'Young Carer':             'grp_young_carer',
-  'Mental Health Support':   'grp_mental_health_support',
-}
-export const ALL_GROUP_KEYS = [
-  { key: 'grp_pp',   label: 'Pupil Premium' },
-  { key: 'grp_send', label: 'SEND' },
-  { key: 'grp_fsm',  label: 'FSM' },
-  { key: 'grp_eal',  label: 'EAL' },
-  { key: 'grp_lac',  label: 'LAC' },
-  { key: 'grp_wwc',  label: 'White Working Class' },
-  { key: 'grp_social_care',           label: 'Social Care' },
-  { key: 'grp_young_carer',           label: 'Young Carer' },
-  { key: 'grp_mental_health_support', label: 'Mental Health Support' },
-]
-
-// barriers.student_groups (object format) is keyed by short codes with no 'grp_'
-// prefix (e.g. 'send', 'pp') — derive their display labels from ALL_GROUP_KEYS
-// rather than a second hand-typed list. 'other' isn't in ALL_GROUP_KEYS (no
-// grp_other column exists), so it's added explicitly.
-export const BARRIER_GROUP_LABELS = {
-  ...Object.fromEntries(ALL_GROUP_KEYS.map(g => [g.key.replace('grp_', ''), g.label])),
-  other: 'Other',
-}
-
 export const DFE_PRINCIPLES = [
   'Leadership & Governance',
   'Early & Evidence-Based Support',
@@ -81,6 +48,16 @@ export const DFE_PRINCIPLES = [
   'Family & Wider Partnerships',
   'Accessible & Inclusive Environments',
 ]
+
+// Relocated here (was Section 4 — Funding & Cost, removed in the Report Builder rebuild)
+// because generateInclusionStrategyDraft's priority list still reads it.
+export const FUNDING_LABELS = {
+  pupil_premium:             'Pupil Premium',
+  send_budget:               'SEND Budget',
+  inclusive_mainstream_fund: 'Inclusive Mainstream Fund',
+  sport_premium:             'Sport Premium',
+  school_general_budget:     'General Budget',
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────
 export function fmt() {
@@ -94,11 +71,6 @@ export function statusLabel(s) {
   if (s === 'in_place')    return 'In Place'
   if (s === 'in_progress') return 'In Progress'
   return 'Not In Place'
-}
-function statusColour(s) {
-  if (s === 'in_place')    return GREEN
-  if (s === 'in_progress') return AMBER
-  return RED
 }
 function checkNewPage(doc, y, needed = 20) {
   if (y + needed > MAX_Y) { doc.addPage(); return 14 }
@@ -114,18 +86,6 @@ function sectionBar(doc, y, label) {
   doc.setFont('helvetica', 'bold')
   doc.text(label.toUpperCase(), ML, y + 5.5)
   return y + 8
-}
-
-// Domain-coloured sub-section bar (inset to margin)
-function domainBar(doc, y, label) {
-  const [r, g, b] = hexToRgb(domainColour(label))
-  doc.setFillColor(r, g, b)
-  doc.rect(ML, y, CW, 6, 'F')
-  doc.setTextColor(...WHITE)
-  doc.setFontSize(8)
-  doc.setFont('helvetica', 'bold')
-  doc.text(label, ML + 3, y + 4.5)
-  return y + 6
 }
 
 // Per-page headers and footers — skips cover page (page 1)
@@ -151,1119 +111,355 @@ function applyHeadersFooters(doc, schoolName, subtitle) {
   }
 }
 
-// Filter entries by domain UUID list (empty = all)
-function filterByDomain(entries, selectedDomains) {
-  if (selectedDomains.length === 0) return entries
-  return entries.filter(e => selectedDomains.includes(e.provision_points?.sub_domains?.domains?.id))
-}
-
-// Filter entries by group — evidence_entries must have at least one group flag true
-function filterByGroup(entries, selectedGroups) {
-  if (selectedGroups.length === 0) return entries
-  return entries.filter(e =>
-    (e.evidence_entries ?? []).some(ev =>
-      selectedGroups.some(g => {
-        const key = GROUP_TO_BOOL[g]
-        return key && ev[key]
-      })
-    )
-  )
-}
-
 // ─────────────────────────────────────────────────────────────────────
 // COVER PAGE
 // ─────────────────────────────────────────────────────────────────────
-function drawCoverPage(doc, { schoolName, purpose, selectedDomains, selectedGroups, domainList, userProfile, dateStr, ay }) {
-  const isFullStrategy = purpose === 'full_strategy'
-  const titleLine1 = isFullStrategy ? 'Inclusion Strategy Statement' : 'Inclusion Evidence Report'
-  const titleLine2 = ay
-
+// Simplified per the Report Builder rebuild — title is just the school name and date now;
+// the old purpose/domain/group filter-summary pill row no longer applies (see TASKS.md).
+function drawCoverPage(doc, { schoolName, userProfile, dateStr }) {
   doc.setFillColor(...NAVY)
   doc.rect(0, 0, 210, 297, 'F')
 
-  // School name
   doc.setTextColor(...WHITE)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(22)
-  doc.text(schoolName || 'School', 105, 88, { align: 'center' })
+  doc.text(schoolName || 'School', 105, 128, { align: 'center' })
 
-  // Title
-  doc.setFontSize(15)
-  doc.text(titleLine1, 105, 106, { align: 'center' })
-  doc.setFontSize(12)
-  doc.text(titleLine2, 105, 118, { align: 'center' })
-
-  // Generated date
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(180, 200, 220)
-  doc.text(`Generated: ${dateStr}`, 105, 134, { align: 'center' })
-
-  // Filter summary pill row
-  const purposeLabels = {
-    full_strategy:       'Full Strategy Statement',
-    domain_focus:        'Domain Focus',
-    compliance_snapshot: 'Compliance Snapshot',
-    outcomes_summary:    'Outcomes Summary',
-  }
-  const domainNames = selectedDomains.length === 0
-    ? ['All domains']
-    : domainList.filter(d => selectedDomains.includes(d.id)).map(d => d.name)
-  const groupStr = selectedGroups.length === 0 ? 'All groups' : selectedGroups.join(' + ')
-  const summaryText = [purposeLabels[purpose] ?? purpose, ...domainNames, groupStr].join(' · ')
-  const wrapped = doc.splitTextToSize(summaryText, 160)
-  doc.setFontSize(8)
+  doc.setFontSize(12)
   doc.setTextColor(200, 215, 235)
-  doc.text(wrapped, 105, 150, { align: 'center' })
+  doc.text(dateStr, 105, 144, { align: 'center' })
 
-  // Prepared by
   if (userProfile?.first_name) {
     const name = [userProfile.first_name, userProfile.last_name].filter(Boolean).join(' ')
     const prepLine = userProfile.job_title ? `${name}, ${userProfile.job_title}` : name
     doc.setFontSize(8.5)
     doc.setTextColor(180, 200, 220)
-    doc.text(`Prepared by: ${prepLine}`, 105, 172, { align: 'center' })
+    doc.text(`Prepared by: ${prepLine}`, 105, 164, { align: 'center' })
   }
 
-  // Footer
   doc.setFontSize(8)
   doc.setTextColor(120, 150, 180)
   doc.text('Generated by Inclusion Dashboard · inclusiondashboard.co.uk', 105, 285, { align: 'center' })
 }
 
-// Per-domain in_place/in_progress/not_in_place counts — the input readinessData
-// that both the School Context and Domain Readiness sections filter/aggregate further.
-// Extracted from generateEvidenceReport's body (Session 57) so generateReportWord.js
-// can reuse the identical computation rather than re-deriving it.
-//
-// `total` is the full provision_points catalogue count for the domain (via each domain's
-// nested sub_domains(provision_points(id)), fetched alongside id/name/display_order in
-// ReportBuilder) — not the touched-only `entries` count. Using touched-only points as the
-// denominator here used to match the same bug the Analytics "Domain Readiness" tab had:
-// an untouched domain read as "no data" instead of 0%, and a partially-touched domain's
-// percentage was inflated against a smaller-than-real denominator.
-export function getReadinessData(entries, domains) {
-  return domains.map(d => {
-    const de = entries.filter(e => e.provision_points?.sub_domains?.domains?.id === d.id)
-    const total = (d.sub_domains ?? []).reduce((sum, sd) => sum + (sd.provision_points?.length ?? 0), 0)
-    return {
-      id:         d.id,
-      name:       d.name,
-      inPlace:    de.filter(e => e.status === 'in_place').length,
-      inProgress: de.filter(e => e.status === 'in_progress').length,
-      notInPlace: de.filter(e => e.status === 'not_in_place').length,
-      total,
-    }
-  })
+// ─────────────────────────────────────────────────────────────────────
+// SECTION — Inclusion Team
+// ─────────────────────────────────────────────────────────────────────
+// team: [{ id, role, name, chip }] — chip is one of 'approved' | 'awaiting_approval' |
+// 'in_progress' | 'not_in_place' | 'not_started', built by the caller (ReportBuilder).
+// Colours match the fixed status palette used everywhere else in the app; 'awaiting_approval'
+// reuses the app's existing pending-approval purple (see the "Pending Approval" badge).
+export const TEAM_CHIP_LABEL = {
+  approved:          'Approved',
+  awaiting_approval: 'Awaiting approval',
+  in_progress:       'In progress',
+  not_in_place:      'Not in place',
+  not_started:       'Not started',
+}
+const TEAM_CHIP_COLOUR = {
+  approved:          [47, 133, 90],
+  awaiting_approval: [124, 88, 237],
+  in_progress:       [217, 154, 27],
+  not_in_place:      [192, 57, 43],
+  not_started:       [184, 190, 199],
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// SECTION 1 — School Context
-// ─────────────────────────────────────────────────────────────────────
-export function getSchoolContextSectionData({ schoolCtx, readinessData, selectedDomains }) {
-  const ay = academicYear()
-
-  const cards = [
-    { label: 'Total Pupils',        value: schoolCtx.totalPupils || '—' },
-    { label: 'Pupil Premium',       value: schoolCtx.ppCount     || '—' },
-    { label: 'SEND',                value: schoolCtx.sendCount   || '—' },
-    { label: 'FSM',                 value: schoolCtx.fsmCount    || '—' },
-    { label: 'EAL',                 value: schoolCtx.ealCount    || '—' },
-    { label: 'LAC',                 value: schoolCtx.lacCount    || '—' },
-    { label: 'White Working Class', value: schoolCtx.wwcCount    || '—' },
-    { label: 'Social Care',            value: schoolCtx.socialCareCount          || '—' },
-    { label: 'Young Carer',            value: schoolCtx.youngCarerCount          || '—' },
-    { label: 'Mental Health Support',  value: schoolCtx.mentalHealthSupportCount || '—' },
-  ]
-
-  // Readiness headline
-  const relevant = selectedDomains.length === 0
-    ? readinessData
-    : readinessData.filter(d => selectedDomains.includes(d.id))
-  const total   = relevant.reduce((s, d) => s + d.total, 0)
-  const inPlace = relevant.reduce((s, d) => s + d.inPlace, 0)
-  const pct     = total ? Math.round((inPlace / total) * 100) : 0
-  const readinessLabel = selectedDomains.length === 0
-    ? `Overall readiness: ${pct}%`
-    : `Domain readiness (selected domains): ${pct}%`
-
-  return { ay, cards, readinessLabel }
-}
-
-function drawSchoolContext(doc, y, { schoolCtx, readinessData, selectedDomains }) {
-  const { ay, cards, readinessLabel } = getSchoolContextSectionData({ schoolCtx, readinessData, selectedDomains })
-
-  y = sectionBar(doc, y, '1 — School Context')
+function drawInclusionTeam(doc, y, { team }) {
+  y = checkNewPage(doc, y, 20)
+  y = sectionBar(doc, y, 'Inclusion Team')
   y += 4
 
-  doc.setTextColor(...MID)
-  doc.setFontSize(7.5)
-  doc.setFont('helvetica', 'bold')
-  doc.text(`Cohort Profile ${ay}`, ML, y)
-  y += 5
-
-  const COLS = 4, GAP = 3
-  const cardW = (CW - GAP * (COLS - 1)) / COLS
-  const cardH = 16
-
-  for (let i = 0; i < cards.length; i++) {
-    const col = i % COLS, row = Math.floor(i / COLS)
-    const cx = ML + col * (cardW + GAP)
-    const cy = y + row * (cardH + GAP)
-    doc.setFillColor(241, 245, 249)
-    doc.rect(cx, cy, cardW, cardH, 'F')
-    doc.setTextColor(...DARK)
-    doc.setFontSize(13)
-    doc.setFont('helvetica', 'bold')
-    doc.text(String(cards[i].value), cx + cardW / 2, cy + 8, { align: 'center' })
-    doc.setTextColor(...MID)
-    doc.setFontSize(6.5)
-    doc.setFont('helvetica', 'normal')
-    doc.text(cards[i].label, cx + cardW / 2, cy + 13.5, { align: 'center' })
-  }
-  y += Math.ceil(cards.length / COLS) * (cardH + GAP) + 4
-
-  doc.setFontSize(9)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...DARK)
-  doc.text(readinessLabel, ML, y)
-  y += 6
-
-  return y
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// SECTION 2 — Identified Barriers
-// ─────────────────────────────────────────────────────────────────────
-export function getBarriersSectionData({ barriers, selectedDomains, selectedGroups }) {
-  let filtered = barriers ?? []
-
-  if (selectedDomains.length > 0) {
-    filtered = filtered.filter(b => selectedDomains.includes(b.domain_id))
-  }
-  if (selectedGroups.length > 0) {
-    filtered = filtered.filter(b => {
-      const sg = b.student_groups
-      if (!sg) return false
-      if (Array.isArray(sg)) {
-        return selectedGroups.some(g => {
-          const norm = g === 'Pupil Premium' ? 'PP' : g
-          return sg.some(s => s === g || s === norm || s.toLowerCase() === g.toLowerCase())
-        })
-      }
-      // Object format fallback: {"send": true, ...}
-      return selectedGroups.some(g => {
-        const key = GROUP_TO_BOOL[g]?.replace('grp_', '')
-        return key && sg[key]
-      })
-    })
-  }
-
-  const scaleMap = { individual: 'Individual', group: 'Group', whole_school: 'Whole school' }
-  const statusMap = { active: 'Active', being_addressed: 'Being addressed', resolved: 'Resolved' }
-
-  const rows = filtered.map(b => {
-    const domLabel = b.sub_domains?.name
-      ? `${b.domains?.name ?? ''} — ${b.sub_domains.name}`
-      : (b.domains?.name ?? '—')
-    const sg = b.student_groups
-    const groups = Array.isArray(sg)
-      // Legacy array format already stores full labels (e.g. 'Pupil Premium'), not codes.
-      ? sg.join(', ')
-      : (sg && typeof sg === 'object'
-          ? Object.keys(sg).filter(k => sg[k]).map(k => BARRIER_GROUP_LABELS[k] ?? k).join(', ')
-          : '—')
-    return {
-      barrier: b,
-      description: b.description ?? '—',
-      domLabel,
-      groups: groups || '—',
-      scale: scaleMap[b.scale] ?? (b.scale ?? '—'),
-      source: (b.source ?? '').replace(/_/g, ' ') || '—',
-      status: statusMap[b.status] ?? (b.status ?? '—'),
-      actions: b.actions ?? '—',
-      nextReviewDue: b.next_review_due
-        ? new Date(b.next_review_due).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-        : '—',
-    }
-  })
-
-  return { filtered, rows }
-}
-
-function drawBarriers(doc, y, { barriers, selectedDomains, selectedGroups }) {
-  y = checkNewPage(doc, y, 30)
-  y = sectionBar(doc, y, '2 — Identified Barriers')
-  y += 4
-
-  const { filtered, rows } = getBarriersSectionData({ barriers, selectedDomains, selectedGroups })
-
-  if (filtered.length === 0) {
+  if (!team || team.length === 0) {
     doc.setTextColor(...MID)
     doc.setFontSize(8)
     doc.setFont('helvetica', 'italic')
-    doc.text('No barriers currently recorded.', ML, y + 5)
+    doc.text('None.', ML, y + 5)
     return y + 14
   }
 
-  const body = rows.map(r => [
-    r.description, r.domLabel, r.groups, r.scale, r.source, r.status, r.actions, r.nextReviewDue,
-  ])
+  const body = team.map(t => [t.role, t.name || 'Not recorded', TEAM_CHIP_LABEL[t.chip] ?? t.chip])
 
   autoTable(doc, {
     startY: y,
     margin: { left: ML, right: ML, top: 14, bottom: 12 },
-    head: [['Description', 'Domain', 'Groups', 'Scale', 'Source', 'Status', 'Actions', 'Next Review']],
+    head: [['Role', 'Name', 'Status']],
     body,
-    styles:            { font: 'helvetica', fontSize: 7, cellPadding: 2, overflow: 'linebreak' },
-    headStyles:        { fillColor: NAVY, textColor: WHITE, fontStyle: 'bold', fontSize: 7 },
+    styles:            { font: 'helvetica', fontSize: 8, cellPadding: 2.5 },
+    headStyles:        { fillColor: NAVY, textColor: WHITE, fontStyle: 'bold' },
     alternateRowStyles:{ fillColor: GREY },
     columnStyles: {
-      0: { cellWidth: 35 },
-      1: { cellWidth: 32 },
-      2: { cellWidth: 24 },
-      3: { cellWidth: 18 },
-      4: { cellWidth: 20 },
-      5: { cellWidth: 20 },
-      6: { cellWidth: 21 },
-      7: { cellWidth: 12 },
+      0: { cellWidth: 62 },
+      1: { cellWidth: 70 },
+      2: { cellWidth: 50 },
     },
     didParseCell(data) {
-      if (data.section !== 'body' || data.column.index !== 5) return
-      const b = filtered[data.row.index]
-      if (!b) return
+      if (data.section !== 'body' || data.column.index !== 2) return
+      const t = team[data.row.index]
+      if (!t) return
       data.cell.styles.fontStyle = 'bold'
-      if (b.status === 'active') data.cell.styles.textColor = RED
-      else if (b.status === 'being_addressed') data.cell.styles.textColor = AMBER
-      else if (b.status === 'resolved') data.cell.styles.textColor = GREEN
+      data.cell.styles.textColor = TEAM_CHIP_COLOUR[t.chip] ?? MID
     },
   })
-
   return doc.lastAutoTable.finalY + 4
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// SECTION 3 — Domain Readiness Summary
+// SECTION — Progress by (DfE Principle / Domain / Category)
 // ─────────────────────────────────────────────────────────────────────
-export function getDomainReadinessSectionData({ readinessData, selectedDomains }) {
-  const relevant = selectedDomains.length === 0
-    ? readinessData
-    : readinessData.filter(d => selectedDomains.includes(d.id))
+// Each group is { key, name, counts } where counts = computeCounts()'s
+// { inPlace, inProgress, notInPlace, notStarted, total } — built by the caller
+// (ReportBuilder) over the exact same points/statuses the homepage ledger counts over,
+// so these numbers can never drift from the homepage's. A total of 0 draws a single grey
+// "no data" bar rather than an empty one.
+const NOT_STARTED_COLOUR = [184, 190, 199]
 
-  // pct is null (not 0) when a domain has no provision points at all — a true
-  // "no data recorded" state, distinct from a domain that has points but 0% in place.
-  const rows = relevant.map(d => ({
-    ...d,
-    pct: d.total ? Math.round((d.inPlace / d.total) * 100) : null,
-  }))
+function drawProgressBar(doc, y, group) {
+  const { counts } = group
+  const barX = ML, barW = CW - 2, barH = 5
+  const pctInPlace = counts.total ? Math.round((counts.inPlace / counts.total) * 100) : 0
 
-  const gaps  = relevant.filter(d => d.notInPlace > 0)
-  const inDev = relevant.filter(d => d.inProgress > 0 && d.notInPlace === 0)
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(...DARK)
+  doc.text(group.name, ML, y)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(...MID)
+  doc.text(counts.total ? `${pctInPlace}% in place` : 'No data', ML + CW, y, { align: 'right' })
+  y += 3
 
-  return { relevant, rows, gaps, inDev }
+  if (counts.total === 0) {
+    doc.setFillColor(...NOT_STARTED_COLOUR)
+    doc.rect(barX, y, barW, barH, 'F')
+    y += barH + 5
+    return y
+  }
+
+  // Ordered in place -> in progress -> not in place -> not started; zero-count segments
+  // are skipped entirely rather than drawn as a sliver.
+  const segments = [
+    { count: counts.inPlace,    colour: GREEN },
+    { count: counts.inProgress, colour: AMBER },
+    { count: counts.notInPlace, colour: RED },
+    { count: counts.notStarted, colour: NOT_STARTED_COLOUR },
+  ]
+  let x = barX
+  for (const seg of segments) {
+    if (seg.count <= 0) continue
+    const w = (seg.count / counts.total) * barW
+    doc.setFillColor(...seg.colour)
+    doc.rect(x, y, w, barH, 'F')
+    x += w
+  }
+  y += barH + 5
+  return y
 }
 
-function drawDomainReadiness(doc, y, { readinessData, selectedDomains }) {
-  y = checkNewPage(doc, y, 30)
-  y = sectionBar(doc, y, '3 — Domain Readiness Summary')
+function drawProgressLegend(doc, y) {
+  const legend = [['In place', GREEN], ['In progress', AMBER], ['Not in place', RED], ['Not started', NOT_STARTED_COLOUR]]
+  let lx = ML
+  doc.setFontSize(7)
+  doc.setFont('helvetica', 'normal')
+  for (const [label, colour] of legend) {
+    doc.setFillColor(...colour)
+    doc.rect(lx, y - 2.5, 3, 3, 'F')
+    doc.setTextColor(...MID)
+    doc.text(label, lx + 4.5, y)
+    lx += doc.getTextWidth(label) + 14
+  }
+  return y + 6
+}
 
-  const { relevant, rows, gaps, inDev } = getDomainReadinessSectionData({ readinessData, selectedDomains })
-
-  const body = rows.map(d => [d.name, d.inPlace, d.inProgress, d.notInPlace, d.total, d.pct === null ? 'No data' : `${d.pct}%`, ''])
-
+function drawProgressTable(doc, y, groups) {
+  const body = groups.map(g => [
+    g.name, g.counts.inPlace, g.counts.inProgress, g.counts.notInPlace, g.counts.notStarted, g.counts.total,
+  ])
   autoTable(doc, {
     startY: y,
     margin: { left: ML, right: ML, top: 14, bottom: 12 },
-    head: [['Domain', 'In Place', 'In Progress', 'Not In Place', 'Total', '% Ready', 'Bar']],
+    head: [['', 'In Place', 'In Progress', 'Not In Place', 'Not Started', 'Total']],
     body,
     styles:            { font: 'helvetica', fontSize: 8, cellPadding: 2.5 },
-    headStyles:        { fillColor: NAVY, textColor: WHITE, fontStyle: 'bold', fontSize: 8 },
+    headStyles:        { fillColor: NAVY, textColor: WHITE, fontStyle: 'bold' },
     alternateRowStyles:{ fillColor: GREY },
     columnStyles: {
       0: { cellWidth: 62 },
-      1: { cellWidth: 18, halign: 'center' },
-      2: { cellWidth: 20, halign: 'center' },
-      3: { cellWidth: 22, halign: 'center' },
-      4: { cellWidth: 14, halign: 'center' },
-      5: { cellWidth: 18, halign: 'center' },
-      6: { cellWidth: 28 },
+      1: { cellWidth: 24, halign: 'center' },
+      2: { cellWidth: 26, halign: 'center' },
+      3: { cellWidth: 26, halign: 'center' },
+      4: { cellWidth: 24, halign: 'center' },
+      5: { cellWidth: 20, halign: 'center' },
     },
     didParseCell(data) {
       if (data.section !== 'body') return
       if (data.column.index === 1) { data.cell.styles.textColor = GREEN; data.cell.styles.fontStyle = 'bold' }
       if (data.column.index === 2) { data.cell.styles.textColor = AMBER; data.cell.styles.fontStyle = 'bold' }
       if (data.column.index === 3) { data.cell.styles.textColor = RED;   data.cell.styles.fontStyle = 'bold' }
-      if (data.column.index === 5) {
-        const d = rows[data.row.index]
-        if (d && d.pct === null) { data.cell.styles.textColor = MID; data.cell.styles.fontStyle = 'italic' }
-      }
-    },
-    didDrawCell(data) {
-      if (data.section !== 'body' || data.column.index !== 6) return
-      const d = relevant[data.row.index]
-      if (!d || !d.total) return
-      const frac = d.inPlace / d.total
-      const bx = data.cell.x + 2, by = data.cell.y + (data.cell.height - 3) / 2, bw = data.cell.width - 4
-      doc.setFillColor(...LTGREY)
-      doc.rect(bx, by, bw, 3, 'F')
-      if (frac > 0) {
-        doc.setFillColor(...hexToRgb(domainColour(d.name)))
-        doc.rect(bx, by, bw * frac, 3, 'F')
-      }
     },
   })
-  y = doc.lastAutoTable.finalY + 4
+  return doc.lastAutoTable.finalY + 4
+}
 
-  // Compliance gaps list
-  if (gaps.length > 0) {
-    y = checkNewPage(doc, y, 12)
+// section: { title, groups, showAs }. `groups`'s first row is always "All points"
+// (the homepage's own overall total) — this is where the old standalone Domain Readiness
+// section's overall % now lives, per the brief.
+function drawProgressSection(doc, y, section) {
+  const { title, groups, showAs } = section
+  y = checkNewPage(doc, y, 30)
+  y = sectionBar(doc, y, title)
+  y += 5
+
+  if (!groups || groups.length === 0) {
+    doc.setTextColor(...MID)
     doc.setFontSize(8)
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(...RED)
-    doc.text('Compliance Gaps — Not In Place:', ML, y)
-    y += 5
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(8)
-    doc.setTextColor(...DARK)
-    for (const d of gaps) {
-      y = checkNewPage(doc, y, 6)
-      doc.text(`• ${d.name}: ${d.notInPlace} provision point${d.notInPlace !== 1 ? 's' : ''} not in place`, ML + 3, y)
-      y += 5
-    }
-    y += 2
+    doc.setFont('helvetica', 'italic')
+    doc.text('None.', ML, y + 5)
+    return y + 14
   }
 
-  if (inDev.length > 0) {
-    y = checkNewPage(doc, y, 10)
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(...AMBER)
-    doc.text('In Development:', ML, y)
-    y += 5
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(8)
-    doc.setTextColor(...DARK)
-    for (const d of inDev) {
-      y = checkNewPage(doc, y, 6)
-      doc.text(`• ${d.name}: ${d.inProgress} provision point${d.inProgress !== 1 ? 's' : ''} in progress`, ML + 3, y)
-      y += 5
+  if (showAs === 'chart' || showAs === 'both') {
+    for (const g of groups) {
+      y = checkNewPage(doc, y, 12)
+      y = drawProgressBar(doc, y, g)
     }
-    y += 2
+    y = checkNewPage(doc, y, 8)
+    y = drawProgressLegend(doc, y)
+  }
+
+  if (showAs === 'table' || showAs === 'both') {
+    y = checkNewPage(doc, y, 20)
+    y = drawProgressTable(doc, y, groups)
   }
 
   return y
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// SECTION 4 — Funding & Cost
+// SECTION — Barriers
 // ─────────────────────────────────────────────────────────────────────
-export const FUNDING_LABELS = {
-  pupil_premium:             'Pupil Premium',
-  send_budget:               'SEND Budget',
-  inclusive_mainstream_fund: 'Inclusive Mainstream Fund',
-  sport_premium:             'Sport Premium',
-  school_general_budget:     'General Budget',
-}
+// barrierRows: the FINAL resolved list to print — None/All/Choose already applied by the
+// caller — each shaped { description, whereItSits, status, actions } using
+// src/utils/barrierTags.js's tags(), so the generators never re-derive tags themselves.
+const BARRIER_STATUS_LABEL  = { active: 'Active', being_addressed: 'Being addressed', resolved: 'Resolved' }
+const BARRIER_STATUS_COLOUR = { active: RED, being_addressed: AMBER, resolved: GREEN }
 
-export function getFundingSectionData({ entries, selectedDomains, schoolCtx }) {
-  const domainFiltered = filterByDomain(entries, selectedDomains)
-  const allEvidence = domainFiltered.flatMap(e =>
-    (e.evidence_entries ?? []).map(ev => ({
-      ...ev,
-      domainName: e.provision_points?.sub_domains?.domains?.name ?? '',
-    }))
-  )
-
-  const bySource = {}, byDomain = {}
-  for (const ev of allEvidence) {
-    const cost = Number(ev.cost)
-    if (!cost) continue
-    if (ev.funding_source) {
-      const lbl = FUNDING_LABELS[ev.funding_source] ?? ev.funding_source
-      bySource[lbl] = (bySource[lbl] ?? 0) + cost
-    }
-    if (ev.domainName) {
-      byDomain[ev.domainName] = (byDomain[ev.domainName] ?? 0) + cost
-    }
-  }
-
-  const totalCost = Object.values(bySource).reduce((s, v) => s + v, 0)
-
-  const equitySpend = byDomain['Equity & Disadvantage'] ?? 0
-  const sendSpend   = byDomain['SEND Support & Needs']   ?? 0
-  const perPupil    = schoolCtx.totalPupils ? Math.round(totalCost   / schoolCtx.totalPupils) : null
-  const perPP       = schoolCtx.ppCount     ? Math.round(equitySpend / schoolCtx.ppCount)     : null
-  const perSEND     = schoolCtx.sendCount   ? Math.round(sendSpend   / schoolCtx.sendCount)   : null
-
-  const fCards = [
-    { label: 'Total Spend',    value: `£${totalCost.toLocaleString()}` },
-    { label: 'Per Pupil',      value: perPupil ? `£${perPupil.toLocaleString()}`  : '—' },
-    { label: 'Per PP Pupil',   value: perPP    ? `£${perPP.toLocaleString()}`     : '—' },
-    { label: 'Per SEND Pupil', value: perSEND  ? `£${perSEND.toLocaleString()}`   : '—' },
-  ]
-
-  const streamRows = Object.entries(bySource).map(([name, value]) => ({
-    name, value,
-    pctOfTotal: totalCost ? Math.round(value / totalCost * 100) : 0,
-  }))
-
-  const domainRows = Object.entries(byDomain)
-    .filter(([, v]) => v > 0)
-    .map(([name, value]) => ({ name, value }))
-
-  // Plain-language explanation for any per-pupil figure that came back '—' for want of a
-  // cohort number, rather than leaving the reader to guess why a dash appeared.
-  const missingCohortFields = [
-    !schoolCtx.totalPupils && 'per pupil',
-    !schoolCtx.ppCount     && 'per PP pupil',
-    !schoolCtx.sendCount   && 'per SEND pupil',
-  ].filter(Boolean)
-  const missingCohortNote = missingCohortFields.length
-    ? `Add your pupil numbers in Report Builder to see ${missingCohortFields.join(', ')} figures.`
-    : null
-
-  return { totalCost, bySource, byDomain, fCards, streamRows, domainRows, missingCohortNote }
-}
-
-function drawFunding(doc, y, { entries, selectedDomains, schoolCtx }) {
+function drawBarriers(doc, y, { barrierRows }) {
   y = checkNewPage(doc, y, 30)
-  y = sectionBar(doc, y, '4 — Funding & Cost')
+  y = sectionBar(doc, y, 'Barriers')
   y += 4
 
-  const { totalCost, fCards, streamRows, domainRows, missingCohortNote } = getFundingSectionData({ entries, selectedDomains, schoolCtx })
-
-  if (totalCost === 0) {
+  if (!barrierRows || barrierRows.length === 0) {
     doc.setTextColor(...MID)
     doc.setFontSize(8)
     doc.setFont('helvetica', 'italic')
-    doc.text('No cost data recorded yet.', ML, y + 6)
+    doc.text('None.', ML, y + 5)
     return y + 14
   }
 
-  // Summary cards
-  const COLS = 4, GAP = 3
-  const cardW = (CW - GAP * (COLS - 1)) / COLS, cardH = 16
-  for (let i = 0; i < fCards.length; i++) {
-    const cx = ML + i * (cardW + GAP)
-    doc.setFillColor(241, 245, 249)
-    doc.rect(cx, y, cardW, cardH, 'F')
-    doc.setTextColor(...DARK)
-    doc.setFontSize(12)
-    doc.setFont('helvetica', 'bold')
-    doc.text(fCards[i].value, cx + cardW / 2, y + 8, { align: 'center' })
-    doc.setTextColor(...MID)
-    doc.setFontSize(7)
-    doc.setFont('helvetica', 'normal')
-    doc.text(fCards[i].label, cx + cardW / 2, y + 13.5, { align: 'center' })
-  }
-  y += cardH + 5
-
-  // Plain-language note for any per-pupil figure shown as '—' above, rather than leaving the
-  // reader to guess why — never printed if every cohort field needed is present.
-  if (missingCohortNote) {
-    doc.setTextColor(...MID)
-    doc.setFontSize(7.5)
-    doc.setFont('helvetica', 'italic')
-    doc.text(missingCohortNote, ML, y)
-    y += 6
-  }
-
-  // Funding streams table
-  const streamBody = streamRows.map(r => [r.name, `£${r.value.toLocaleString()}`, `${r.pctOfTotal}%`])
   autoTable(doc, {
     startY: y,
     margin: { left: ML, right: ML, top: 14, bottom: 12 },
-    head: [['Funding Stream', 'Total Spend', '% of Total']],
-    body: streamBody,
-    styles:            { font: 'helvetica', fontSize: 8, cellPadding: 2.5 },
+    head: [['Barrier', 'Where it sits', 'Status', 'Actions so far']],
+    body: barrierRows.map(r => [
+      r.description, r.whereItSits, BARRIER_STATUS_LABEL[r.status] ?? (r.status ?? '—'), r.actions || '—',
+    ]),
+    styles:            { font: 'helvetica', fontSize: 7.5, cellPadding: 2.5, overflow: 'linebreak' },
     headStyles:        { fillColor: NAVY, textColor: WHITE, fontStyle: 'bold' },
     alternateRowStyles:{ fillColor: GREY },
     columnStyles: {
-      0: { cellWidth: 110 },
-      1: { cellWidth: 42, halign: 'right' },
-      2: { cellWidth: 30, halign: 'center' },
-    },
-  })
-  y = doc.lastAutoTable.finalY + 3
-
-  // Domain spend (when domain-scoped, show selected domains only)
-  const domainBody = domainRows.map(r => [r.name, `£${r.value.toLocaleString()}`])
-
-  if (domainBody.length > 0) {
-    y = checkNewPage(doc, y, 20)
-    autoTable(doc, {
-      startY: y,
-      margin: { left: ML, right: ML, top: 14, bottom: 12 },
-      head: [['Domain', selectedDomains.length > 0 ? 'Spend (selected domains)' : 'Spend by Domain']],
-      body: domainBody,
-      styles:            { font: 'helvetica', fontSize: 8, cellPadding: 2.5 },
-      headStyles:        { fillColor: NAVY, textColor: WHITE, fontStyle: 'bold' },
-      alternateRowStyles:{ fillColor: GREY },
-      columnStyles: {
-        0: { cellWidth: 120 },
-        1: { cellWidth: 62, halign: 'right' },
-      },
-    })
-    y = doc.lastAutoTable.finalY + 3
-  }
-
-  return y
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// SECTION 5 — Provision in Place
-// ─────────────────────────────────────────────────────────────────────
-export function getProvisionSectionData({ entries, selectedDomains, selectedGroups }) {
-  let filtered = (entries ?? []).filter(e => e.provision_points?.active !== false)
-  filtered = filterByDomain(filtered, selectedDomains)
-  filtered = filterByGroup(filtered, selectedGroups)
-  return filtered
-}
-
-function drawProvisionInPlace(doc, y, { entries, selectedDomains, selectedGroups, provisionView, domainList }) {
-  y = checkNewPage(doc, y, 30)
-  y = sectionBar(doc, y, '5 — Provision in Place')
-  y += 4
-
-  const filtered = getProvisionSectionData({ entries, selectedDomains, selectedGroups })
-
-  if (filtered.length === 0) {
-    doc.setTextColor(...MID)
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'italic')
-    doc.text('No provision points match the current filter.', ML, y + 5)
-    return y + 14
-  }
-
-  if (provisionView === 'principle') {
-    return drawProvisionByPrinciple(doc, y, filtered)
-  }
-  return drawProvisionByDomain(doc, y, filtered, domainList)
-}
-
-export function provisionRowData(e) {
-  const pp  = e.provision_points ?? {}
-  const evs = e.evidence_entries ?? []
-  const groups  = ALL_GROUP_KEYS.filter(g => evs.some(ev => ev[g.key])).map(g => g.label)
-  const intended = evs.find(ev => ev.intended_outcomes)?.intended_outcomes ?? 'Not yet recorded'
-  const ut = pp.universal_or_targeted
-  return [
-    pp.label ?? '—',
-    statusLabel(e.status),
-    ut === 'universal' ? 'Universal' : ut === 'targeted' ? 'Targeted' : '—',
-    groups.join(', ') || '—',
-    intended,
-  ]
-}
-
-const PROVISION_TABLE_OPTS = {
-  styles:            { font: 'helvetica', fontSize: 7, cellPadding: 2, overflow: 'linebreak' },
-  headStyles:        { fillColor: [226, 232, 240], textColor: DARK, fontStyle: 'bold', fontSize: 7 },
-  alternateRowStyles:{ fillColor: [250, 251, 252] },
-  columnStyles: {
-    0: { cellWidth: 52 },
-    1: { cellWidth: 20 },
-    2: { cellWidth: 18 },
-    3: { cellWidth: 30 },
-    4: { cellWidth: 59 },
-  },
-}
-
-function provisionDidParseCell(filteredSlice) {
-  return function(data) {
-    if (data.section !== 'body' || data.column.index !== 1) return
-    const e = filteredSlice[data.row.index]
-    if (!e) return
-    data.cell.styles.fontStyle = 'bold'
-    if (e.status === 'in_place')    data.cell.styles.textColor = GREEN
-    else if (e.status === 'in_progress') data.cell.styles.textColor = AMBER
-    else                            data.cell.styles.textColor = RED
-  }
-}
-
-export function getProvisionByDomainData(filtered, domainList) {
-  // Group by domain UUID → sub-domain name
-  const byDomain = {}
-  for (const e of filtered) {
-    const domId   = e.provision_points?.sub_domains?.domains?.id   ?? 'unknown'
-    const domName = e.provision_points?.sub_domains?.domains?.name ?? 'Other'
-    const sdName  = e.provision_points?.sub_domains?.name          ?? 'Other'
-    if (!byDomain[domId]) byDomain[domId] = { name: domName, bySD: {} }
-    if (!byDomain[domId].bySD[sdName]) byDomain[domId].bySD[sdName] = []
-    byDomain[domId].bySD[sdName].push(e)
-  }
-
-  const orderedIds = (domainList ?? []).map(d => d.id).filter(id => byDomain[id])
-  const extraIds   = Object.keys(byDomain).filter(id => !orderedIds.includes(id))
-
-  return [...orderedIds, ...extraIds].map(domId => {
-    const dom = byDomain[domId]
-    const subDomains = Object.entries(dom.bySD).map(([sdName, sdEntries]) => ({
-      sdName,
-      entries: sdEntries.sort((a, b) => (a.provision_points?.display_order ?? 0) - (b.provision_points?.display_order ?? 0)),
-    }))
-    return { domId, name: dom.name, subDomains }
-  })
-}
-
-function drawProvisionByDomain(doc, y, filtered, domainList) {
-  const domains = getProvisionByDomainData(filtered, domainList)
-
-  for (const dom of domains) {
-    y = checkNewPage(doc, y, 16)
-    y = domainBar(doc, y, dom.name)
-    y += 3
-
-    // Enrichment: insert equity supplementary table
-    if (dom.name.includes('Enrichment')) {
-      const enrichAll = dom.subDomains.flatMap(sd => sd.entries)
-      y = drawEnrichmentEquityCompact(doc, y, enrichAll)
-    }
-
-    for (const { sdName, entries: sdEntries } of dom.subDomains) {
-      y = checkNewPage(doc, y, 10)
-      doc.setFontSize(7.5)
-      doc.setFont('helvetica', 'bold')
-      doc.setTextColor(...MID)
-      doc.text(sdName, ML + 3, y)
-      y += 5
-
-      autoTable(doc, {
-        startY: y,
-        margin: { left: ML + 3, right: ML, top: 14, bottom: 12 },
-        head: [['Provision', 'Status', 'Type', 'Student Groups', 'Intended Outcome']],
-        body: sdEntries.map(provisionRowData),
-        ...PROVISION_TABLE_OPTS,
-        didParseCell: provisionDidParseCell(sdEntries),
-      })
-      y = doc.lastAutoTable.finalY + 4
-    }
-  }
-  return y
-}
-
-export function getProvisionByPrincipleData(filtered) {
-  return DFE_PRINCIPLES
-    .map(principle => ({
-      principle,
-      entries: filtered
-        .filter(e => e.provision_points?.principle === principle)
-        .sort((a, b) => (a.provision_points?.display_order ?? 0) - (b.provision_points?.display_order ?? 0)),
-    }))
-    .filter(g => g.entries.length > 0)
-}
-
-function drawProvisionByPrinciple(doc, y, filtered) {
-  const groups = getProvisionByPrincipleData(filtered)
-
-  for (const { principle, entries: pEntries } of groups) {
-    y = checkNewPage(doc, y, 16)
-    doc.setFillColor(...NAVY)
-    doc.rect(ML, y, CW, 7, 'F')
-    doc.setTextColor(...WHITE)
-    doc.setFontSize(8.5)
-    doc.setFont('helvetica', 'bold')
-    doc.text(principle, ML + 3, y + 5)
-    y += 7 + 3
-
-    autoTable(doc, {
-      startY: y,
-      margin: { left: ML, right: ML, top: 14, bottom: 12 },
-      head: [['Provision', 'Status', 'Type', 'Student Groups', 'Intended Outcome']],
-      body: pEntries.map(provisionRowData),
-      ...PROVISION_TABLE_OPTS,
-      didParseCell: provisionDidParseCell(pEntries),
-    })
-    y = doc.lastAutoTable.finalY + 4
-  }
-  return y
-}
-
-// Compact enrichment equity table for Section 5 (Part 4 — moved here from standalone)
-// NOTE: 'groups'/'keys' here duplicate the same 9-group list as GROUP_TO_BOOL/ALL_GROUP_KEYS
-// above — pre-existing duplication, left as-is per this session's scope (flagged, not fixed).
-export function getEnrichmentEquityData(entries) {
-  const bySD = {}
-  for (const e of entries) {
-    const sd = e.provision_points?.sub_domains?.name ?? 'Other'
-    if (!bySD[sd]) bySD[sd] = []
-    bySD[sd].push(e)
-  }
-  const groups = ['Pupil Premium', 'SEND', 'FSM', 'EAL', 'LAC', 'White Working Class', 'Social Care', 'Young Carer', 'Mental Health Support']
-  const keys   = ['grp_pp', 'grp_send', 'grp_fsm', 'grp_eal', 'grp_lac', 'grp_wwc', 'grp_social_care', 'grp_young_carer', 'grp_mental_health_support']
-
-  const rows = Object.entries(bySD).map(([sdName, es]) => ({
-    sdName,
-    values: keys.map(key => {
-      const count = es.filter(e => (e.evidence_entries ?? []).some(ev => ev[key])).length
-      return es.length ? Math.round(count / es.length * 100) : 0
-    }),
-  }))
-
-  return { groups, rows }
-}
-
-function drawEnrichmentEquityCompact(doc, y, entries) {
-  const { groups, rows } = getEnrichmentEquityData(entries)
-  const body = rows.map(r => [r.sdName, ...r.values.map(v => `${v}%`)])
-
-  if (body.length === 0) return y
-
-  doc.setFontSize(7)
-  doc.setFont('helvetica', 'italic')
-  doc.setTextColor(...MID)
-  doc.text('Group coverage by enrichment sub-domain (% of provision points):', ML + 3, y)
-  y += 4
-
-  autoTable(doc, {
-    startY: y,
-    margin: { left: ML + 3, right: ML, top: 14, bottom: 12 },
-    head: [['Sub-domain', ...groups]],
-    body,
-    styles:            { font: 'helvetica', fontSize: 7, cellPadding: 2 },
-    headStyles:        { fillColor: [240, 242, 246], textColor: DARK, fontStyle: 'bold', fontSize: 7 },
-    alternateRowStyles:{ fillColor: [250, 251, 252] },
-    columnStyles: {
-      0: { cellWidth: 40 },
-      ...Object.fromEntries(groups.map((_, i) => [i + 1, { cellWidth: 15, halign: 'center' }])),
+      0: { cellWidth: 48 },
+      1: { cellWidth: 46 },
+      2: { cellWidth: 28 },
+      3: { cellWidth: 60 },
     },
     didParseCell(data) {
-      if (data.section !== 'body' || data.column.index === 0) return
-      const val = parseInt(data.cell.raw)
-      if (isNaN(val)) return
+      if (data.section !== 'body' || data.column.index !== 2) return
+      const r = barrierRows[data.row.index]
+      if (!r) return
       data.cell.styles.fontStyle = 'bold'
-      if (val >= 80)      data.cell.styles.textColor = GREEN
-      else if (val >= 50) data.cell.styles.textColor = AMBER
-      else                data.cell.styles.textColor = RED
+      data.cell.styles.textColor = BARRIER_STATUS_COLOUR[r.status] ?? MID
     },
   })
   return doc.lastAutoTable.finalY + 4
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// SECTION 6 — Reviews (overdue + next 28 days only)
+// SECTION — Due for review
 // ─────────────────────────────────────────────────────────────────────
-export function getReviewsSectionData({ entries, selectedDomains }) {
-  const today = new Date()
-  const domainFiltered = filterByDomain(entries, selectedDomains)
-
-  const reviews = domainFiltered
-    .flatMap(e =>
-      (e.evidence_entries ?? [])
-        .filter(ev => ev.next_review_due)
-        .map(ev => {
-          const days_remaining = Math.ceil((new Date(ev.next_review_due) - today) / 86400000)
-          return {
-            provision: e.provision_points?.label ?? '—',
-            domainName: e.provision_points?.sub_domains?.domains?.name ?? '—',
-            next_review_due: ev.next_review_due,
-            days_remaining,
-          }
-        })
-    )
-    .filter(ev => ev.days_remaining < 0 || ev.days_remaining <= 28)
-    .sort((a, b) => a.days_remaining - b.days_remaining)
-
-  return reviews
-}
-
-function drawReviews(doc, y, { entries, selectedDomains }) {
+// reviewRows: shaped { point, whereItSits, statusText, dueLabel, isOverdue } by the caller
+// from the SAME 60-day rows as the homepage's "Coming up for review" box — see
+// src/utils/dueForReview.js.
+function drawDueForReview(doc, y, { reviewRows }) {
   y = checkNewPage(doc, y, 30)
-  y = sectionBar(doc, y, '6 — Evaluate & Sustain Reviews')
+  y = sectionBar(doc, y, 'Due for Review')
   y += 4
 
-  const reviews = getReviewsSectionData({ entries, selectedDomains })
-
-  if (reviews.length === 0) {
+  if (!reviewRows || reviewRows.length === 0) {
     doc.setTextColor(...MID)
     doc.setFontSize(8)
     doc.setFont('helvetica', 'italic')
-    doc.text('No reviews overdue or due in the next 28 days.', ML, y + 5)
+    doc.text('None.', ML, y + 5)
     return y + 14
   }
-
-  const body = reviews.map(ev => [
-    ev.provision,
-    ev.domainName,
-    new Date(ev.next_review_due).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
-    ev.days_remaining < 0 ? 'Overdue' : `Due in ${ev.days_remaining}d`,
-  ])
 
   autoTable(doc, {
     startY: y,
     margin: { left: ML, right: ML, top: 14, bottom: 12 },
-    head: [['Provision', 'Domain', 'Due Date', 'Status']],
-    body,
-    styles:            { font: 'helvetica', fontSize: 7.5, cellPadding: 2.5 },
+    head: [['Point', 'Where it sits', 'Status', 'Due']],
+    body: reviewRows.map(r => [r.point, r.whereItSits, r.statusText, r.dueLabel]),
+    styles:            { font: 'helvetica', fontSize: 7.5, cellPadding: 2.5, overflow: 'linebreak' },
     headStyles:        { fillColor: NAVY, textColor: WHITE, fontStyle: 'bold' },
     alternateRowStyles:{ fillColor: GREY },
     columnStyles: {
-      0: { cellWidth: 90 },
-      1: { cellWidth: 52 },
-      2: { cellWidth: 24 },
-      3: { cellWidth: 16, halign: 'center' },
+      0: { cellWidth: 60 },
+      1: { cellWidth: 56 },
+      2: { cellWidth: 30 },
+      3: { cellWidth: 36 },
     },
     didParseCell(data) {
       if (data.section !== 'body' || data.column.index !== 3) return
-      const ev = reviews[data.row.index]
-      if (!ev) return
-      data.cell.styles.fontStyle = 'bold'
-      data.cell.styles.textColor = ev.days_remaining < 0 ? RED : AMBER
+      const r = reviewRows[data.row.index]
+      if (r?.isOverdue) { data.cell.styles.fontStyle = 'bold'; data.cell.styles.textColor = RED }
     },
   })
-
   return doc.lastAutoTable.finalY + 4
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// APPENDIX A — Full Outcomes & Impact
+// PUBLIC API — Report Builder's four-choice evidence report
 // ─────────────────────────────────────────────────────────────────────
-export function getAppendixASectionData({ entries, selectedDomains, selectedGroups, domainList }) {
-  const byDomain = {}
-  const domFiltered = filterByDomain(entries, selectedDomains)
-
-  for (const e of domFiltered) {
-    const domId   = e.provision_points?.sub_domains?.domains?.id   ?? 'unknown'
-    const domName = e.provision_points?.sub_domains?.domains?.name ?? 'Other'
-    for (const ev of (e.evidence_entries ?? [])) {
-      // Group filter on evidence_entries
-      if (selectedGroups.length > 0) {
-        const matches = selectedGroups.some(g => {
-          const key = GROUP_TO_BOOL[g]
-          return key && ev[key]
-        })
-        if (!matches) continue
-      }
-      if (!byDomain[domId]) byDomain[domId] = { name: domName, rows: [] }
-      byDomain[domId].rows.push({
-        provision: e.provision_points?.label ?? '—',
-        intended:  ev.intended_outcomes  ?? 'Not yet recorded',
-        impact:    ev.impact_on_outcomes ?? 'Not yet recorded',
-      })
-    }
-  }
-
-  const orderedIds = (domainList ?? []).map(d => d.id).filter(id => byDomain[id])
-  const extraIds   = Object.keys(byDomain).filter(id => !orderedIds.includes(id))
-
-  const domains = [...orderedIds, ...extraIds].map(domId => byDomain[domId])
-
-  return { domains }
-}
-
-function drawAppendixA(doc, y, { entries, selectedDomains, selectedGroups, domainList }) {
-  y = checkNewPage(doc, y, 30)
-  y = sectionBar(doc, y, 'Appendix A — Full Outcomes & Impact')
-  y += 4
-
-  const { domains } = getAppendixASectionData({ entries, selectedDomains, selectedGroups, domainList })
-
-  if (domains.length === 0) {
-    doc.setTextColor(...MID)
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'italic')
-    doc.text('No outcomes or impact evidence recorded.', ML, y + 5)
-    return y + 14
-  }
-
-  for (const dom of domains) {
-    y = checkNewPage(doc, y, 14)
-    y = domainBar(doc, y, dom.name)
-    y += 3
-
-    autoTable(doc, {
-      startY: y,
-      margin: { left: ML, right: ML, top: 14, bottom: 12 },
-      head: [['Provision', 'Intended Outcome', 'Evidence of Impact']],
-      body: dom.rows.map(r => [r.provision, r.intended, r.impact]),
-      styles:            { font: 'helvetica', fontSize: 7.5, cellPadding: 2.5, overflow: 'linebreak' },
-      headStyles:        { fillColor: NAVY, textColor: WHITE, fontStyle: 'bold' },
-      alternateRowStyles:{ fillColor: GREY },
-      columnStyles: {
-        0: { cellWidth: 55 },
-        1: { cellWidth: 63.5 },
-        2: { cellWidth: 63.5 },
-      },
-    })
-    y = doc.lastAutoTable.finalY + 4
-  }
-
-  return y
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// APPENDIX B — Full Provision Checklist
-// ─────────────────────────────────────────────────────────────────────
-export function getAppendixBSectionData({ entries, domainList }) {
-  const byDomain = {}
-  for (const e of entries) {
-    if (e.provision_points?.active === false) continue
-    const domId   = e.provision_points?.sub_domains?.domains?.id   ?? 'unknown'
-    const domName = e.provision_points?.sub_domains?.domains?.name ?? 'Other'
-    const sdName  = e.provision_points?.sub_domains?.name          ?? 'Other'
-    if (!byDomain[domId]) byDomain[domId] = { name: domName, bySD: {} }
-    if (!byDomain[domId].bySD[sdName]) byDomain[domId].bySD[sdName] = []
-    byDomain[domId].bySD[sdName].push(e)
-  }
-
-  const orderedIds = (domainList ?? []).map(d => d.id).filter(id => byDomain[id])
-
-  const domains = orderedIds.map(domId => {
-    const dom = byDomain[domId]
-    const subDomains = Object.entries(dom.bySD).map(([sdName, sdEntries]) => ({
-      sdName,
-      entries: sdEntries.sort((a, b) => (a.provision_points?.display_order ?? 0) - (b.provision_points?.display_order ?? 0)),
-    }))
-    return { domId, name: dom.name, subDomains }
-  })
-
-  return { domains }
-}
-
-function drawAppendixB(doc, y, { entries, domainList }) {
-  y = checkNewPage(doc, y, 30)
-  y = sectionBar(doc, y, 'Appendix B — Full Provision Checklist')
-  y += 4
-
-  const { domains } = getAppendixBSectionData({ entries, domainList })
-
-  for (const dom of domains) {
-    y = checkNewPage(doc, y, 14)
-    y = domainBar(doc, y, dom.name)
-    y += 3
-
-    for (const { sdName, entries: sorted } of dom.subDomains) {
-      y = checkNewPage(doc, y, 10)
-      doc.setFontSize(7.5)
-      doc.setFont('helvetica', 'bold')
-      doc.setTextColor(...MID)
-      doc.text(sdName, ML + 3, y)
-      y += 4
-
-      autoTable(doc, {
-        startY: y,
-        margin: { left: ML + 3, right: ML, top: 14, bottom: 12 },
-        body: sorted.map(e => [
-          e.provision_points?.label ?? '—',
-          statusLabel(e.status),
-          e.provision_points?.universal_or_targeted ?? '—',
-        ]),
-        styles:            { font: 'helvetica', fontSize: 7, cellPadding: 2 },
-        alternateRowStyles:{ fillColor: GREY },
-        columnStyles: {
-          0: { cellWidth: 118 },
-          1: { cellWidth: 30 },
-          2: { cellWidth: 31 },
-        },
-        didParseCell(data) {
-          if (data.column.index !== 1) return
-          const e = sorted[data.row.index]
-          if (!e) return
-          data.cell.styles.fontStyle = 'bold'
-          if (e.status === 'in_place')    data.cell.styles.textColor = GREEN
-          else if (e.status === 'in_progress') data.cell.styles.textColor = AMBER
-          else                            data.cell.styles.textColor = RED
-        },
-      })
-      y = doc.lastAutoTable.finalY + 3
-    }
-  }
-
-  return y
-}
-
-// Which sections appear for each report "purpose" — shared decision logic,
-// reused as-is by generateReportWord.js so PDF and Word never disagree on
-// which sections a given purpose includes.
-export function getShowSections(purpose, includeAppendixB) {
-  return {
-    schoolContext:    purpose !== 'outcomes_summary',
-    barriers:         purpose === 'full_strategy' || purpose === 'domain_focus' || purpose === 'outcomes_summary',
-    domainReadiness:  purpose !== 'outcomes_summary',
-    funding:          purpose === 'full_strategy' || purpose === 'domain_focus',
-    provision:        purpose === 'full_strategy' || purpose === 'domain_focus',
-    reviews:          purpose !== 'outcomes_summary',
-    appendixA:        purpose === 'full_strategy' || purpose === 'domain_focus' || purpose === 'outcomes_summary',
-    appendixB:        purpose === 'full_strategy' && includeAppendixB,
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// PUBLIC API — new evidence report (all 4 purpose modes)
-// ─────────────────────────────────────────────────────────────────────
+// team, progressSections, barrierRows and reviewRows are all pre-built by ReportBuilder
+// (see App.jsx) so this file stays a pure drawing layer — no filtering/aggregation logic
+// of its own, matching how generateReportWord.js will consume the same shapes.
 export function generateEvidenceReport({
-  purpose          = 'full_strategy',
-  selectedDomains  = [],
-  selectedGroups   = [],
-  provisionView    = 'domain',
-  includeAppendixB = false,
-  entries          = [],
-  domains          = [],
-  barriers         = [],
-  schoolCtx        = {},
-  schoolName       = '',
-  userProfile      = null,
+  schoolName      = '',
+  userProfile     = null,
+  team            = [],
+  progressSections = [],
+  barrierRows     = [],
+  reviewRows      = [],
 }) {
-  const doc       = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-  const dateStr   = fmt()
-  const ay        = academicYear()
-  const safeName  = (schoolName || 'School').replace(/[^a-z0-9]/gi, '_')
-  const isFullStrategy = purpose === 'full_strategy'
+  const doc      = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+  const dateStr  = fmt()
+  const safeName = (schoolName || 'School').replace(/[^a-z0-9]/gi, '_')
 
-  // Build readiness data with domain UUID
-  const readinessData = getReadinessData(entries, domains)
+  drawCoverPage(doc, { schoolName, userProfile, dateStr })
 
-  // Which sections to include per purpose
-  const show = getShowSections(purpose, includeAppendixB)
-
-  // Page 1: cover
-  drawCoverPage(doc, { schoolName, purpose, selectedDomains, selectedGroups, domainList: domains, userProfile, dateStr, ay })
-
-  // Page 2+: content
   doc.addPage()
   let y = 14
 
-  if (show.schoolContext) {
-    y = drawSchoolContext(doc, y, { schoolCtx, readinessData, selectedDomains })
-    y += 4
+  y = drawInclusionTeam(doc, y, { team })
+
+  for (const section of progressSections) {
+    y = drawProgressSection(doc, y, section)
   }
 
-  if (show.barriers) {
-    y = drawBarriers(doc, y, { barriers, selectedDomains, selectedGroups })
-  }
+  y = drawBarriers(doc, y, { barrierRows })
+  y = drawDueForReview(doc, y, { reviewRows })
 
-  if (show.domainReadiness) {
-    y = drawDomainReadiness(doc, y, { readinessData, selectedDomains })
-  }
+  applyHeadersFooters(doc, schoolName || 'School', `Inclusion Report — ${dateStr}`)
 
-  if (show.funding) {
-    y = drawFunding(doc, y, { entries, selectedDomains, schoolCtx })
-  }
-
-  if (show.provision) {
-    y = drawProvisionInPlace(doc, y, { entries, selectedDomains, selectedGroups, provisionView, domainList: domains })
-  }
-
-  if (show.reviews) {
-    y = drawReviews(doc, y, { entries, selectedDomains })
-  }
-
-  if (show.appendixA) {
-    y = drawAppendixA(doc, y, { entries, selectedDomains, selectedGroups, domainList: domains })
-  }
-
-  if (show.appendixB) {
-    drawAppendixB(doc, y, { entries, domainList: domains })
-  }
-
-  const docSubtitle = isFullStrategy
-    ? `Inclusion Strategy Statement ${ay}`
-    : `Inclusion Evidence Report ${ay}`
-
-  applyHeadersFooters(doc, schoolName || 'School', docSubtitle)
-
-  const filePrefix = isFullStrategy ? 'Inclusion_Strategy_Statement' : 'Inclusion_Evidence_Report'
-  doc.save(`${filePrefix}_${safeName}_${ay.replace('/', '-')}.pdf`)
+  doc.save(`Inclusion_Report_${safeName}_${dateStr.replace(/ /g, '_')}.pdf`)
 }
 
 // ─────────────────────────────────────────────────────────────────────

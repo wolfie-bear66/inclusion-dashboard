@@ -20,9 +20,11 @@ import { usePrincipleCoverage } from './hooks/usePrincipleCoverage'
 import ReadOnlyBanner from './components/ReadOnlyBanner'
 import { tags as barrierTags, activityState as barrierActivityState } from './utils/barrierTags'
 import { computeCounts } from './utils/computeCounts'
+import { fetchDueForReviewRows } from './utils/dueForReview'
 import './App.css'
-import { generateEvidenceReport } from './generateReport'
-import { generateEvidenceReportWord } from './generateReportWord'
+import { generateEvidenceReport, DFE_PRINCIPLES, statusLabel, fmt } from './generateReport'
+// generateEvidenceReportWord (Word export) is reintroduced once its generator is rebuilt
+// to match the new Report Builder shape — see TASKS.md. PDF-only for now.
 
 // ── Invite-link detection ─────────────────────────────────────────────
 // Must run at module evaluation, before Supabase auth initialises and
@@ -509,141 +511,287 @@ function RBChartToggle({ options, value, onChange }) {
   )
 }
 
-// Domain UUIDs from SCHEMA_REFERENCE.md (verified 28 June 2026)
-const REPORT_DOMAIN_OPTIONS = [
-  { id: '11111111-0000-0000-0000-000000000001', label: 'SEND Support & Needs' },
-  { id: '11111111-0000-0000-0000-000000000002', label: 'Equity & Disadvantage' },
-  { id: '11111111-0000-0000-0000-000000000003', label: 'Attendance & Engagement' },
-  { id: '11111111-0000-0000-0000-000000000004', label: 'Enrichment' },
-  { id: '11111111-0000-0000-0000-000000000005', label: 'Belonging' },
-  { id: '11111111-0000-0000-0000-000000000006', label: 'Wellbeing' },
+const NOT_LINKED = '__not_linked__'
+
+const PROGRESS_GROUP_OPTIONS = [
+  { key: 'principle', label: 'DfE Principle' },
+  { key: 'domain',    label: 'Domain' },
+  { key: 'category',  label: 'Category' },
 ]
-const REPORT_GROUP_OPTIONS = ['Pupil Premium', 'SEND', 'FSM', 'EAL', 'LAC', 'White Working Class', 'Social Care', 'Young Carer', 'Mental Health Support']
-const REPORT_PURPOSE_OPTIONS = [
-  {
-    id: 'full_strategy',
-    icon: 'ti-certificate',
-    title: 'Full Strategy Statement',
-    desc: 'All sections. For governors, Ofsted, or website publication.',
-  },
-  {
-    id: 'domain_focus',
-    icon: 'ti-layout-columns',
-    title: 'Domain Focus',
-    desc: 'Scoped to one or more domains. For a SEND, attendance, or equity meeting.',
-  },
-  {
-    id: 'compliance_snapshot',
-    icon: 'ti-report-analytics',
-    title: 'Compliance Snapshot',
-    desc: 'Readiness, gaps, and upcoming reviews only. For a quick briefing.',
-  },
-  {
-    id: 'outcomes_summary',
-    icon: 'ti-target',
-    title: 'Outcomes Summary',
-    desc: "Barriers and impact evidence only. For reviewing what's working.",
-  },
+const SHOW_AS_OPTIONS = [
+  { value: 'chart', label: 'Chart' },
+  { value: 'table', label: 'Table' },
+  { value: 'both',  label: 'Both' },
+]
+const BARRIERS_MODE_OPTIONS = [
+  { value: 'none',   label: 'None' },
+  { value: 'all',    label: 'All' },
+  { value: 'choose', label: 'Choose' },
 ]
 
-function ReportBuilder({ schoolName = '', supabase: sb, school, schoolCtx = {}, onCtxSave, ctxLoading = false, readOnly = false, onCreateInclusionStrategy }) {
-  const [purpose,         setPurpose]         = useState('full_strategy')
-  const [selectedDomains, setSelectedDomains] = useState([])   // empty = all domains
-  const [selectedGroups,  setSelectedGroups]  = useState([])   // empty = all groups
-  const [provisionView,   setProvisionView]   = useState('domain')
-  const [includeAppendixB, setIncludeAppendixB] = useState(false)
-  const [exportFormat,    setExportFormat]    = useState('pdf')   // 'pdf' | 'word'
-  const [generating,      setGenerating]      = useState(false)
-  const [genError,        setGenError]        = useState(null)
+// Fixed status colours per TASKS.md — reused by the team chips, the progress bars/legend,
+// and the barrier/due-for-review status cells so the screen matches the PDF/Word exactly.
+const STATUS_COLOUR = {
+  in_place:    '#2F855A',
+  in_progress: '#D99A1B',
+  not_in_place:'#C0392B',
+  not_started: '#B8BEC7',
+}
+const TEAM_CHIP_STYLE = {
+  approved:          { label: 'Approved',          bg: 'rgba(47,133,90,0.12)',  color: STATUS_COLOUR.in_place },
+  awaiting_approval: { label: 'Awaiting approval',  bg: 'rgba(124,88,237,0.12)', color: '#7C58ED' },
+  in_progress:       { label: 'In progress',        bg: 'rgba(217,154,27,0.12)', color: STATUS_COLOUR.in_progress },
+  not_in_place:      { label: 'Not in place',       bg: 'rgba(192,57,43,0.12)',  color: STATUS_COLOUR.not_in_place },
+  not_started:       { label: 'Not started',        bg: 'rgba(184,190,199,0.25)',color: '#6b7280' },
+}
 
-  function toggleDomain(id) {
-    setSelectedDomains(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
-  }
-  function toggleGroup(g) {
-    setSelectedGroups(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g])
-  }
+// entry: the school's `entries` row for this point ({ status, submitted_for_approval_at }),
+// or undefined if the school has never touched the point. Order matters — approved and
+// awaiting-approval are both checked before falling through to plain status.
+function teamChipKey(entry) {
+  if (!entry) return 'not_started'
+  if (entry.status === 'in_place') return 'approved'
+  if (entry.submitted_for_approval_at) return 'awaiting_approval'
+  if (entry.status === 'in_progress') return 'in_progress'
+  if (entry.status === 'not_in_place') return 'not_in_place'
+  return 'not_started'
+}
+function latestEvidenceRow(entry) {
+  const evs = entry?.evidence_entries ?? []
+  if (evs.length === 0) return null
+  return [...evs].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))[0]
+}
 
-  const showProvisionToggle = purpose === 'full_strategy' || purpose === 'domain_focus'
-  const showAppendixB       = purpose === 'full_strategy'
+function whereItSitsShort(meta) {
+  if (!meta) return '—'
+  const principle = meta.principle ? (PRINCIPLE_LABEL_SHORT[meta.principle] ?? meta.principle) : null
+  return [meta.domainName, principle, meta.category].filter(Boolean).join(' · ') || '—'
+}
 
-  // Domain Focus requires at least one domain selected
-  const generateEnabled = !(purpose === 'domain_focus' && selectedDomains.length === 0)
+// barrierTags() returns arrays (a barrier can link points across several domains/
+// principles/categories) — joined with '; ' per dimension, one dimension per line so the
+// PDF/Word table cell reads as a short list rather than a run-on sentence.
+function barrierWhereItSits(barrier, domainNameById) {
+  const t = barrierTags(barrier)
+  const domainNames = t.domains.map(id => domainNameById[id]).filter(Boolean)
+  const principles  = t.principles.map(p => PRINCIPLE_LABEL_SHORT[p] ?? p)
+  const parts = []
+  if (domainNames.length) parts.push(`Domain: ${domainNames.join(', ')}`)
+  if (principles.length)  parts.push(`Principle: ${principles.join(', ')}`)
+  if (t.categories.length) parts.push(`Category: ${t.categories.join(', ')}`)
+  return parts.length ? parts.join('\n') : 'Not linked to provision'
+}
 
-  // Filter summary line shown beneath controls
-  const purposeLabel  = REPORT_PURPOSE_OPTIONS.find(p => p.id === purpose)?.title ?? purpose
-  const domainLabel   = selectedDomains.length === 0
-    ? 'All domains'
-    : REPORT_DOMAIN_OPTIONS.filter(d => selectedDomains.includes(d.id)).map(d => d.label).join(', ')
-  const groupLabel    = selectedGroups.length === 0 ? 'All groups' : selectedGroups.join(' + ')
-  const filterSummary = `${purposeLabel} · ${domainLabel} · ${groupLabel}`
+function ReportBuilder({ schoolName = '', supabase: sb, school, onCreateInclusionStrategy }) {
+  // ── Data (fetched once per school; the four choices below only change how it's sliced) ──
+  const [data, setData] = useState(null)          // see load() for shape
+  const [loadingData, setLoadingData] = useState(false)
+  const [loadError, setLoadError] = useState(null)
 
-  async function handleGenerate() {
-    if (!sb || !school) {
-      setGenError('School data not available. Please reload and try again.')
-      return
-    }
-    if (!generateEnabled) {
-      setGenError('Please select at least one domain for Domain Focus.')
-      return
-    }
-    setGenerating(true)
-    setGenError(null)
-    try {
-      const userRes  = await sb.auth.getUser()
-      const userId   = userRes.data?.user?.id
+  useEffect(() => {
+    if (!sb || !school) { setData(null); return }
+    let cancelled = false
+    setLoadingData(true)
+    setLoadError(null)
 
-      const [entriesRes, domainsRes, barriersRes, profileRes] = await Promise.all([
+    async function load() {
+      const userRes = await sb.auth.getUser()
+      const userId  = userRes.data?.user?.id
+
+      const [domainsRes, entriesRes, teamPointsRes, barriersRes, profileRes, dueForReview] = await Promise.all([
+        // Identical shape/query to the homepage's own ppDomainMap/ppCategoryMap/
+        // ppPrincipleMap build (App.jsx's session-init effect) — deliberately NOT filtered
+        // on `active` here (the homepage query doesn't fetch that field either), so
+        // computeCounts() totals below can never drift from the homepage's own totals.
+        sb.from('domains')
+          .select('id, name, display_order, sub_domains(id, name, provision_points(id, label, category, principle))')
+          .order('display_order'),
         sb.from('entries')
-          .select(`
-            id, provision_point_id, status,
-            provision_points(
-              id, label, principle, universal_or_targeted, display_order, active,
-              sub_domains(id, name, display_order, domain_id, domains(id, name, display_order))
-            ),
-            evidence_entries(
-              id, entry_id, intended_outcomes, impact_on_outcomes, next_review_due,
-              funding_source, cost, grp_send, grp_pp, grp_eal, grp_fsm, grp_lac, grp_wwc,
-              grp_social_care, grp_young_carer, grp_mental_health_support
-            )
-          `)
+          .select('provision_point_id, status, submitted_for_approval_at, evidence_entries(id, named_role_policy_document, created_at)')
           .eq('school_id', school),
-        // sub_domains(provision_points(id)) — full catalogue count per domain, same source as
-        // the homepage/Domains index page's ppDomainMap, so Domain Readiness's denominator
-        // isn't just the touched-only entries count (see getReadinessData in generateReport.js).
-        sb.from('domains').select('id, name, display_order, sub_domains(provision_points(id))').order('display_order'),
-        sb.from('barriers')
-          .select('id, description, status, actions, scale, student_groups, domain_id, sub_domain_id, next_review_due, domains(name), sub_domains(name)')
-          .eq('school_id', school),
+        // Inclusion Team — the 10 active Named Person points specifically (active filter
+        // matters here even though it's deliberately absent above).
+        sb.from('provision_points')
+          .select('id, label, display_order')
+          .eq('category', 'Named Person')
+          .eq('active', true)
+          .order('display_order'),
+        sb.from('barriers').select(BARRIER_SELECT).eq('school_id', school),
         userId
           ? sb.from('profiles').select('first_name, last_name, job_title').eq('id', userId).single()
           : Promise.resolve({ data: null, error: null }),
+        fetchDueForReviewRows(sb, school),
       ])
+      if (cancelled) return
 
-      if (entriesRes.error) throw new Error(`Entries: ${entriesRes.error.message}`)
-      if (domainsRes.error) throw new Error(`Domains: ${domainsRes.error.message}`)
+      if (domainsRes.error)     { setLoadError(`Domains: ${domainsRes.error.message}`); setLoadingData(false); return }
+      if (entriesRes.error)     { setLoadError(`Entries: ${entriesRes.error.message}`); setLoadingData(false); return }
+      if (teamPointsRes.error)  { setLoadError(`Team points: ${teamPointsRes.error.message}`); setLoadingData(false); return }
+      if (barriersRes.error)    { setLoadError(`Barriers: ${barriersRes.error.message}`); setLoadingData(false); return }
 
-      const reportArgs = {
-        purpose,
-        selectedDomains,
-        selectedGroups,
-        provisionView,
-        includeAppendixB,
-        entries:     entriesRes.data  ?? [],
-        domains:     domainsRes.data  ?? [],
-        barriers:    barriersRes.data ?? [],
-        schoolCtx,
+      const ppDomainMap = {}, ppCategoryMap = {}, ppPrincipleMap = {}, pointMeta = {}
+      const domainList = []
+      const domainNameById = {}
+      for (const domain of domainsRes.data ?? []) {
+        domainList.push({ id: domain.id, name: domain.name, display_order: domain.display_order })
+        domainNameById[domain.id] = domain.name
+        for (const sd of domain.sub_domains ?? []) {
+          for (const pp of sd.provision_points ?? []) {
+            ppDomainMap[pp.id]    = domain.id
+            ppCategoryMap[pp.id]  = pp.category ?? ''
+            ppPrincipleMap[pp.id] = pp.principle ?? ''
+            pointMeta[pp.id] = { label: pp.label, domainName: domain.name, category: pp.category ?? '', principle: pp.principle ?? '' }
+          }
+        }
+      }
+      const allLedgerPoints = Object.keys(ppDomainMap).map(id => ({
+        id, domainId: ppDomainMap[id], category: ppCategoryMap[id], principle: ppPrincipleMap[id],
+      }))
+
+      const statusByPointId = {}
+      const entryByPointId  = {}
+      for (const e of entriesRes.data ?? []) {
+        statusByPointId[e.provision_point_id] = e.status
+        entryByPointId[e.provision_point_id]  = e
+      }
+
+      const teamRows = (teamPointsRes.data ?? []).map(pp => {
+        const entry  = entryByPointId[pp.id]
+        const latest = latestEvidenceRow(entry)
+        return {
+          id: pp.id,
+          role: pp.label,
+          name: latest?.named_role_policy_document || null,
+          chip: teamChipKey(entry),
+        }
+      })
+
+      if (cancelled) return
+      setData({
+        domainList, domainNameById, allLedgerPoints, statusByPointId, pointMeta,
+        teamRows,
+        barriers: barriersRes.data ?? [],
+        dueForReview,
+        userProfile: profileRes.data ?? null,
+      })
+      setLoadingData(false)
+    }
+    load()
+    return () => { cancelled = true }
+  }, [sb, school])
+
+  // ── The four choices ─────────────────────────────────────────────────
+  const [progressBy, setProgressBy] = useState({ principle: false, domain: true, category: false })
+  const [showAs, setShowAs] = useState('chart')
+  const [barriersMode, setBarriersMode] = useState('none')
+  const [barrierFilter, setBarrierFilter] = useState({ principle: '', domain: '', category: '' })
+  const [chosenBarrierIds, setChosenBarrierIds] = useState(() => new Set())
+  const [dueForReviewOn, setDueForReviewOn] = useState(true)
+  const [showPreview, setShowPreview] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [genError, setGenError] = useState(null)
+
+  function toggleProgressBy(key) {
+    setProgressBy(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  // ── Derived: progress-by sections (computeCounts — same helper, same call shape as the
+  // homepage ledger, see App.jsx's own home-screen ledgerRows) ────────────────────────
+  const allPointsCounts = data ? computeCounts(data.allLedgerPoints, data.statusByPointId) : null
+
+  const progressSections = data
+    ? PROGRESS_GROUP_OPTIONS.filter(g => progressBy[g.key]).map(g => {
+        let keys
+        if (g.key === 'principle') keys = DFE_PRINCIPLES
+        else if (g.key === 'domain') keys = data.domainList.map(d => d.id)
+        else keys = PROVISION_POINT_CATEGORIES
+
+        const scopeField = g.key === 'domain' ? 'domainId' : g.key
+        const rows = keys.map(k => ({
+          key: k,
+          name: g.key === 'principle' ? (PRINCIPLE_LABEL_SHORT[k] ?? k)
+              : g.key === 'domain'    ? (data.domainList.find(d => d.id === k)?.name ?? k)
+              : k,
+          counts: computeCounts(data.allLedgerPoints, data.statusByPointId, p => p[scopeField] === k),
+        }))
+        return {
+          key: g.key,
+          title: `Progress by ${g.label}`,
+          showAs,
+          groups: [{ key: 'all', name: 'All points', counts: allPointsCounts }, ...rows],
+        }
+      })
+    : []
+
+  // ── Derived: barriers ────────────────────────────────────────────────
+  const barrierPickerRows = (data?.barriers ?? []).filter(b => {
+    const t = barrierTags(b)
+    const hasLinks = (b.barrier_provision_points ?? []).length > 0
+    if (barrierFilter.principle) {
+      if (barrierFilter.principle === NOT_LINKED) { if (hasLinks) return false }
+      else if (!t.principles.includes(barrierFilter.principle)) return false
+    }
+    if (barrierFilter.domain) {
+      if (barrierFilter.domain === NOT_LINKED) { if (hasLinks) return false }
+      else if (!t.domains.includes(barrierFilter.domain)) return false
+    }
+    if (barrierFilter.category) {
+      if (barrierFilter.category === NOT_LINKED) { if (hasLinks) return false }
+      else if (!t.categories.includes(barrierFilter.category)) return false
+    }
+    return true
+  })
+
+  function toggleChosenBarrier(id) {
+    setChosenBarrierIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  const resolvedBarriers = !data ? [] :
+    barriersMode === 'all'    ? data.barriers :
+    barriersMode === 'choose' ? data.barriers.filter(b => chosenBarrierIds.has(b.id)) :
+    []
+
+  const barrierRows = resolvedBarriers.map(b => ({
+    description: b.description ?? '—',
+    whereItSits: barrierWhereItSits(b, data.domainNameById),
+    status: b.status,
+    actions: b.actions,
+  }))
+
+  // ── Derived: due for review ──────────────────────────────────────────
+  const reviewRows = (dueForReviewOn && data ? data.dueForReview : []).map(r => {
+    const meta = data.pointMeta[r.provisionPointId]
+    const status = data.statusByPointId[r.provisionPointId]
+    return {
+      point: meta?.label || r.provisionName || '—',
+      whereItSits: whereItSitsShort(meta),
+      statusText: status ? statusLabel(status) : '—',
+      dueLabel: new Date(r.nextReviewDue).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + (r.isOverdue ? ' (Overdue)' : ''),
+      isOverdue: r.isOverdue,
+    }
+  })
+
+  // ── Generate ──────────────────────────────────────────────────────────
+  async function handleDownloadPdf() {
+    if (!data) return
+    setGenerating(true)
+    setGenError(null)
+    try {
+      generateEvidenceReport({
         schoolName,
-        userProfile: profileRes.data  ?? null,
-      }
-
-      if (exportFormat === 'word') {
-        await generateEvidenceReportWord(reportArgs)
-      } else {
-        generateEvidenceReport(reportArgs)
-      }
+        userProfile: data.userProfile,
+        team: data.teamRows,
+        progressSections,
+        barrierRows,
+        reviewRows,
+      })
     } catch (err) {
-      console.error('[ReportBuilder] generation error:', err)
-      setGenError('Could not generate report — check console for details.')
+      console.error('[ReportBuilder] PDF generation error:', err)
+      setGenError('Could not generate the PDF — check console for details.')
     }
     setGenerating(false)
   }
@@ -657,6 +805,15 @@ function ReportBuilder({ schoolName = '', supabase: sb, school, schoolCtx = {}, 
     color:      active ? '#1B365D' : '#64748b',
     fontSize: '0.78rem', fontWeight: active ? 600 : 400,
   })
+  const checkboxRow = { display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.82rem', color: '#1A202C' }
+
+  const tickedGroupLabels = PROGRESS_GROUP_OPTIONS.filter(g => progressBy[g.key]).map(g => g.label)
+  const filterSummary = [
+    'Inclusion team',
+    tickedGroupLabels.length ? `Progress by ${tickedGroupLabels.join(', ')}` : null,
+    `Barriers: ${BARRIERS_MODE_OPTIONS.find(o => o.value === barriersMode)?.label}`,
+    dueForReviewOn ? 'Due for review' : null,
+  ].filter(Boolean).join(' · ')
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
@@ -664,7 +821,7 @@ function ReportBuilder({ schoolName = '', supabase: sb, school, schoolCtx = {}, 
       <div style={{ paddingBottom: 16, borderBottom: '1px solid #e2e8f0', marginBottom: 20 }}>
         <h1 style={{ fontSize: 15, fontWeight: 600, color: '#1A202C', marginBottom: 4 }}>Generate Report</h1>
         <p style={{ fontSize: '0.78rem', color: '#94a3b8', lineHeight: 1.5 }}>
-          Choose a purpose, scope by domain and student group, then generate your PDF.
+          Choose what to include, then preview or download.
         </p>
       </div>
 
@@ -690,127 +847,128 @@ function ReportBuilder({ schoolName = '', supabase: sb, school, schoolCtx = {}, 
           </button>
         )}
 
-        {/* Filter 1 — Report Purpose */}
+        {loadError && (
+          <div style={{ ...card, borderColor: '#fecaca', background: '#fef2f2', color: '#b91c1c', fontSize: '0.8rem' }}>
+            {loadError}
+          </div>
+        )}
+
+        {/* 1 — Inclusion team (always shown, not optional) */}
         <div style={card}>
-          <p style={cardHead}>Report Purpose</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            {REPORT_PURPOSE_OPTIONS.map(opt => {
-              const active = purpose === opt.id
-              return (
-                <button key={opt.id} type="button" onClick={() => setPurpose(opt.id)} style={{
-                  textAlign: 'left', padding: '13px 15px',
-                  border: `2px solid ${active ? '#1B365D' : '#e2e8f0'}`,
-                  borderRadius: 10, cursor: 'pointer',
-                  background: active ? 'rgba(27,54,93,0.05)' : '#fff',
-                  fontFamily: 'inherit', transition: 'border-color 0.12s',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
-                    <i className={`ti ${opt.icon}`} style={{ color: active ? '#1B365D' : '#94a3b8', fontSize: '1rem' }} />
-                    <span style={{ fontSize: '0.83rem', fontWeight: 700, color: active ? '#1B365D' : '#1A202C' }}>{opt.title}</span>
-                    {active && (
-                      <span style={{ marginLeft: 'auto', fontSize: '0.68rem', fontWeight: 600, background: '#1B365D', color: '#fff', padding: '2px 8px', borderRadius: 20 }}>
-                        Selected
-                      </span>
-                    )}
+          <p style={cardHead}>Inclusion Team</p>
+          {loadingData ? (
+            <p style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Loading…</p>
+          ) : (data?.teamRows.length ?? 0) === 0 ? (
+            <p style={{ fontSize: '0.8rem', color: '#94a3b8' }}>No active Named Person points found.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {data.teamRows.map(t => {
+                const chip = TEAM_CHIP_STYLE[t.chip]
+                return (
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, background: '#F7F8FA' }}>
+                    <span style={{ flex: '0 0 40%', fontSize: '0.8rem', fontWeight: 600, color: '#1A202C' }}>{t.role}</span>
+                    <span style={{ flex: 1, fontSize: '0.8rem', color: t.name ? '#1A202C' : '#94a3b8', fontStyle: t.name ? 'normal' : 'italic' }}>
+                      {t.name || 'Not recorded'}
+                    </span>
+                    <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 600, background: chip.bg, color: chip.color, flexShrink: 0 }}>
+                      {chip.label}
+                    </span>
                   </div>
-                  <p style={{ fontSize: '0.73rem', color: '#64748b', lineHeight: 1.4, margin: 0 }}>{opt.desc}</p>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* School cohort profile — used for the report's per-pupil funding figures */}
-        <div style={card}>
-          <p style={cardHead}>School Cohort Profile</p>
-          <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: 12 }}>
-            Used for funding-per-pupil figures in your report.
-          </p>
-          <SchoolContextPanel schoolCtx={schoolCtx} onSave={onCtxSave} ctxLoading={ctxLoading} readOnly={readOnly} />
-        </div>
-
-        {/* Filter 2 — Domain Scope */}
-        <div style={card}>
-          <p style={cardHead}>Domain Scope</p>
-          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-            <button type="button"
-              onClick={() => setSelectedDomains([])}
-              style={pill(selectedDomains.length === 0)}>
-              All domains
-            </button>
-            {REPORT_DOMAIN_OPTIONS.map(d => (
-              <button key={d.id} type="button"
-                onClick={() => toggleDomain(d.id)}
-                style={pill(selectedDomains.includes(d.id))}>
-                {d.label}
-              </button>
-            ))}
-          </div>
-          {purpose === 'domain_focus' && selectedDomains.length === 0 && (
-            <p style={{ fontSize: '0.75rem', color: '#D4751A', marginTop: 8 }}>
-              Domain Focus requires at least one domain selected.
-            </p>
+                )
+              })}
+            </div>
           )}
         </div>
 
-        {/* Filter 3 — Student Group */}
+        {/* 2 — Progress by */}
         <div style={card}>
-          <p style={cardHead}>Student Group</p>
-          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-            <button type="button"
-              onClick={() => setSelectedGroups([])}
-              style={pill(selectedGroups.length === 0)}>
-              All groups
-            </button>
-            {REPORT_GROUP_OPTIONS.map(g => (
-              <button key={g} type="button"
-                onClick={() => toggleGroup(g)}
-                style={pill(selectedGroups.includes(g))}>
-                {g}
+          <p style={cardHead}>Progress By</p>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
+            {PROGRESS_GROUP_OPTIONS.map(opt => (
+              <label key={opt.key} style={checkboxRow}>
+                <input type="checkbox" checked={progressBy[opt.key]} onChange={() => toggleProgressBy(opt.key)} />
+                {opt.label}
+              </label>
+            ))}
+          </div>
+          <p style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+            Show as
+          </p>
+          <RBChartToggle options={SHOW_AS_OPTIONS} value={showAs} onChange={setShowAs} />
+        </div>
+
+        {/* 3 — Barriers */}
+        <div style={card}>
+          <p style={cardHead}>Barriers</p>
+          <div style={{ display: 'flex', gap: 7, marginBottom: barriersMode === 'choose' ? 14 : 0 }}>
+            {BARRIERS_MODE_OPTIONS.map(opt => (
+              <button key={opt.value} type="button" onClick={() => setBarriersMode(opt.value)} style={pill(barriersMode === opt.value)}>
+                {opt.label}
               </button>
             ))}
           </div>
+
+          {barriersMode === 'choose' && data && (
+            <>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                <select value={barrierFilter.principle} onChange={e => setBarrierFilter(f => ({ ...f, principle: e.target.value }))} style={{ fontSize: '0.78rem', padding: '5px 8px', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+                  <option value="">All principles</option>
+                  {DFE_PRINCIPLES.map(p => <option key={p} value={p}>{PRINCIPLE_LABEL_SHORT[p] ?? p}</option>)}
+                  <option value={NOT_LINKED}>Not linked to provision</option>
+                </select>
+                <select value={barrierFilter.domain} onChange={e => setBarrierFilter(f => ({ ...f, domain: e.target.value }))} style={{ fontSize: '0.78rem', padding: '5px 8px', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+                  <option value="">All domains</option>
+                  {data.domainList.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  <option value={NOT_LINKED}>Not linked to provision</option>
+                </select>
+                <select value={barrierFilter.category} onChange={e => setBarrierFilter(f => ({ ...f, category: e.target.value }))} style={{ fontSize: '0.78rem', padding: '5px 8px', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+                  <option value="">All categories</option>
+                  {PROVISION_POINT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  <option value={NOT_LINKED}>Not linked to provision</option>
+                </select>
+              </div>
+
+              {barrierPickerRows.length === 0 ? (
+                <p style={{ fontSize: '0.8rem', color: '#94a3b8' }}>No barriers match these filters.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, overflowY: 'auto' }}>
+                  {barrierPickerRows.map(b => {
+                    const activity = barrierActivityState(b, (data.allLedgerPoints ?? []).map(p => ({
+                      school_id: school, provision_point_id: p.id, status: data.statusByPointId[p.id],
+                    })))
+                    return (
+                      <label key={b.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 8, background: '#F7F8FA', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={chosenBarrierIds.has(b.id)} onChange={() => toggleChosenBarrier(b.id)} style={{ marginTop: 2 }} />
+                        <span style={{ flex: 1 }}>
+                          <span style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#1A202C' }}>{b.description}</span>
+                          <span style={{ display: 'block', fontSize: '0.72rem', color: '#64748b', marginTop: 2, whiteSpace: 'pre-line' }}>
+                            {barrierWhereItSits(b, data.domainNameById)}
+                          </span>
+                        </span>
+                        <span style={{ fontSize: '0.7rem', fontWeight: 600, color: activity === 'has_activity' ? '#2F855A' : '#94a3b8', flexShrink: 0 }}>
+                          {activity === 'has_activity' ? 'Has activity' : 'No activity yet'}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+            </>
+          )}
         </div>
 
-        {/* Provision view toggle — Full Strategy or Domain Focus only */}
-        {showProvisionToggle && (
-          <div style={card}>
-            <p style={cardHead}>Organise Provision By</p>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {[
-                { id: 'domain',    label: 'Domain' },
-                { id: 'principle', label: 'DfE Principle' },
-              ].map(opt => (
-                <button key={opt.id} type="button"
-                  onClick={() => setProvisionView(opt.id)}
-                  style={pill(provisionView === opt.id)}>
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-            <p style={{ fontSize: '0.73rem', color: '#94a3b8', marginTop: 8 }}>
-              Controls how provision points are organised in Section 5.
-            </p>
-          </div>
-        )}
-
-        {/* Appendix B toggle — Full Strategy only */}
-        {showAppendixB && (
-          <div style={card}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-              <RBToggle value={includeAppendixB} onChange={setIncludeAppendixB} />
-              <div>
-                <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1A202C' }}>
-                  Appendix B: Full Provision Checklist
-                </p>
-                <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>
-                  All active provision points with status, organised by domain and sub-domain.
-                  Off by default — adds significant length to the report.
-                </p>
-              </div>
+        {/* 4 — Due for review */}
+        <div style={card}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <RBToggle value={dueForReviewOn} onChange={setDueForReviewOn} />
+            <div>
+              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1A202C' }}>Due for review</p>
+              <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>
+                Same 60-day window as the homepage's "Coming up for review".
+              </p>
             </div>
           </div>
-        )}
+        </div>
 
         {/* Filter summary */}
         <div style={{ background: '#F0F2F5', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 12 }}>
@@ -818,9 +976,50 @@ function ReportBuilder({ schoolName = '', supabase: sb, school, schoolCtx = {}, 
           <p style={{ fontSize: '0.8rem', color: '#475569', lineHeight: 1.5, fontWeight: 500 }}>{filterSummary}</p>
         </div>
 
+        {/* Preview */}
+        {showPreview && data && (
+          <div style={{ ...card, background: '#F7F8FA' }}>
+            <p style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 14 }}>
+              Preview
+            </p>
+            <div style={{ background: '#fff', borderRadius: 10, padding: 20, border: '1px solid #e2e8f0' }}>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1B365D', marginBottom: 2 }}>{schoolName || 'School'}</h2>
+              <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: 16 }}>{fmt()}</p>
+
+              <p style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1B365D', marginTop: 16, marginBottom: 6 }}>Inclusion Team</p>
+              {data.teamRows.length === 0 ? <p style={{ fontSize: '0.78rem', color: '#94a3b8' }}>None.</p> : data.teamRows.map(t => (
+                <p key={t.id} style={{ fontSize: '0.78rem', color: '#1A202C', margin: '2px 0' }}>
+                  {t.role} — {t.name || 'Not recorded'} — <span style={{ color: TEAM_CHIP_STYLE[t.chip].color, fontWeight: 600 }}>{TEAM_CHIP_STYLE[t.chip].label}</span>
+                </p>
+              ))}
+
+              {progressSections.map(section => (
+                <div key={section.key}>
+                  <p style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1B365D', marginTop: 16, marginBottom: 6 }}>{section.title}</p>
+                  {section.groups.map(g => (
+                    <p key={g.key} style={{ fontSize: '0.78rem', color: '#1A202C', margin: '2px 0' }}>
+                      {g.name}: {g.counts.inPlace}/{g.counts.total} in place
+                    </p>
+                  ))}
+                </div>
+              ))}
+
+              <p style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1B365D', marginTop: 16, marginBottom: 6 }}>Barriers</p>
+              {barrierRows.length === 0 ? <p style={{ fontSize: '0.78rem', color: '#94a3b8' }}>None.</p> : barrierRows.map((r, i) => (
+                <p key={i} style={{ fontSize: '0.78rem', color: '#1A202C', margin: '2px 0' }}>{r.description}</p>
+              ))}
+
+              <p style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1B365D', marginTop: 16, marginBottom: 6 }}>Due for Review</p>
+              {reviewRows.length === 0 ? <p style={{ fontSize: '0.78rem', color: '#94a3b8' }}>None.</p> : reviewRows.map((r, i) => (
+                <p key={i} style={{ fontSize: '0.78rem', color: r.isOverdue ? '#C0392B' : '#1A202C', margin: '2px 0' }}>{r.point} — {r.dueLabel}</p>
+              ))}
+            </div>
+          </div>
+        )}
+
       </div>
 
-      {/* Sticky generate bar */}
+      {/* Sticky summary bar */}
       <div style={{
         position: 'sticky', bottom: 0, background: '#fff',
         borderTop: '1px solid #e2e8f0', padding: '12px 0',
@@ -829,48 +1028,35 @@ function ReportBuilder({ schoolName = '', supabase: sb, school, schoolCtx = {}, 
         {genError && (
           <p style={{ fontSize: '0.78rem', color: '#dc2626', margin: 0 }}>{genError}</p>
         )}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-          <p style={{ fontSize: '0.78rem', color: '#64748b', flex: 1, minWidth: 0 }}>
-            {purpose === 'full_strategy' ? 'Inclusion Strategy Statement' : 'Inclusion Evidence Report'}
-            {' — '}
-            {domainLabel}
-            {selectedGroups.length > 0 ? ` · ${groupLabel}` : ''}
-          </p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-            <div style={{ display: 'flex', borderRadius: 8, border: '1.5px solid #e2e8f0', overflow: 'hidden' }}>
-              {[
-                { id: 'pdf',  label: 'PDF' },
-                { id: 'word', label: 'Word' },
-              ].map(opt => (
-                <button key={opt.id} type="button"
-                  onClick={() => setExportFormat(opt.id)}
-                  style={{
-                    padding: '7px 13px', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                    fontSize: '0.78rem', fontWeight: exportFormat === opt.id ? 600 : 400,
-                    background: exportFormat === opt.id ? '#1B365D' : '#fff',
-                    color:      exportFormat === opt.id ? '#fff'    : '#64748b',
-                  }}>
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-            <button type="button" onClick={handleGenerate} disabled={generating || !generateEnabled} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '9px 18px', borderRadius: 8, border: 'none',
-              background: (generating || !generateEnabled) ? '#94a3b8' : '#1B365D',
-              color: '#fff', fontSize: '0.85rem', fontWeight: 600,
-              cursor: (generating || !generateEnabled) ? 'default' : 'pointer',
-              flexShrink: 0, fontFamily: 'inherit',
-            }}>
-              <i className="ti ti-download" style={{ fontSize: '0.9rem', lineHeight: 1 }} />
-              {generating ? 'Generating…' : 'Generate Report'}
-            </button>
-          </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <button type="button" onClick={() => setShowPreview(v => !v)} disabled={!data} style={{
+            padding: '9px 16px', borderRadius: 8, border: '1.5px solid #1B365D', cursor: data ? 'pointer' : 'default',
+            background: '#fff', color: '#1B365D', fontSize: '0.85rem', fontWeight: 600, fontFamily: 'inherit',
+          }}>
+            {showPreview ? 'Hide preview' : 'Preview'}
+          </button>
+          <button type="button" onClick={handleDownloadPdf} disabled={generating || !data} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '9px 18px', borderRadius: 8, border: 'none',
+            background: (generating || !data) ? '#94a3b8' : '#1B365D',
+            color: '#fff', fontSize: '0.85rem', fontWeight: 600,
+            cursor: (generating || !data) ? 'default' : 'pointer', fontFamily: 'inherit',
+          }}>
+            <i className="ti ti-download" style={{ fontSize: '0.9rem', lineHeight: 1 }} />
+            {generating ? 'Generating…' : 'Download PDF'}
+          </button>
+          <button type="button" disabled title="Word export is being rebuilt for the new report — coming shortly." style={{
+            padding: '9px 18px', borderRadius: 8, border: '1.5px solid #e2e8f0', cursor: 'default',
+            background: '#f8fafc', color: '#94a3b8', fontSize: '0.85rem', fontWeight: 600, fontFamily: 'inherit',
+          }}>
+            Download Word
+          </button>
         </div>
       </div>
     </div>
   )
 }
+
 
 // ── Barriers constants ────────────────────────────────────────────────
 const BARRIER_GROUPS = [
@@ -4470,7 +4656,7 @@ export default function App() {
 
         {view !== 'mat' && selectedSchool && selectedDomain === 'report-builder' && (
           <ReportBuilder
-            schoolName={schoolName}
+            schoolName={viewedSchoolName}
             supabase={supabase}
             school={selectedSchool}
             schoolCtx={schoolCtx}
