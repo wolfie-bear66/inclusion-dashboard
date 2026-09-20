@@ -403,6 +403,8 @@ it for their own school. Not previously documented here — live-verified 2026-0
 
 **Critical:** `domain_id` and `sub_domain_id` are UUIDs — never pass domain name strings. Always look up or hardcode UUIDs from the domains/sub_domains tables.
 
+**Since the Barriers form reshape (Session 89):** `domain_id`/`sub_domain_id` are no longer picked directly in the main `BarriersView` add/edit form — they are derived and written automatically from the first selected provision point (in domain → sub-domain → point display-order), via `barrier_provision_points` (see below), or from the chosen domain when "None of these fit" is used (`sub_domain_id` stays `null` in that case). The columns themselves are unchanged; only how the form populates them changed. `InclusionStrategyWizard.jsx`'s own separate inline barrier form (`Step2Barriers`) still writes `domain_id` directly and was not touched.
+
 **Domain UUIDs (verified 28 June 2026):**
 - SEND Support & Needs: `11111111-0000-0000-0000-000000000001`
 - Equity & Disadvantage: `11111111-0000-0000-0000-000000000002`
@@ -443,7 +445,9 @@ it for their own school. Not previously documented here — live-verified 2026-0
 
 ---
 
-## barrier_provision_links
+## barrier_provision_links — LEGACY, superseded (Session 89)
+
+**As of Session 89, no code reads or writes this table.** It linked a barrier to an `entries` row — the wrong target, since an `entries` row only exists once a school has touched that provision point, so a barrier could never be linked to an untouched point. It has been replaced by `barrier_provision_points` (below), which links directly to `provision_points`. The table and its existing rows were left exactly as they were (not dropped, not migrated in place) — a one-off backfill copied each row into `barrier_provision_points` (resolving `entry_id → provision_point_id`) when the new table was created. Kept for historical reference only; do not add new reads/writes against it.
 
 | column | type | notes |
 |--------|------|-------|
@@ -455,14 +459,41 @@ it for their own school. Not previously documented here — live-verified 2026-0
 
 **Join path to school:** `barrier_provision_links.entry_id` → `entries.school_id`
 
-**Seed SQL pattern:**
-```sql
-INSERT INTO public.barrier_provision_links (barrier_id, entry_id)
-VALUES ('', '')
-ON CONFLICT DO NOTHING;
-```
-
 **Note:** Rydell High barrier "No designated named person for LAC" has no provision link — no matching provision point label exists in the framework. Barrier is intentionally unlinked. Do not attempt to fix this.
+
+---
+
+## barrier_provision_points (Session 89)
+
+Links a barrier directly to the framework provision points it addresses — a barrier's domain, DfE principle(s) and category(ies) are derived from these (see `src/utils/barrierTags.js`: `tags()`, `activityState()`), rather than picked by the school. Replaces `barrier_provision_links` for all current code paths (`BarriersView` in `App.jsx`, `MATBarriersView` in `MATDashboard.jsx`).
+
+| column | type | notes |
+|--------|------|-------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| barrier_id | uuid | FK → barriers.id, `ON DELETE CASCADE` |
+| provision_point_id | uuid | FK → provision_points.id, **no cascade** — a provision point is deactivated, never deleted, so a delete attempt should fail loudly rather than silently strip schools' links |
+| created_at | timestamptz | NOT NULL, default `now()` |
+
+**Unique constraint:** `(barrier_id, provision_point_id)`.
+
+**RLS — four policies, mirroring `barriers`' own exactly:**
+
+| Policy | Command | Using / With check |
+|---|---|---|
+| `barrier_provision_points_select` | SELECT | `barrier_id IN (SELECT b.id FROM barriers b WHERE b.school_id = get_my_school_id())` — own school |
+| `barrier_provision_points_select_mat_admin` | SELECT | `barrier_id IN (SELECT b.id FROM barriers b JOIN schools s ON s.id = b.school_id JOIN profiles p ON p.mat_id = s.mat_id WHERE p.id = auth.uid())` — trust-wide read; same join-through-`barriers`-and-`schools` shape as `evidence_entries_select_mat_admin`. **No role check** — any caller whose own `profiles.mat_id` matches, not just `mat_admin`. |
+| `barrier_provision_points_insert` | INSERT | own school, same shape as select |
+| `barrier_provision_points_delete` | DELETE | own school, same shape as select |
+
+No update policy — links are synced by inserting additions and deleting removals (a diff against what was already linked), never updated in place.
+
+**Migration:** `supabase/migrations/20260919105136_barrier_provision_points.sql`.
+
+**Join path to provision point:** `barrier_provision_points.provision_point_id` → `provision_points.id` directly (no `entries` hop).
+
+**Join path to school:** via the parent barrier — `barrier_provision_points.barrier_id` → `barriers.school_id` (never via `provision_point_id` → `entries`, since several schools can have an entry for the same point).
+
+**Client-side scoping note:** the trust-wide MAT-admin read policy above has no role check, so any client query against `barriers` (or `barrier_provision_points`) without an explicit `.eq('school_id', ...)` will return every school's rows to any caller sharing that `mat_id` — RLS alone does not scope it to "MAT admins only" or "this school only". `BarriersView`'s two `barriers` queries in `App.jsx` (initial fetch and `refresh()`) now filter explicitly with `.eq('school_id', school)` for this reason (Session 89) — before that fix, a single school's Barriers page silently showed every barrier in the trust. `MATDashboard.jsx`'s own `barriers` fetch intentionally has no filter (trust-wide Barriers Intelligence is the point of that view). See TASKS.md for one further query (`InclusionStrategyWizard.jsx`) flagged with the same unfiltered pattern but not yet fixed.
 
 ---
 

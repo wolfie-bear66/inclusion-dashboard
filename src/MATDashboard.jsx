@@ -1074,7 +1074,7 @@ function AnalyticsView({ schools, domains, matrix, ppMeta, ppEvCountMap, activeP
 }
 
 // ── MAT Barriers Intelligence view ───────────────────────────────────
-function MATBarriersView({ barriers, barrierLinks, schools, ppMeta, entries, domains, subDomains }) {
+function MATBarriersView({ barriers, barrierProvisionPoints, schools, ppMeta, entries, domains, subDomains }) {
   const [activeDomain, setActiveDomain] = useState('all')
   const [activeStatus, setActiveStatus] = useState('all')
   const [expandedPP,   setExpandedPP]   = useState(null)
@@ -1096,21 +1096,28 @@ function MATBarriersView({ barriers, barrierLinks, schools, ppMeta, entries, dom
       return ppMeta.some(pp => pp.domain_id === did)
     })
 
-  // ── Build from barrierLinks ─────────────────────────────────────────
-  // Build entryId → entry lookup from entries prop
-  const entryById = new Map(entries.map(e => [e.id, e]))
+  // ── Build from barrierProvisionPoints ────────────────────────────────
+  // The school a link belongs to comes from the barrier's own school_id — never from an
+  // entry — because several schools can have an entry for the same provision point, so
+  // resolving school via provision_point_id -> entries would attribute a barrier to the
+  // wrong school. A barrier can now be linked to a point its own school has never entered
+  // (no entries row); that's treated as "not started" rather than skipped.
+  const barrierById = new Map(barriers.map(b => [b.id, b]))
+  const entryByKey  = new Map(entries.map(e => [`${e.school_id}:${e.provision_point_id}`, e]))
 
   const barrierToLinkedEntries = new Map()
-  const entryIdsWithBarrier    = new Set()
-  for (const bl of barrierLinks) {
-    const entry = entryById.get(bl.entry_id)
-    if (!entry) continue
-    entryIdsWithBarrier.add(entry.id)
+  const entryIdsWithBarrier    = new Set()  // `${provision_point_id}:${school_id}` keys with a barrier linked
+  for (const bl of barrierProvisionPoints) {
+    const barrier = barrierById.get(bl.barrier_id)
+    if (!barrier) continue
+    const schoolId = barrier.school_id
+    const entry    = entryByKey.get(`${schoolId}:${bl.provision_point_id}`)  // undefined = not started
+    entryIdsWithBarrier.add(`${bl.provision_point_id}:${schoolId}`)
     if (!barrierToLinkedEntries.has(bl.barrier_id)) barrierToLinkedEntries.set(bl.barrier_id, [])
     barrierToLinkedEntries.get(bl.barrier_id).push({
-      entryId:  entry.id,
-      ppId:     entry.provision_point_id,
-      schoolId: entry.school_id,
+      entryId:  entry?.id ?? null,
+      ppId:     bl.provision_point_id,
+      schoolId,
     })
   }
 
@@ -1148,7 +1155,7 @@ function MATBarriersView({ barriers, barrierLinks, schools, ppMeta, entries, dom
       if (dName !== activeDomain) continue
     }
     schoolHasAnyNIP[e.school_id] = true
-    if (entryIdsWithBarrier.has(e.id)) continue  // has a barrier — skip for panel 2
+    if (entryIdsWithBarrier.has(`${e.provision_point_id}:${e.school_id}`)) continue  // has a barrier — skip for panel 2
 
     const sId   = e.school_id
     const dName = domainIdToName.get(ppIdToDomainId.get(e.provision_point_id)) ?? 'Unknown domain'
@@ -1518,7 +1525,7 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
   const [loading,             setLoading]             = useState(true)
   const [entries,             setEntries]             = useState([])
   const [barriers,            setBarriers]            = useState([])
-  const [barrierLinks,        setBarrierLinks]        = useState([])
+  const [barrierProvisionPoints, setBarrierProvisionPoints] = useState([])
 
   // Mobile sidebar
   const [isMobile,    setIsMobile]    = useState(window.innerWidth < 768)
@@ -1698,8 +1705,8 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
           // TODO: implement reviews due query if schema relationship differs
           setReviewsDue(null)
         }
-        // Step 4: barriers + barrier_provision_links
-        const [barriersRes, barrierLinksRes] = await Promise.all([
+        // Step 4: barriers + barrier_provision_points
+        const [barriersRes, barrierProvisionPointsRes] = await Promise.all([
           supabase
             .from('barriers')
             .select(`
@@ -1708,14 +1715,14 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
               status, actions, date_identified, next_review_due
             `),
           supabase
-            .from('barrier_provision_links')
-            .select('id, barrier_id, entry_id')
+            .from('barrier_provision_points')
+            .select('id, barrier_id, provision_point_id')
         ])
 
         if (cancelled) return
 
         if (!barriersRes.error) setBarriers(barriersRes.data ?? [])
-        if (!barrierLinksRes.error) setBarrierLinks(barrierLinksRes.data ?? [])
+        if (!barrierProvisionPointsRes.error) setBarrierProvisionPoints(barrierProvisionPointsRes.data ?? [])
       } catch (err) {
         console.error('[loadData error]', err)
         setReviewsDue(null)
@@ -1820,7 +1827,7 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
         {activeView === 'barriers' && (
           <MATBarriersView
             barriers={barriers}
-            barrierLinks={barrierLinks}
+            barrierProvisionPoints={barrierProvisionPoints}
             schools={schools}
             ppMeta={ppMeta}
             entries={entries}
