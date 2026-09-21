@@ -2,9 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 import { generateStrategyWord } from '../generateStrategyWord'
 import { tags as barrierTags, activityState as barrierActivityState } from '../utils/barrierTags'
 import { saveBarrier } from '../utils/barrierSave'
+import { computeCounts } from '../utils/computeCounts'
 import BarrierForm from '../components/BarrierForm'
+import StatusBar from '../components/StatusBar'
 import { BARRIER_SELECT } from '../constants/barriers'
 import { PRINCIPLE_LABEL_SHORT } from '../constants/principles'
+
+// One in-flight creation promise per school, shared across mounts/remounts of this component
+// within the same tab. inclusion_strategy_drafts.school_id has no unique constraint, so two
+// concurrent "no draft yet" loads (e.g. a fast remount via "Update my dashboard" then straight
+// back in) would otherwise both insert and silently duplicate the draft. The second caller
+// awaits the first's insert instead of starting its own.
+const draftCreationLocks = new Map()
 
 // ── Constants ─────────────────────────────────────────────────────────
 const NAVY   = '#1B365D'
@@ -120,7 +129,7 @@ function SaveIndicator({ status }) {
 }
 
 // ── Step 1: Details ──────────────────────────────────────────────────
-function Step1Details({ form, setField, readOnly }) {
+function Step1Details({ form, setField, readOnly, onBlurSave }) {
   return (
     <div style={cardStyle}>
       <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1A202C', marginBottom: 4 }}>Details</h3>
@@ -132,18 +141,21 @@ function Step1Details({ form, setField, readOnly }) {
           <label style={labelStyle}>Academic year label</label>
           <input type="text" style={inp} value={form.academic_year_label ?? ''} disabled={readOnly}
             placeholder="e.g. 2026/27"
-            onChange={e => setField('academic_year_label', e.target.value)} />
+            onChange={e => setField('academic_year_label', e.target.value)}
+            onBlur={onBlurSave} />
         </div>
         <div>
           <label style={labelStyle}>Review date</label>
           <input type="date" style={inp} value={form.review_date ?? ''} disabled={readOnly}
-            onChange={e => setField('review_date', e.target.value)} />
+            onChange={e => setField('review_date', e.target.value)}
+            onBlur={onBlurSave} />
         </div>
         <div>
           <label style={labelStyle}>Authorised by</label>
           <input type="text" style={inp} value={form.authorised_by ?? ''} disabled={readOnly}
             placeholder="Name of the person authorising this statement"
-            onChange={e => setField('authorised_by', e.target.value)} />
+            onChange={e => setField('authorised_by', e.target.value)}
+            onBlur={onBlurSave} />
         </div>
       </div>
     </div>
@@ -157,6 +169,98 @@ function ComingSoonStep({ title, note }) {
       <p style={{ fontSize: '0.82rem', color: '#94a3b8', lineHeight: 1.6 }}>
         {note || 'This step is being rebuilt and will be added in the next update. Nothing here is lost — carry on to the other steps.'}
       </p>
+    </div>
+  )
+}
+
+// ── Step 2: Where you are ────────────────────────────────────────────
+// All numbers here come from provisionPoints + allEntries, already fetched school-scoped by
+// the wizard's own load effect — no new queries. Never reads inclusion_strategy_priorities
+// .principle, which is a separate, often-null field on activity rows, not a progress source.
+function Step2WhereYouAre({ provisionPoints, allEntries, onUpdateDashboard }) {
+  const [selectedPrinciple, setSelectedPrinciple] = useState(null)
+
+  const statusByPointId = {}
+  for (const e of allEntries) statusByPointId[e.provision_point_id] = e.status
+
+  const overall = computeCounts(provisionPoints, statusByPointId)
+  const pctInPlace    = overall.total ? Math.round((overall.inPlace / overall.total) * 100) : 0
+  const pctNotStarted = overall.total ? Math.round((overall.notStarted / overall.total) * 100) : 0
+
+  const principles = Object.keys(PRINCIPLE_LABEL_SHORT)
+  const principlePoints = selectedPrinciple
+    ? provisionPoints.filter(pp => pp.principle === selectedPrinciple)
+    : []
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{
+        background: 'rgba(217,154,27,0.10)', border: '1px solid rgba(217,154,27,0.35)', borderRadius: 10,
+        padding: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+      }}>
+        <p style={{ fontSize: '0.8rem', color: '#7A5209', lineHeight: 1.5, margin: 0, flex: 1, minWidth: 240 }}>
+          Your strategy will be more useful once your dashboard is up to date. Right now {pctInPlace}% of your points are
+          in place and {pctNotStarted}% haven't been started. You can carry on and get a "story so far" draft, or update
+          the dashboard first. Nothing here is locked.
+        </p>
+        {onUpdateDashboard && (
+          <button type="button" style={ghostBtn} onClick={onUpdateDashboard}>Update my dashboard</button>
+        )}
+      </div>
+
+      <div style={cardStyle}>
+        <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1A202C', marginBottom: 4 }}>Where you are</h3>
+        <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: 18 }}>
+          Progress by DfE principle. Select a principle to see its points.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {principles.map(principle => {
+            const counts = computeCounts(provisionPoints, statusByPointId, pp => pp.principle === principle)
+            const active = selectedPrinciple === principle
+            return (
+              <button key={principle} type="button"
+                onClick={() => setSelectedPrinciple(active ? null : principle)}
+                style={{
+                  textAlign: 'left', border: `1px solid ${active ? NAVY : BORDER}`, borderRadius: 10,
+                  padding: 12, background: active ? 'rgba(27,54,93,0.04)' : '#fff', cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1A202C', marginBottom: 6 }}>
+                  {PRINCIPLE_LABEL_SHORT[principle] ?? principle}
+                </div>
+                <StatusBar counts={counts} />
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {selectedPrinciple && (
+        <div style={cardStyle}>
+          <h3 style={{ fontSize: '0.86rem', fontWeight: 600, color: '#1A202C', marginBottom: 12 }}>
+            {PRINCIPLE_LABEL_SHORT[selectedPrinciple] ?? selectedPrinciple}
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {principlePoints.map(pp => {
+              const status = statusByPointId[pp.id]
+              const style = POINT_STATUS_STYLE[status] ?? { bg: 'rgba(184,190,199,0.18)', fg: '#64748b', label: 'Not Started' }
+              return (
+                <div key={pp.id} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                  padding: '7px 0', borderBottom: `1px solid ${BORDER}`,
+                }}>
+                  <span style={{ fontSize: '0.8rem', color: '#334155' }}>{pp.label}</span>
+                  <span style={{
+                    fontSize: '0.7rem', fontWeight: 600, padding: '3px 8px', borderRadius: 999, flexShrink: 0,
+                    background: style.bg, color: style.fg,
+                  }}>
+                    {style.label}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -658,6 +762,7 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
   const [step, setStep]         = useState(1)
   const [maxVisited, setMaxVisited] = useState(1)
   const [saveStatus, setSaveStatus] = useState('idle')
+  const [saveError, setSaveError] = useState(null)
 
   const [barriers, setBarriers] = useState([])
   const [provisionPoints, setProvisionPoints] = useState([])
@@ -691,18 +796,26 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
 
       let draft = draftRes.data?.[0] ?? null
       if (!draft && !readOnly) {
-        let defaultAuthorisedBy = ''
-        const userId = userRes.data?.user?.id
-        if (userId) {
-          const { data: profile } = await sb.from('profiles').select('first_name, last_name').eq('id', userId).single()
-          if (profile) defaultAuthorisedBy = [profile.first_name, profile.last_name].filter(Boolean).join(' ')
+        // Create-once lock: a concurrent "no draft yet" load for this same school (e.g. a fast
+        // remount) awaits this same insert instead of racing its own — see the module-level
+        // draftCreationLocks comment for why that race matters here specifically.
+        if (!draftCreationLocks.has(school)) {
+          draftCreationLocks.set(school, (async () => {
+            let defaultAuthorisedBy = ''
+            const userId = userRes.data?.user?.id
+            if (userId) {
+              const { data: profile } = await sb.from('profiles').select('first_name, last_name').eq('id', userId).single()
+              if (profile) defaultAuthorisedBy = [profile.first_name, profile.last_name].filter(Boolean).join(' ')
+            }
+            const { data: created } = await sb.from('inclusion_strategy_drafts').insert({
+              school_id: school,
+              academic_year_label: defaultAcademicYearLabel(),
+              authorised_by: defaultAuthorisedBy,
+            }).select('*').single()
+            return created
+          })().finally(() => draftCreationLocks.delete(school)))
         }
-        const { data: created } = await sb.from('inclusion_strategy_drafts').insert({
-          school_id: school,
-          academic_year_label: defaultAcademicYearLabel(),
-          authorised_by: defaultAuthorisedBy,
-        }).select('*').single()
-        draft = created
+        draft = await draftCreationLocks.get(school)
       }
 
       if (cancelled) return
@@ -768,25 +881,47 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
     setForm(prev => ({ ...prev, [key]: value }))
   }
 
+  // Returns { ok, error } rather than throwing — every caller (goToStep, the blur handler,
+  // "Update my dashboard") checks ok before doing anything that assumes the save landed, so a
+  // write failure shows the error and blocks navigation instead of silently losing the edit.
   async function persistDraft(fields) {
-    if (!draftId || readOnly) return
+    if (!draftId || readOnly) return { ok: true }
     setSaveStatus('saving')
-    await sb.from('inclusion_strategy_drafts').update(fields).eq('id', draftId)
+    setSaveError(null)
+    const { error } = await sb.from('inclusion_strategy_drafts').update(fields).eq('id', draftId)
+    if (error) {
+      console.error('Draft save error:', error)
+      setSaveStatus('idle')
+      setSaveError('Could not save your changes — please try again.')
+      return { ok: false, error }
+    }
     setSaveStatus('saved')
     setTimeout(() => setSaveStatus('idle'), 1500)
+    return { ok: true }
   }
 
-  async function goToStep(n) {
-    await persistDraft({
+  function detailsAndTextFields() {
+    return {
       academic_year_label: form.academic_year_label || null,
       review_date: form.review_date || null,
       authorised_by: form.authorised_by || null,
       statement_of_intent: form.statement_of_intent || null,
       further_information: form.further_information || null,
       previous_year_review: form.previous_year_review || null,
-    })
+    }
+  }
+
+  async function goToStep(n) {
+    const { ok } = await persistDraft(detailsAndTextFields())
+    if (!ok) return
     setStep(n)
     setMaxVisited(prev => Math.max(prev, n))
+  }
+
+  async function handleUpdateDashboard() {
+    const { ok } = await persistDraft(detailsAndTextFields())
+    if (!ok) return
+    onUpdateDashboard?.()
   }
 
   function toggleBarrierSelected(barrierId, checked) {
@@ -906,17 +1041,31 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <SaveIndicator status={saveStatus} />
             {onUpdateDashboard && (
-              <button type="button" onClick={onUpdateDashboard} style={{ ...smallBtn, padding: '6px 12px' }}>
+              <button type="button" onClick={handleUpdateDashboard} style={{ ...smallBtn, padding: '6px 12px' }}>
                 Update my dashboard
               </button>
             )}
           </div>
         </div>
+        {saveError && (
+          <p style={{
+            fontSize: '0.76rem', color: '#C0392B', background: 'rgba(192,57,43,0.08)',
+            border: '1px solid rgba(192,57,43,0.25)', borderRadius: 7, padding: '7px 10px', marginBottom: 8,
+          }}>
+            {saveError}
+          </p>
+        )}
         <StepIndicator step={step} maxVisited={maxVisited} onJump={goToStep} />
       </div>
 
-      {step === 1 && <Step1Details form={form} setField={setField} readOnly={readOnly} />}
-      {step === 2 && <ComingSoonStep title="Where you are" />}
+      {step === 1 && (
+        <Step1Details form={form} setField={setField} readOnly={readOnly}
+          onBlurSave={() => persistDraft(detailsAndTextFields())} />
+      )}
+      {step === 2 && (
+        <Step2WhereYouAre provisionPoints={provisionPoints} allEntries={allEntries}
+          onUpdateDashboard={onUpdateDashboard ? handleUpdateDashboard : null} />
+      )}
       {step === 3 && (
         <Step3BarriersAndActivity
           school={school} sb={sb} domains={domains}
