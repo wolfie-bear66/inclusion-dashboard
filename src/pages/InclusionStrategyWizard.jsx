@@ -265,6 +265,49 @@ function Step2WhereYouAre({ provisionPoints, allEntries, onUpdateDashboard }) {
   )
 }
 
+// ── Step 4: Outcomes ──────────────────────────────────────────────────
+// No outcome row is ever auto-created — dashboard data informs this step only through the
+// read-only barrier summary and the placeholder wording below, never by writing into the DB.
+function Step4Outcomes({ outcomes, selectedBarriers, onFieldChange, onBlurSave, onDelete, onAdd, readOnly }) {
+  return (
+    <div style={cardStyle}>
+      <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1A202C', marginBottom: 4 }}>Intended outcomes</h3>
+      <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: 8 }}>
+        What outcomes are you aiming for from this year's activity, and how will you know you've achieved them?
+      </p>
+      {selectedBarriers.length > 0 && (
+        <p style={{ fontSize: '0.76rem', color: '#94a3b8', marginBottom: 18, fontStyle: 'italic' }}>
+          This strategy's barriers: {selectedBarriers.map(b => b.description).join('; ')}
+        </p>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {outcomes.map(row => (
+          <div key={row.__localId} style={{ border: `1px solid ${BORDER}`, borderRadius: 10, padding: 12 }}>
+            <label style={labelStyle}>Outcome</label>
+            <textarea rows={2} style={{ ...inp, resize: 'vertical', marginBottom: 10 }} disabled={readOnly}
+              value={row.outcome ?? ''} onChange={e => onFieldChange(row.__localId, 'outcome', e.target.value)}
+              onBlur={() => onBlurSave(row.__localId)}
+              placeholder="e.g. Reduce persistent absence for our PP cohort" />
+            <label style={labelStyle}>Success criteria</label>
+            <textarea rows={2} style={{ ...inp, resize: 'vertical' }} disabled={readOnly}
+              value={row.success_criteria ?? ''} onChange={e => onFieldChange(row.__localId, 'success_criteria', e.target.value)}
+              onBlur={() => onBlurSave(row.__localId)}
+              placeholder="e.g. Attendance for this group rises by 3 percentage points by July" />
+            {!readOnly && (
+              <div style={{ textAlign: 'right', marginTop: 8 }}>
+                <button type="button" style={smallBtn} onClick={() => onDelete(row.__localId)}>Delete</button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      {!readOnly && (
+        <button type="button" style={{ ...ghostBtn, marginTop: 12 }} onClick={onAdd}>+ Add outcome</button>
+      )}
+    </div>
+  )
+}
+
 // ── Step 3: Barriers and activity ────────────────────────────────────
 function PointRow({ label, statusLabel, statusColour, universalOrTargeted, trailing }) {
   return (
@@ -377,16 +420,18 @@ function BarrierActivityCard({
           </div>
         )}
 
+        {/* Available regardless of activity state — a barrier can have a recurring trend/theme
+            worth noting in the Word export whether or not it currently has activity against it. */}
+        <div>
+          <label style={{ ...labelStyle, fontSize: '0.72rem' }}>Trend or theme over time (optional)</label>
+          <textarea rows={2} style={{ ...inp, resize: 'vertical' }} disabled={readOnly}
+            defaultValue={barrierNote ?? ''}
+            onBlur={e => onNoteChange(barrier.id, e.target.value)}
+            placeholder="e.g. this has recurred across the last two academic years" />
+        </div>
+
         {isNoActivity && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div>
-              <label style={{ ...labelStyle, fontSize: '0.72rem' }}>Trend or theme over time (optional)</label>
-              <textarea rows={2} style={{ ...inp, resize: 'vertical' }} disabled={readOnly}
-                defaultValue={barrierNote ?? ''}
-                onBlur={e => onNoteChange(barrier.id, e.target.value)}
-                placeholder="e.g. this has recurred across the last two academic years" />
-            </div>
-
             {plannedActivities.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <p style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
@@ -661,9 +706,13 @@ function Step3BarriersAndActivity({
 }
 
 // ── Step "Preview and Word" ──────────────────────────────────────────
-function Step7PreviewAndWord({ form, selectedBarriers, barrierToPriorities, entryStatusByPP, schoolName, readOnly }) {
+function Step7PreviewAndWord({ form, selectedBarriers, barrierToPriorities, entryStatusByPP, schoolName, readOnly, outcomes }) {
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState(null)
+
+  const outcomeRows = outcomes
+    .filter(o => o.outcome?.trim() || o.success_criteria?.trim())
+    .map(o => ({ outcome: o.outcome, successCriteria: o.success_criteria }))
 
   const activityRows = []
   const emptyBarrierRows = []
@@ -703,7 +752,7 @@ function Step7PreviewAndWord({ form, selectedBarriers, barrierToPriorities, entr
     { label: 'Details', done: !!(form.academic_year_label && form.review_date && form.authorised_by?.trim()) },
     { label: 'Barriers', done: selectedBarriers.length > 0 },
     { label: 'Activity', done: activityRows.length > 0 },
-    { label: 'Outcomes', done: false },
+    { label: 'Outcomes', done: outcomeRows.length > 0 },
     { label: 'Statement of intent', done: !!form.statement_of_intent?.trim() },
     { label: 'Further information', done: true },
   ]
@@ -721,7 +770,7 @@ function Step7PreviewAndWord({ form, selectedBarriers, barrierToPriorities, entr
         barrierRows: selectedBarriers.map(b => ({ number: b.__number, description: b.description, trendNote: form.barrier_notes?.[b.id] })),
         activityRows,
         emptyBarrierRows,
-        outcomeRows: [],
+        outcomeRows,
         previousYearReview: form.previous_year_review,
         furtherInformation: form.further_information,
       })
@@ -763,14 +812,21 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
   const [maxVisited, setMaxVisited] = useState(1)
   const [saveStatus, setSaveStatus] = useState('idle')
   const [saveError, setSaveError] = useState(null)
+  const [draftCreateError, setDraftCreateError] = useState(false)
+  const [reloadToken, setReloadToken] = useState(0)
 
   const [barriers, setBarriers] = useState([])
   const [provisionPoints, setProvisionPoints] = useState([])
   const [allEntries, setAllEntries] = useState([])
   const [priorities, setPriorities] = useState([])
   const [priorityLinks, setPriorityLinks] = useState([]) // [{ id, priority_id, barrier_id }]
+  const [outcomes, setOutcomes] = useState([]) // [{ id, outcome, success_criteria, sort_order }]
 
   const barriersFetchOk = useRef(false)
+  // Serialises every write to inclusion_strategy_drafts through one promise chain, so a slow
+  // write started earlier can never resolve after (and overwrite) a faster one started later —
+  // each persistDraft call only actually hits the network once the previous one has finished.
+  const persistQueueRef = useRef(Promise.resolve())
 
   // ── Initial load ──────────────────────────────────────────────────
   useEffect(() => {
@@ -780,6 +836,7 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
 
     async function load() {
       setLoading(true)
+      setDraftCreateError(false)
 
       const [draftRes, barriersRes, ppRes, entriesRes, userRes] = await Promise.all([
         sb.from('inclusion_strategy_drafts').select('*').eq('school_id', school)
@@ -795,10 +852,14 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
       if (cancelled) return
 
       let draft = draftRes.data?.[0] ?? null
+      let createError = null
       if (!draft && !readOnly) {
         // Create-once lock: a concurrent "no draft yet" load for this same school (e.g. a fast
         // remount) awaits this same insert instead of racing its own — see the module-level
-        // draftCreationLocks comment for why that race matters here specifically.
+        // draftCreationLocks comment for why that race matters here specifically. Resolves to
+        // { draft, error } rather than just the row, so every awaiter (not only the one that
+        // actually ran the insert) can tell a genuine creation failure apart from "not my
+        // school" — readOnly already skips this block entirely for that case.
         if (!draftCreationLocks.has(school)) {
           draftCreationLocks.set(school, (async () => {
             let defaultAuthorisedBy = ''
@@ -807,18 +868,25 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
               const { data: profile } = await sb.from('profiles').select('first_name, last_name').eq('id', userId).single()
               if (profile) defaultAuthorisedBy = [profile.first_name, profile.last_name].filter(Boolean).join(' ')
             }
-            const { data: created } = await sb.from('inclusion_strategy_drafts').insert({
+            const { data: created, error } = await sb.from('inclusion_strategy_drafts').insert({
               school_id: school,
               academic_year_label: defaultAcademicYearLabel(),
               authorised_by: defaultAuthorisedBy,
             }).select('*').single()
-            return created
+            return { draft: created, error }
           })().finally(() => draftCreationLocks.delete(school)))
         }
-        draft = await draftCreationLocks.get(school)
+        const result = await draftCreationLocks.get(school)
+        draft = result.draft
+        createError = result.error
       }
 
       if (cancelled) return
+
+      if (createError) {
+        console.error('Draft create error:', createError)
+        setDraftCreateError(true)
+      }
 
       const sortedPoints = (ppRes.data ?? []).slice().sort((a, b) =>
         (a.sub_domains?.domains?.display_order ?? 0) - (b.sub_domains?.domains?.display_order ?? 0) ||
@@ -868,6 +936,15 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
         } else {
           setPriorityLinks([])
         }
+
+        const { data: outcomeRows } = await sb.from('inclusion_strategy_outcomes')
+          .select('id, outcome, success_criteria, sort_order, created_at').eq('strategy_id', draft.id)
+          .order('sort_order').order('created_at')
+        if (!cancelled) setOutcomes((outcomeRows ?? []).map(o => ({ ...o, __localId: o.id })))
+      } else {
+        setPriorities([])
+        setPriorityLinks([])
+        setOutcomes([])
       }
 
       setLoading(false)
@@ -875,7 +952,7 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
 
     load()
     return () => { cancelled = true }
-  }, [school])
+  }, [school, reloadToken])
 
   function setField(key, value) {
     setForm(prev => ({ ...prev, [key]: value }))
@@ -884,16 +961,35 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
   // Returns { ok, error } rather than throwing — every caller (goToStep, the blur handler,
   // "Update my dashboard") checks ok before doing anything that assumes the save landed, so a
   // write failure shows the error and blocks navigation instead of silently losing the edit.
-  async function persistDraft(fields) {
-    if (!draftId || readOnly) return { ok: true }
+  //
+  // readOnly (viewing a school that isn't yours) is a quiet no-op, not a failure — App.jsx's
+  // own read-only banner already covers that case above this component. But !draftId while NOT
+  // readOnly only happens once loading has finished and the initial create failed (see
+  // draftCreateError below), so that path is a real failure, not a silent no-op.
+  //
+  // Every call is chained onto persistQueueRef so writes hit the network in call order — a
+  // slower write started earlier can't finish after (and stomp) a faster one started later.
+  function persistDraft(fields) {
+    const run = () => doPersist(fields)
+    const result = persistQueueRef.current.then(run, run)
+    persistQueueRef.current = result.catch(() => {})
+    return result
+  }
+
+  async function doPersist(fields) {
+    if (readOnly) return { ok: true }
+    if (!draftId) return { ok: false, error: { message: 'no_draft' } }
     setSaveStatus('saving')
     setSaveError(null)
-    const { error } = await sb.from('inclusion_strategy_drafts').update(fields).eq('id', draftId)
-    if (error) {
-      console.error('Draft save error:', error)
+    // .select('id') so a write RLS silently matched zero rows against (stale id, row gone,
+    // policy mismatch) is distinguishable from a real success — Postgres/PostgREST reports
+    // that as HTTP 200 with an empty array, not an error, so it must be checked explicitly.
+    const { data, error } = await sb.from('inclusion_strategy_drafts').update(fields).eq('id', draftId).select('id')
+    if (error || !data || data.length === 0) {
+      console.error('Draft save error:', error ?? 'zero rows updated')
       setSaveStatus('idle')
       setSaveError('Could not save your changes — please try again.')
-      return { ok: false, error }
+      return { ok: false, error: error ?? { message: 'zero_rows_updated' } }
     }
     setSaveStatus('saved')
     setTimeout(() => setSaveStatus('idle'), 1500)
@@ -924,6 +1020,10 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
     onUpdateDashboard?.()
   }
 
+  function retryCreateDraft() {
+    setReloadToken(t => t + 1)
+  }
+
   function toggleBarrierSelected(barrierId, checked) {
     if (readOnly) return
     const next = checked
@@ -938,6 +1038,82 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
     const next = { ...(form.barrier_notes ?? {}), [barrierId]: text }
     setField('barrier_notes', next)
     persistDraft({ barrier_notes: next })
+  }
+
+  // ── Outcomes (step 4) ────────────────────────────────────────────────
+  // Per-row insert/update by id — never a delete-all/reinsert of the whole set, so one row's
+  // edit can't disturb another's id or sort_order, and a failed write on one row never touches
+  // the others. A row only gets its first INSERT once it has real content in either field; a
+  // still-blank added row stays local-only. outcomeInsertLocksRef guards against a double
+  // insert when both fields blur in close succession before the first insert has returned.
+  const outcomeInsertLocksRef = useRef(new Map())
+
+  function addOutcomeRow() {
+    if (readOnly) return
+    setOutcomes(prev => [...prev, { __localId: crypto.randomUUID(), id: null, outcome: '', success_criteria: '', sort_order: null }])
+  }
+
+  function updateOutcomeField(localId, field, value) {
+    setOutcomes(prev => prev.map(o => (o.__localId === localId ? { ...o, [field]: value } : o)))
+  }
+
+  async function saveOutcomeRow(localId) {
+    if (readOnly) return
+    const row = outcomes.find(o => o.__localId === localId)
+    if (!row) return
+    const hasContent = !!(row.outcome?.trim() || row.success_criteria?.trim())
+
+    if (!row.id) {
+      if (!hasContent) return // still a blank added row — nothing to persist yet
+      if (outcomeInsertLocksRef.current.has(localId)) {
+        await outcomeInsertLocksRef.current.get(localId)
+        return
+      }
+      const insertPromise = (async () => {
+        const maxSort = outcomes.reduce((m, o) => (o.sort_order != null ? Math.max(m, o.sort_order) : m), -1)
+        const { data, error } = await sb.from('inclusion_strategy_outcomes').insert({
+          strategy_id: draftId,
+          outcome: row.outcome?.trim() || '',
+          success_criteria: row.success_criteria?.trim() || null,
+          sort_order: maxSort + 1,
+        }).select('id, outcome, success_criteria, sort_order, created_at').single()
+        if (error || !data) {
+          console.error('Outcome insert error:', error)
+          setSaveError('Could not save this outcome — please try again.')
+          return
+        }
+        setOutcomes(prev => prev.map(o => (o.__localId === localId ? { ...o, ...data, __localId: localId } : o)))
+      })()
+      outcomeInsertLocksRef.current.set(localId, insertPromise)
+      await insertPromise
+      outcomeInsertLocksRef.current.delete(localId)
+      return
+    }
+
+    const { data, error } = await sb.from('inclusion_strategy_outcomes')
+      .update({ outcome: row.outcome?.trim() || '', success_criteria: row.success_criteria?.trim() || null })
+      .eq('id', row.id).select('id')
+    if (error || !data || data.length === 0) {
+      console.error('Outcome update error:', error ?? 'zero rows updated')
+      setSaveError('Could not save this outcome — please try again.')
+    }
+  }
+
+  async function deleteOutcomeRow(localId) {
+    if (readOnly) return
+    const row = outcomes.find(o => o.__localId === localId)
+    if (!row) return
+    const hasContent = !!(row.outcome?.trim() || row.success_criteria?.trim())
+    if (hasContent && !window.confirm('Delete this outcome? This cannot be undone.')) return
+    if (row.id) {
+      const { error } = await sb.from('inclusion_strategy_outcomes').delete().eq('id', row.id)
+      if (error) {
+        console.error('Outcome delete error:', error)
+        setSaveError('Could not delete this outcome — please try again.')
+        return
+      }
+    }
+    setOutcomes(prev => prev.filter(o => o.__localId !== localId))
   }
 
   async function addSuggestedActivity(point, barrierId) {
@@ -1047,6 +1223,18 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
             )}
           </div>
         </div>
+        {draftCreateError && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+            fontSize: '0.76rem', color: '#C0392B', background: 'rgba(192,57,43,0.08)',
+            border: '1px solid rgba(192,57,43,0.25)', borderRadius: 7, padding: '7px 10px', marginBottom: 8,
+          }}>
+            <span>Could not create your Inclusion Strategy draft — nothing here can be saved yet.</span>
+            <button type="button" onClick={retryCreateDraft} style={{ ...smallBtn, padding: '4px 10px', flexShrink: 0 }}>
+              Retry
+            </button>
+          </div>
+        )}
         {saveError && (
           <p style={{
             fontSize: '0.76rem', color: '#C0392B', background: 'rgba(192,57,43,0.08)',
@@ -1079,7 +1267,13 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
           readOnly={readOnly}
         />
       )}
-      {step === 4 && <ComingSoonStep title="Outcomes" />}
+      {step === 4 && (
+        <Step4Outcomes
+          outcomes={outcomes} selectedBarriers={selectedBarriersNumbered}
+          onFieldChange={updateOutcomeField} onBlurSave={saveOutcomeRow}
+          onDelete={deleteOutcomeRow} onAdd={addOutcomeRow} readOnly={readOnly}
+        />
+      )}
       {step === 5 && (
         <div style={cardStyle}>
           <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1A202C', marginBottom: 4 }}>Statement of intent</h3>
@@ -1087,7 +1281,8 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
             A short statement setting out your school's overall approach and commitment to inclusion.
           </p>
           <textarea rows={12} style={{ ...inp, resize: 'vertical' }} disabled={readOnly}
-            value={form.statement_of_intent ?? ''} onChange={e => setField('statement_of_intent', e.target.value)} />
+            value={form.statement_of_intent ?? ''} onChange={e => setField('statement_of_intent', e.target.value)}
+            onBlur={() => persistDraft(detailsAndTextFields())} />
           <div style={{ marginTop: 8 }}>
             {(() => {
               const text = form.statement_of_intent ?? ''
@@ -1101,11 +1296,33 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
           </div>
         </div>
       )}
-      {step === 6 && <ComingSoonStep title="Review and more" note="Previous-year review (from year two) and further information will be added here in the next update." />}
+      {step === 6 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <div style={cardStyle}>
+            <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1A202C', marginBottom: 4 }}>Review of the previous academic year</h3>
+            <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: 16 }}>
+              Optional in year one. How did last year's strategy go, and what changed as a result?
+            </p>
+            <textarea rows={8} style={{ ...inp, resize: 'vertical' }} disabled={readOnly}
+              value={form.previous_year_review ?? ''} onChange={e => setField('previous_year_review', e.target.value)}
+              onBlur={() => persistDraft(detailsAndTextFields())} />
+          </div>
+          <div style={cardStyle}>
+            <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1A202C', marginBottom: 4 }}>Further information</h3>
+            <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: 16 }}>
+              Optional. Anything else worth including — links, contacts, or context for readers.
+            </p>
+            <textarea rows={8} style={{ ...inp, resize: 'vertical' }} disabled={readOnly}
+              value={form.further_information ?? ''} onChange={e => setField('further_information', e.target.value)}
+              onBlur={() => persistDraft(detailsAndTextFields())} />
+          </div>
+        </div>
+      )}
       {step === 7 && (
         <Step7PreviewAndWord
           form={form} selectedBarriers={selectedBarriersNumbered} barrierToPriorities={barrierToPriorities}
           entryStatusByPP={entryStatusByPPForExport} schoolName={schoolName} readOnly={readOnly}
+          outcomes={outcomes}
         />
       )}
 

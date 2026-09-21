@@ -55,6 +55,18 @@ function textRun(text) {
   return new TextRun({ text, color: hex(DARK), size: SIZE_BODY, font: BODY_FONT })
 }
 
+// A textarea's \n is just a character in a TextRun's text — Word does not render it as a line
+// break. Every place free text can span multiple lines (statement of intent, previous-year
+// review, further information, outcome/success-criteria cells) must split on it and produce
+// one real Paragraph per line instead, so it prints as actual paragraph breaks, not one run.
+function multilineParagraphs(text, { trailingSpacing = 0 } = {}) {
+  const lines = (text ?? '').split(/\r\n|\r|\n/)
+  return lines.map((line, i) => new Paragraph({
+    spacing: i === lines.length - 1 ? { after: trailingSpacing } : undefined,
+    children: [textRun(line)],
+  }))
+}
+
 function cell(children, { width, fill, verticalAlign } = {}) {
   return new TableCell({
     width: { size: width, type: WidthType.DXA },
@@ -116,7 +128,7 @@ function writeOverview({ academicYearLabel, reviewDate, authorisedBy }) {
 function writeStatementOfIntent(statementOfIntent) {
   const children = [bar('Statement of Intent')]
   if (statementOfIntent?.trim()) {
-    children.push(bodyParagraph(statementOfIntent.trim()))
+    children.push(...multilineParagraphs(statementOfIntent.trim(), { trailingSpacing: 120 }))
   } else {
     children.push(new Paragraph({ spacing: { after: 120 }, children: [placeholder('[To complete — 500 words or fewer, written for parents and pupils]')] }))
   }
@@ -187,8 +199,8 @@ function writeOutcomes(outcomeRows) {
     return children
   }
   const rows = outcomeRows.map(o => [
-    [new Paragraph({ children: [o.outcome?.trim() ? textRun(o.outcome.trim()) : placeholder('[To complete]')] })],
-    [new Paragraph({ children: [o.successCriteria?.trim() ? textRun(o.successCriteria.trim()) : placeholder('[To complete]')] })],
+    o.outcome?.trim() ? multilineParagraphs(o.outcome.trim()) : [new Paragraph({ children: [placeholder('[To complete]')] })],
+    o.successCriteria?.trim() ? multilineParagraphs(o.successCriteria.trim()) : [new Paragraph({ children: [placeholder('[To complete]')] })],
   ])
   children.push(fixedTable(w, ['Outcome', 'Success criteria'], rows))
   return children
@@ -199,7 +211,7 @@ function writeOutcomes(outcomeRows) {
 // ─────────────────────────────────────────────────────────────────────
 function writePreviousYearReview(previousYearReview) {
   if (!previousYearReview?.trim()) return []
-  return [bar('Review of the Previous Academic Year'), bodyParagraph(previousYearReview.trim())]
+  return [bar('Review of the Previous Academic Year'), ...multilineParagraphs(previousYearReview.trim(), { trailingSpacing: 120 })]
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -207,7 +219,7 @@ function writePreviousYearReview(previousYearReview) {
 // ─────────────────────────────────────────────────────────────────────
 function writeFurtherInformation(furtherInformation) {
   if (!furtherInformation?.trim()) return []
-  return [bar('Further Information'), bodyParagraph(furtherInformation.trim())]
+  return [bar('Further Information'), ...multilineParagraphs(furtherInformation.trim(), { trailingSpacing: 120 })]
 }
 
 function writeTitleBlock({ schoolName, ay }) {
