@@ -39,10 +39,13 @@ export const BARRIER_STATUS_STYLE = {
   resolved:        { bg: 'rgba(37,122,59,0.10)',  color: '#257A3B' },
 }
 
+// universal_or_targeted added for the Inclusion Strategy wizard's activity table (Word
+// export + "Has activity" display) — purely additive, BarriersView/ReportBuilder don't
+// reference the field so this doesn't change their behaviour.
 export const BARRIER_SELECT = `
   id, description, domain_id, sub_domain_id, student_groups, scale, source,
   status, actions, date_identified, next_review_due, created_at, school_id,
   domains(id, name),
   sub_domains(id, name),
-  barrier_provision_points(id, provision_point_id, provision_points(id, label, active, principle, category, sub_domains(id, name, domain_id)))
+  barrier_provision_points(id, provision_point_id, provision_points(id, label, active, principle, category, universal_or_targeted, sub_domains(id, name, domain_id)))
 `

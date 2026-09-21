@@ -4470,10 +4470,11 @@ export default function App() {
         {view !== 'mat' && selectedSchool && selectedDomain === 'inclusion-strategy' && (
           <InclusionStrategyWizard
             school={selectedSchool}
-            schoolName={schoolName}
+            schoolName={viewedSchoolName}
             supabase={supabase}
             domains={domains}
             readOnly={readOnly}
+            onUpdateDashboard={() => { setSelectedDomain(''); setOverviewMode('domain'); setSelectedCategory(null) }}
           />
         )}
 
