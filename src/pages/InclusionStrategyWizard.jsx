@@ -793,6 +793,11 @@ function Step7PreviewAndWord({ form, selectedBarriers, barrierToPriorities, entr
               {!c.done && <span style={{ fontSize: '0.72rem', color: '#B8BEC7' }}>[To complete]</span>}
             </div>
           ))}
+          {emptyBarrierRows.length > 0 && (
+            <p style={{ fontSize: '0.76rem', color: '#94a3b8', marginTop: 4 }}>
+              {emptyBarrierRows.length} barrier{emptyBarrierRows.length !== 1 ? 's' : ''} {emptyBarrierRows.length !== 1 ? 'have' : 'has'} no activity yet
+            </p>
+          )}
         </div>
         {genError && <p style={{ fontSize: '0.78rem', color: '#DC2626', marginBottom: 10 }}>{genError}</p>}
         <button type="button" style={primaryBtn} disabled={generating || readOnly} onClick={handleDownloadWord}>
@@ -1277,9 +1282,20 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
       {step === 5 && (
         <div style={cardStyle}>
           <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1A202C', marginBottom: 4 }}>Statement of intent</h3>
-          <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: 16 }}>
+          <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: 12 }}>
             A short statement setting out your school's overall approach and commitment to inclusion.
           </p>
+          {/* Guidance only — never persisted. Mirrors the same four prompts the Word export
+              shows as highlighted placeholder lines when this field is left blank. */}
+          <div style={{ fontSize: '0.76rem', color: '#94a3b8', marginBottom: 16 }}>
+            <p style={{ marginBottom: 4 }}>Consider covering:</p>
+            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
+              <li>Your objectives for inclusion this academic year</li>
+              <li>How this strategy works towards those objectives</li>
+              <li>How the 7 principles of inclusion are addressed</li>
+              <li>How you worked with families in preparing this strategy</li>
+            </ul>
+          </div>
           <textarea rows={12} style={{ ...inp, resize: 'vertical' }} disabled={readOnly}
             value={form.statement_of_intent ?? ''} onChange={e => setField('statement_of_intent', e.target.value)}
             onBlur={() => persistDraft(detailsAndTextFields())} />

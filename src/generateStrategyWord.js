@@ -125,11 +125,25 @@ function writeOverview({ academicYearLabel, reviewDate, authorisedBy }) {
 // ─────────────────────────────────────────────────────────────────────
 // 2 — Statement of intent
 // ─────────────────────────────────────────────────────────────────────
+// The four DfE prompts a statement of intent should cover, printed as separate highlighted
+// lines (not one blended placeholder) when the field is blank, so each is easy to address and
+// delete individually — mirrors the same four prompts shown as non-persisted helper text on
+// the wizard's own step 5.
+const STATEMENT_OF_INTENT_PROMPTS = [
+  '[To complete — your objectives for inclusion this academic year]',
+  '[To complete — how this strategy works towards those objectives]',
+  '[To complete — how the 7 principles of inclusion are addressed]',
+  '[To complete — how you worked with families in preparing this strategy]',
+]
+
 function writeStatementOfIntent(statementOfIntent) {
   const children = [bar('Statement of Intent')]
   if (statementOfIntent?.trim()) {
     children.push(...multilineParagraphs(statementOfIntent.trim(), { trailingSpacing: 120 }))
   } else {
+    for (const prompt of STATEMENT_OF_INTENT_PROMPTS) {
+      children.push(new Paragraph({ spacing: { after: 60 }, children: [placeholder(prompt)] }))
+    }
     children.push(new Paragraph({ spacing: { after: 120 }, children: [placeholder('[To complete — 500 words or fewer, written for parents and pupils]')] }))
   }
   return children
@@ -139,7 +153,10 @@ function writeStatementOfIntent(statementOfIntent) {
 // 3 — Barriers to learning and participation
 // ─────────────────────────────────────────────────────────────────────
 function writeBarriers(barrierRows) {
-  const children = [bar('Barriers to Learning and Participation')]
+  const children = [
+    bar('Barriers to Learning and Participation'),
+    bodyParagraph('This details the key barriers to learning and participation that we have identified amongst our pupils, necessitating inclusive universal approaches and targeted support'),
+  ]
   if (barrierRows.length === 0) {
     children.push(bodyParagraph('None recorded.', { italic: true }))
     return children
@@ -160,7 +177,11 @@ function writeBarriers(barrierRows) {
 // 4 — Activity in this academic year
 // ─────────────────────────────────────────────────────────────────────
 function writeActivity({ activityRows, emptyBarrierRows }) {
-  const children = [bar('Activity in this Academic Year')]
+  const children = [
+    bar('Activity in this Academic Year'),
+    bodyParagraph('What activities will we prioritise this academic year to alleviate the above barriers to learning and participation faced by pupils with additional needs and SEND.'),
+    bodyParagraph('In this context, ‘activity’ is a reporting term to help understand where funding has been allocated to build an inclusive core offer and does not indicate only targeted provision. Activity may address multiple barriers identified, particularly for improvements to your universal offer.'),
+  ]
   if (activityRows.length === 0 && emptyBarrierRows.length === 0) {
     children.push(bodyParagraph('None recorded.', { italic: true }))
     return children
@@ -173,12 +194,12 @@ function writeActivity({ activityRows, emptyBarrierRows }) {
   const activityBody = activityRows.map(r => [
     [new Paragraph({ children: [textRun(r.description)] }), new Paragraph({ spacing: { before: 40 }, children: [new TextRun({ text: `Addresses barrier${r.barrierNumbers.length !== 1 ? 's' : ''} ${r.barrierNumbers.join(', ')}`, italics: true, color: hex(MID), size: SIZE_BODY, font: BODY_FONT })] })],
     [new Paragraph({ children: [r.universalOrTargeted === 'universal' ? textRun('Universal') : r.universalOrTargeted === 'targeted' ? textRun('Targeted') : placeholder('[To complete]')] })],
-    [new Paragraph({ children: [placeholder('[To complete]')] })],
+    [new Paragraph({ children: [placeholder('[To complete — total from IMF and core budget]')] })],
   ])
   const emptyBody = emptyBarrierRows.map(n => [
     [new Paragraph({ children: [placeholder(`[Barrier ${n} has no activity yet — add it here]`)] })],
     [new Paragraph({ children: [textRun('—')] })],
-    [new Paragraph({ children: [placeholder('[To complete]')] })],
+    [new Paragraph({ children: [placeholder('[To complete — total from IMF and core budget]')] })],
   ])
   children.push(fixedTable(w, ['Description', 'Universal / Targeted', 'Total budgeted cost'], [...activityBody, ...emptyBody]))
   return children
@@ -188,7 +209,10 @@ function writeActivity({ activityRows, emptyBarrierRows }) {
 // 5 — Intended outcomes
 // ─────────────────────────────────────────────────────────────────────
 function writeOutcomes(outcomeRows) {
-  const children = [bar('Intended Outcomes')]
+  const children = [
+    bar('Intended Outcomes'),
+    bodyParagraph('This explains the clear, realistic outcomes we want our inclusive approaches to achieve by the end of our inclusion strategy, and how we will measure whether they have been achieved.'),
+  ]
   const w = [Math.round(CONTENT_WIDTH_DXA * 0.5), CONTENT_WIDTH_DXA - Math.round(CONTENT_WIDTH_DXA * 0.5)]
   if (outcomeRows.length === 0) {
     const rows = [[
@@ -222,17 +246,12 @@ function writeFurtherInformation(furtherInformation) {
   return [bar('Further Information'), ...multilineParagraphs(furtherInformation.trim(), { trailingSpacing: 120 })]
 }
 
-function writeTitleBlock({ schoolName, ay }) {
+function writeTitleBlock({ schoolName }) {
   return [
     new Paragraph({
       alignment: AlignmentType.CENTER,
-      spacing: { before: 120, after: 40 },
-      children: [new TextRun({ text: schoolName || 'School', bold: true, color: hex(NAVY), size: 40, font: HEADING_FONT })],
-    }),
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 200 },
-      children: [new TextRun({ text: `Inclusion Strategy ${ay}`, color: hex(DARK), size: 24, font: BODY_FONT })],
+      spacing: { before: 120, after: 200 },
+      children: [new TextRun({ text: `Inclusion Strategy – ${schoolName || 'School'}`, bold: true, color: hex(NAVY), size: 40, font: HEADING_FONT })],
     }),
     new Paragraph({
       spacing: { after: 240 },
@@ -272,9 +291,13 @@ export async function generateStrategyWord({
   // Keep the human-readable "School Name" spacing the filename spec asks for — only strip
   // characters that are illegal in a Windows filename, don't collapse to underscores.
   const safeName = (schoolName || 'School').replace(/[\\/:*?"<>|]/g, '')
+  // Academic years are written "2026/27" everywhere on the page (Overview table, title), but
+  // "/" is a path separator, not a legal filename character — sanitise only the copy used in
+  // the filename, never the on-page text.
+  const fileAy = ay.replace(/\//g, '-')
 
   const children = [
-    ...writeTitleBlock({ schoolName, ay }),
+    ...writeTitleBlock({ schoolName }),
     ...writeOverview({ academicYearLabel, reviewDate, authorisedBy }),
     ...writeStatementOfIntent(statementOfIntent),
     ...writeBarriers(barrierRows),
@@ -298,7 +321,7 @@ export async function generateStrategyWord({
   })
 
   const blob = await Packer.toBlob(doc)
-  const filename = `Inclusion Strategy - ${safeName} - ${ay}.docx`
+  const filename = `Inclusion Strategy - ${safeName} - ${fileAy}.docx`
 
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
