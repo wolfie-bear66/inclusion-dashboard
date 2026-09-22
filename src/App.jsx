@@ -764,11 +764,15 @@ function ReportBuilder({ schoolName = '', supabase: sb, school, onCreateInclusio
   }))
 
   // ── Derived: due for review ──────────────────────────────────────────
+  // point/evidenceTitle kept separate (not collapsed into one string) so the PDF/Word
+  // generators can show the evidence title as the primary line and the point label as a
+  // secondary line — distinguishing repeat evidence against the same provision point.
   const reviewRows = (dueForReviewOn && data ? data.dueForReview : []).map(r => {
     const meta = data.pointMeta[r.provisionPointId]
     const status = data.statusByPointId[r.provisionPointId]
     return {
-      point: meta?.label || r.provisionName || '—',
+      point: meta?.label || '—',
+      evidenceTitle: r.provisionName || '',
       whereItSits: whereItSitsShort(meta),
       statusText: status ? statusLabel(status) : '—',
       dueLabel: new Date(r.nextReviewDue).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + (r.isOverdue ? ' (Overdue)' : ''),
