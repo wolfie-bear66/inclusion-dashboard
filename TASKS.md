@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 23 September 2026 (Session 91 — Founder Admin school table: name/date sort control)
+Last updated: 23 September 2026 (Session 92 — Founder Admin school table: approver name/email column)
 
 ---
 
@@ -18,6 +18,12 @@ Last updated: 23 September 2026 (Session 91 — Founder Admin school table: name
 ---
 
 ## Completed
+
+- [x] **Session 92 — Approver name/email column added to the Founder Admin school table (`/admin`)** — New "Approver" column inserted between Staff and Started, showing each approver's name + email; "—" for zero approvers, stacked name/email blocks (one per approver) when a school has more than one. Existing column order, action buttons, sort control/default, and summary tiles all untouched.
+
+  **Phase 0 finding that simplified the build**: `admin-dashboard-stats` already fetches every profile per school and already resolves each one's email via `admin.auth.admin.listUsers()` (`profiles` has no `email` column, confirmed by `information_schema`), building the `staff` array each row already carries (previously only consumed by the Edit modal's "Staff & roles" section). So this needed **no edge function change and no redeploy** — a new `approversFor(row)` helper just filters the already-present `row.staff` to `role === 'approver'` client-side. Multi-approver check: of 22 real (non-demo) schools, exactly 1 (Kew Woods Primary) has 2 approvers; every other school has exactly 1, none had 0 at the time of the check — the zero-approver "—" path is still built and handles that case going forward. `/admin`'s founder-only auth guard (`profiles.is_founder`) confirmed unchanged — this session's diff never touched that code path.
+
+  `npx eslint` clean on the changed file (`src/pages/AdminView.jsx` — the only file touched this session).
 
 - [x] **Session 91 — Sort control added to the Founder Admin school table (`/admin`)** — Two toggle buttons ("Name (A–Z)" / "Date added (newest first)") added above the table in `AdminView.jsx`; defaults to alphabetical by `name`, case-insensitive (`localeCompare` with `sensitivity: 'base'`), sorted client-side on the already-fetched `data.rows` list (no pagination on this page, so no query-shape change needed there). Date sort is newest-`created_at`-first.
 
