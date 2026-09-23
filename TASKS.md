@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 23 September 2026 (Session 93 — Founder Admin school table: replaced two-button sort with Excel-style sort/filter)
+Last updated: 23 September 2026 (Session 94 — Founder Admin school table: Login status badge column)
 
 ---
 
@@ -18,6 +18,18 @@ Last updated: 23 September 2026 (Session 93 — Founder Admin school table: repl
 ---
 
 ## Completed
+
+- [x] **Session 94 — Login status badge column added to the Founder Admin school table (`/admin`)** — New sortable "Login status" column between Engagement and Last login, one pill per school: **Logged in** (green) / **Invite opened, no login set** (orange) / **Never opened invite** (grey). Confirmed and Last login columns left exactly as they were.
+
+  **Phase 0 diagnostic (why this was needed)**: a "Never" in the table had been read as "never logged in", but it's actually the **Confirmed** column — `fmtDate(schools.confirmed_at)`, a billing field stamped only when a school first moves to `paid` (`update-school`). All 20 real schools are `trial` with `confirmed_at` null, so it reads "Never" on every row, regardless of login state. The Resend invite button is driven solely by `profiles.password_set !== true` (deliberate — see the Jenny Carson dead-link comment in the edge function). The Last login column is the only one reading `auth.users.last_sign_in_at`. `onboarding_state.second_login_or_later` isn't read anywhere on this page. Net gap: schools where someone opened an invite link (so they have a `last_sign_in_at`) but never got a working password looked normal apart from the Resend button — this badge makes that state explicit.
+
+  **Logic** (computed server-side in `admin-dashboard-stats`, returned as `row.login_status`), first match wins: any profile with `password_set = true` → `logged_in`; else any profile with a non-null `last_sign_in_at` → `opened_no_password`; else `never_opened`. The precedence was a deliberate choice for schools with a mix of profiles (e.g. logged-in approver plus a newly invited teacher who hasn't set a password): the badge answers "can this school use the product?", and individual stuck invites at an otherwise logged-in school are still covered by the per-person Resend buttons. No mixed schools existed at build time, so every candidate precedence gave the same split. No DB changes — both inputs were already fetched.
+
+  **Live counts at build time (VERIFIED by SQL)**: 13 Logged in; 4 Invite opened, no login set (Watton at Stone, Shalom Noam, St John's CE, Luddington and Garthorpe); 3 Never opened invite (Brigg, Cheetham, Christ Church). Frontend falls back to "—" if `login_status` is absent, so it's safe against an older deployed function.
+
+  **School count correction**: Sessions 92–93 above say 22 real (non-demo) schools. The correct live count is now **20**, following the deletion of Hatfield Peverel and the "demo" school — all 20 are `trial`.
+
+  `npx eslint` and `npx vite build` both clean. **Not verified live in browser** — no founder-login credentials available (same limitation as Sessions 91–93).
 
 - [x] **Session 93 — Founder Admin school table (`/admin`): replaced the two-button sort with Excel-style click-to-sort + filters** — Session 91's Name (A–Z)/Date added toggle buttons are gone, replaced with per-column click-to-sort headers and a filter panel, both client-side over the already-fetched row list. **Revert**: `sortRows`/`sortBy` state/the toggle-button row/`sortBtnActiveStyle` removed from `AdminView.jsx`, confirmed back to the original unsorted render (grep-verified no remnants) before rebuilding. `created_at` was deliberately *not* removed from `admin-dashboard-stats/index.ts`'s select/row payload — this session's diagnostic confirmed it's needed again for the date sort, so that file has a zero diff this session (no redeploy needed either). Session 92's Approver column (name/email) was also left untouched by the revert and is now itself sortable.
 

@@ -177,6 +177,15 @@ Deno.serve(async (req) => {
         .filter((p: any) => p.password_set !== true)
         .map((p: any) => ({ profile_id: p.id, email: emailByUserId[p.id] ?? null }))
 
+      // School-level login status, first match wins: anyone with a working password means
+      // the school can use the product; otherwise any sign-in at all means an invite link was
+      // opened but never got as far as a password; otherwise nobody has touched it. Stuck
+      // individual invites at a logged-in school are still surfaced by the Resend buttons.
+      let loginStatus: 'logged_in' | 'opened_no_password' | 'never_opened'
+      if (schoolProfiles.some((p: any) => p.password_set === true)) loginStatus = 'logged_in'
+      else if (schoolProfiles.some((p: any) => lastSignInByUserId[p.id])) loginStatus = 'opened_no_password'
+      else loginStatus = 'never_opened'
+
       const staff = schoolProfiles.map((p: any) => ({
         profile_id: p.id,
         first_name: p.first_name,
@@ -200,6 +209,7 @@ Deno.serve(async (req) => {
         last_login: lastLogin,
         last_evidence: lastEvidence,
         engagement_status: engagementStatus,
+        login_status: loginStatus,
         pending_invites: pendingInvites,
         staff,
         started_count: startedCountBySchool[s.id] ?? 0,

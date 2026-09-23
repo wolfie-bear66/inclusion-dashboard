@@ -14,6 +14,9 @@ const STATUS_ORDER = { trial: 0, paid: 1, churned: 2 }
 const ENGAGEMENT_LABEL = { active: 'Active', stalled: 'Stalled', never_logged_in: 'Never logged in' }
 const ENGAGEMENT_COLOUR = { active: '#22c55e', stalled: '#f97316', never_logged_in: '#94a3b8' }
 const ENGAGEMENT_ORDER = { active: 0, stalled: 1, never_logged_in: 2 }
+const LOGIN_STATUS_LABEL = { logged_in: 'Logged in', opened_no_password: 'Invite opened, no login set', never_opened: 'Never opened invite' }
+const LOGIN_STATUS_COLOUR = { logged_in: '#22c55e', opened_no_password: '#f97316', never_opened: '#94a3b8' }
+const LOGIN_STATUS_ORDER = { logged_in: 0, opened_no_password: 1, never_opened: 2 }
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
 
@@ -47,6 +50,7 @@ const SORT_CONFIG = {
   approver: { type: 'text', get: r => firstApproverName(r) },
   started: { type: 'number', get: r => r.started_count },
   engagement: { type: 'rank', get: r => ENGAGEMENT_ORDER[r.engagement_status] ?? 99 },
+  login_status: { type: 'rank', get: r => LOGIN_STATUS_ORDER[r.login_status] ?? 99 },
   last_login: { type: 'date', get: r => r.last_login },
 }
 
@@ -400,6 +404,7 @@ export default function AdminView() {
                   <Th sortKey="approver" activeKey={sortKey} dir={sortDir} onSort={handleSort}>Approver</Th>
                   <Th sortKey="started" activeKey={sortKey} dir={sortDir} onSort={handleSort}>Started</Th>
                   <Th sortKey="engagement" activeKey={sortKey} dir={sortDir} onSort={handleSort}>Engagement</Th>
+                  <Th sortKey="login_status" activeKey={sortKey} dir={sortDir} onSort={handleSort}>Login status</Th>
                   <Th sortKey="last_login" activeKey={sortKey} dir={sortDir} onSort={handleSort}>Last login</Th>
                   <Th>Actions</Th>
                 </tr>
@@ -415,6 +420,7 @@ export default function AdminView() {
                     <Td><ApproverCell approvers={approversFor(row)} /></Td>
                     <Td>{row.started_count}/{data.active_point_total}</Td>
                     <Td><Pill colour={ENGAGEMENT_COLOUR[row.engagement_status]}>{ENGAGEMENT_LABEL[row.engagement_status]}</Pill></Td>
+                    <Td>{row.login_status ? <Pill colour={LOGIN_STATUS_COLOUR[row.login_status]}>{LOGIN_STATUS_LABEL[row.login_status]}</Pill> : '—'}</Td>
                     <Td>{fmtDate(row.last_login)}</Td>
                     <Td>
                       <button onClick={() => setEditingRow(row)} style={actionBtnStyle}>Edit</button>
@@ -448,10 +454,10 @@ export default function AdminView() {
                   </tr>
                 ))}
                 {rows.length === 0 && (
-                  <tr><td colSpan={10} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>No schools found.</td></tr>
+                  <tr><td colSpan={11} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>No schools found.</td></tr>
                 )}
                 {rows.length > 0 && visibleRows.length === 0 && (
-                  <tr><td colSpan={10} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>No schools match the current filters.</td></tr>
+                  <tr><td colSpan={11} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>No schools match the current filters.</td></tr>
                 )}
               </tbody>
             </table>
