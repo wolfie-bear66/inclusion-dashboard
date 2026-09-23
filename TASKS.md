@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 23 September 2026 (Session 92 — Founder Admin school table: approver name/email column)
+Last updated: 23 September 2026 (Session 93 — Founder Admin school table: replaced two-button sort with Excel-style sort/filter)
 
 ---
 
@@ -18,6 +18,14 @@ Last updated: 23 September 2026 (Session 92 — Founder Admin school table: appr
 ---
 
 ## Completed
+
+- [x] **Session 93 — Founder Admin school table (`/admin`): replaced the two-button sort with Excel-style click-to-sort + filters** — Session 91's Name (A–Z)/Date added toggle buttons are gone, replaced with per-column click-to-sort headers and a filter panel, both client-side over the already-fetched row list. **Revert**: `sortRows`/`sortBy` state/the toggle-button row/`sortBtnActiveStyle` removed from `AdminView.jsx`, confirmed back to the original unsorted render (grep-verified no remnants) before rebuilding. `created_at` was deliberately *not* removed from `admin-dashboard-stats/index.ts`'s select/row payload — this session's diagnostic confirmed it's needed again for the date sort, so that file has a zero diff this session (no redeploy needed either). Session 92's Approver column (name/email) was also left untouched by the revert and is now itself sortable.
+
+  **Phase 0**: column-by-column computation confirmed from `admin-dashboard-stats/index.ts` — School/Status/Price/Confirmed are raw `schools` fields; Staff is a computed `profiles` count per school; Started is a computed `entries`-vs-active-`provision_points` count over the shared `active_point_total` denominator; Engagement and Last login are both computed server-side from `auth.users.last_sign_in_at` + `evidence_entries.created_at` (never-logged-in / active-within-30-days / stalled). Live-queried `subscription_status`: 22/22 real schools are `trial` — filter built generically off whatever distinct values are actually present in the fetched rows, not hardcoded. User confirmed sort orders: Status = Trial → Paid → Churned (matches the Pipeline tile's own order), Engagement = Active → Stalled → Never logged in. User chose to also make the Approver column sortable (by first approver's name) even though it postdates the original column list this task specified.
+
+  **Built**: every column header (School/Status/Price/Confirmed/Staff/Approver/Started/Engagement/Last login) is now clickable — first click sorts ascending, second toggles descending, with a ▲/▼/↕ indicator. One shared `SORT_CONFIG`/`compareBy` drives all of it: `text` (case-insensitive `localeCompare`), `number`, `date`, or `rank` (the two defined orderings above) — nulls/"Never"/no-approver always sort last regardless of direction, so they don't jump ends when toggling. A filter panel above the table: Status and Engagement as toggle chips built from the distinct values actually present in the data; Confirmed as Yes/Never chips; Staff and Started as min/max numeric ranges (Started filters on the numerator, matching how it sorts); Last login as an All/Within 30 days/Never dropdown; a "Clear filters" button (greyed out when nothing's active) that resets filters only, leaving sort state alone. Filters and sort compose naturally (`sortRows(filterRows(rows, filters), sortKey, sortDir)`). Default on load unchanged: School ascending, no filters. Empty states split into "No schools found" (zero schools at all) vs. "No schools match the current filters" (filtered to zero) so the message stays accurate either way. Every existing column, the Edit/Resend invite buttons, and the three summary tiles are untouched — confirmed by diff (only `AdminView.jsx` changed; the edge function has a zero diff).
+
+  `npx eslint` and `npx vite build` both clean. **Not verified live in browser** — no founder-login credentials available this session (same limitation flagged in Sessions 91–92), so this was confirmed by lint/build/code review only, not a click-test of the new sort headers or filter chips.
 
 - [x] **Session 92 — Approver name/email column added to the Founder Admin school table (`/admin`)** — New "Approver" column inserted between Staff and Started, showing each approver's name + email; "—" for zero approvers, stacked name/email blocks (one per approver) when a school has more than one. Existing column order, action buttons, sort control/default, and summary tiles all untouched.
 
