@@ -10,8 +10,12 @@ const PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 const STATUS_LABEL = { trial: 'Trial', paid: 'Paid', churned: 'Churned' }
 const STATUS_COLOUR = { trial: '#D4751A', paid: '#22c55e', churned: '#94a3b8' }
+const STATUS_ORDER = { trial: 0, paid: 1, churned: 2 }
 const ENGAGEMENT_LABEL = { active: 'Active', stalled: 'Stalled', never_logged_in: 'Never logged in' }
 const ENGAGEMENT_COLOUR = { active: '#22c55e', stalled: '#f97316', never_logged_in: '#94a3b8' }
+const ENGAGEMENT_ORDER = { active: 0, stalled: 1, never_logged_in: 2 }
+
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
 
 function fmtDate(iso) {
   if (!iso) return 'Never'
@@ -26,14 +30,87 @@ function approversFor(row) {
   return (row.staff ?? []).filter(p => p.role === 'approver')
 }
 
-function sortRows(rows, sortBy) {
-  const sorted = [...rows]
-  if (sortBy === 'date') {
-    sorted.sort((a, b) => new Date(b.created_at ?? 0) - new Date(a.created_at ?? 0))
-  } else {
-    sorted.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+function firstApproverName(row) {
+  const a = approversFor(row)[0]
+  return a ? `${a.first_name} ${a.last_name}` : null
+}
+
+// One getter per sortable column. `type` drives how two values compare;
+// nulls/empties always sort last regardless of direction, rather than
+// jumping to whichever end asc/desc happens to put them on.
+const SORT_CONFIG = {
+  name: { type: 'text', get: r => r.name },
+  status: { type: 'rank', get: r => STATUS_ORDER[r.subscription_status] ?? 99 },
+  price: { type: 'number', get: r => (r.annual_price != null ? Number(r.annual_price) : null) },
+  confirmed: { type: 'date', get: r => r.confirmed_at },
+  staff: { type: 'number', get: r => r.staff_count },
+  approver: { type: 'text', get: r => firstApproverName(r) },
+  started: { type: 'number', get: r => r.started_count },
+  engagement: { type: 'rank', get: r => ENGAGEMENT_ORDER[r.engagement_status] ?? 99 },
+  last_login: { type: 'date', get: r => r.last_login },
+}
+
+function isEmpty(v) {
+  return v === null || v === undefined || v === ''
+}
+
+function compareBy(key, a, b, dir) {
+  const cfg = SORT_CONFIG[key]
+  const av = cfg.get(a)
+  const bv = cfg.get(b)
+  if (isEmpty(av) && isEmpty(bv)) return 0
+  if (isEmpty(av)) return 1
+  if (isEmpty(bv)) return -1
+  let cmp
+  if (cfg.type === 'text') cmp = String(av).localeCompare(String(bv), undefined, { sensitivity: 'base' })
+  else if (cfg.type === 'date') cmp = new Date(av).getTime() - new Date(bv).getTime()
+  else cmp = av - bv
+  return dir === 'asc' ? cmp : -cmp
+}
+
+function sortRows(rows, key, dir) {
+  return [...rows].sort((a, b) => compareBy(key, a, b, dir))
+}
+
+function emptyFilters() {
+  return {
+    status: new Set(),
+    confirmed: new Set(),
+    engagement: new Set(),
+    staffMin: '',
+    staffMax: '',
+    startedMin: '',
+    startedMax: '',
+    lastLogin: 'all',
   }
-  return sorted
+}
+
+function filtersActive(filters) {
+  return filters.status.size > 0 || filters.confirmed.size > 0 || filters.engagement.size > 0
+    || filters.staffMin !== '' || filters.staffMax !== ''
+    || filters.startedMin !== '' || filters.startedMax !== ''
+    || filters.lastLogin !== 'all'
+}
+
+function filterRows(rows, filters) {
+  return rows.filter(row => {
+    if (filters.status.size && !filters.status.has(row.subscription_status)) return false
+    if (filters.confirmed.size) {
+      const bucket = row.confirmed_at ? 'yes' : 'never'
+      if (!filters.confirmed.has(bucket)) return false
+    }
+    if (filters.engagement.size && !filters.engagement.has(row.engagement_status)) return false
+    if (filters.staffMin !== '' && row.staff_count < Number(filters.staffMin)) return false
+    if (filters.staffMax !== '' && row.staff_count > Number(filters.staffMax)) return false
+    if (filters.startedMin !== '' && row.started_count < Number(filters.startedMin)) return false
+    if (filters.startedMax !== '' && row.started_count > Number(filters.startedMax)) return false
+    if (filters.lastLogin === 'last30') {
+      if (!row.last_login || Date.now() - new Date(row.last_login).getTime() > THIRTY_DAYS_MS) return false
+    } else if (filters.lastLogin === 'never') {
+      if (row.last_login) return false
+    }
+    return true
+  })
 }
 
 export default function AdminView() {
@@ -46,7 +123,34 @@ export default function AdminView() {
   const [actionMsg, setActionMsg] = useState(null)
   const [resendingId, setResendingId] = useState(null)
   const [resendMsgByRow, setResendMsgByRow] = useState({})
-  const [sortBy, setSortBy] = useState('name')
+  const [sortKey, setSortKey] = useState('name')
+  const [sortDir, setSortDir] = useState('asc')
+  const [filters, setFilters] = useState(emptyFilters)
+
+  function handleSort(key) {
+    if (sortKey === key) {
+      setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }
+
+  function toggleSetFilter(field, value) {
+    setFilters(prev => {
+      const next = new Set(prev[field])
+      if (next.has(value)) next.delete(value)
+      else next.add(value)
+      return { ...prev, [field]: next }
+    })
+  }
+
+  const rows = data?.rows ?? []
+  const statusValues = [...new Set(rows.map(r => r.subscription_status))]
+    .sort((a, b) => (STATUS_ORDER[a] ?? 99) - (STATUS_ORDER[b] ?? 99))
+  const engagementValues = [...new Set(rows.map(r => r.engagement_status))]
+    .sort((a, b) => (ENGAGEMENT_ORDER[a] ?? 99) - (ENGAGEMENT_ORDER[b] ?? 99))
+  const visibleRows = sortRows(filterRows(rows, filters), sortKey, sortDir)
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -217,44 +321,91 @@ export default function AdminView() {
             </Tile>
           </div>
 
-          <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              Sort by
-            </span>
-            <button
-              type="button"
-              onClick={() => setSortBy('name')}
-              style={{ ...actionBtnStyle, ...(sortBy === 'name' ? sortBtnActiveStyle : {}) }}
-            >
-              Name (A–Z)
-            </button>
-            <button
-              type="button"
-              onClick={() => setSortBy('date')}
-              style={{ ...actionBtnStyle, ...(sortBy === 'date' ? sortBtnActiveStyle : {}) }}
-            >
-              Date added (newest first)
-            </button>
+          <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 8, padding: '14px 16px', marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                Filters
+              </span>
+              <button
+                type="button"
+                onClick={() => setFilters(emptyFilters())}
+                disabled={!filtersActive(filters)}
+                style={{ ...actionBtnStyle, opacity: filtersActive(filters) ? 1 : 0.5, cursor: filtersActive(filters) ? 'pointer' : 'default' }}
+              >
+                Clear filters
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20 }}>
+              <FilterGroup label="Status">
+                {statusValues.map(v => (
+                  <FilterChip key={v} active={filters.status.has(v)} onClick={() => toggleSetFilter('status', v)}>
+                    {STATUS_LABEL[v] ?? v}
+                  </FilterChip>
+                ))}
+              </FilterGroup>
+
+              <FilterGroup label="Confirmed">
+                <FilterChip active={filters.confirmed.has('yes')} onClick={() => toggleSetFilter('confirmed', 'yes')}>Yes</FilterChip>
+                <FilterChip active={filters.confirmed.has('never')} onClick={() => toggleSetFilter('confirmed', 'never')}>Never</FilterChip>
+              </FilterGroup>
+
+              <FilterGroup label="Engagement">
+                {engagementValues.map(v => (
+                  <FilterChip key={v} active={filters.engagement.has(v)} onClick={() => toggleSetFilter('engagement', v)}>
+                    {ENGAGEMENT_LABEL[v] ?? v}
+                  </FilterChip>
+                ))}
+              </FilterGroup>
+
+              <FilterGroup label="Staff">
+                <input type="number" min="0" placeholder="Min" value={filters.staffMin}
+                  onChange={e => setFilters(prev => ({ ...prev, staffMin: e.target.value }))}
+                  style={{ ...inputStyle, width: 64, padding: '4px 8px' }} />
+                <span style={{ color: '#94a3b8' }}>–</span>
+                <input type="number" min="0" placeholder="Max" value={filters.staffMax}
+                  onChange={e => setFilters(prev => ({ ...prev, staffMax: e.target.value }))}
+                  style={{ ...inputStyle, width: 64, padding: '4px 8px' }} />
+              </FilterGroup>
+
+              <FilterGroup label="Started">
+                <input type="number" min="0" placeholder="Min" value={filters.startedMin}
+                  onChange={e => setFilters(prev => ({ ...prev, startedMin: e.target.value }))}
+                  style={{ ...inputStyle, width: 64, padding: '4px 8px' }} />
+                <span style={{ color: '#94a3b8' }}>–</span>
+                <input type="number" min="0" placeholder="Max" value={filters.startedMax}
+                  onChange={e => setFilters(prev => ({ ...prev, startedMax: e.target.value }))}
+                  style={{ ...inputStyle, width: 64, padding: '4px 8px' }} />
+              </FilterGroup>
+
+              <FilterGroup label="Last login">
+                <select value={filters.lastLogin} onChange={e => setFilters(prev => ({ ...prev, lastLogin: e.target.value }))} style={{ ...inputStyle, padding: '4px 8px' }}>
+                  <option value="all">All</option>
+                  <option value="last30">Within last 30 days</option>
+                  <option value="never">Never logged in</option>
+                </select>
+              </FilterGroup>
+            </div>
           </div>
 
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem', background: '#fff', border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
               <thead>
                 <tr style={{ background: '#1B365D', color: '#fff' }}>
-                  <Th>School</Th>
-                  <Th>Status</Th>
-                  <Th>Price</Th>
-                  <Th>Confirmed</Th>
-                  <Th>Staff</Th>
-                  <Th>Approver</Th>
-                  <Th>Started</Th>
-                  <Th>Engagement</Th>
-                  <Th>Last login</Th>
+                  <Th sortKey="name" activeKey={sortKey} dir={sortDir} onSort={handleSort}>School</Th>
+                  <Th sortKey="status" activeKey={sortKey} dir={sortDir} onSort={handleSort}>Status</Th>
+                  <Th sortKey="price" activeKey={sortKey} dir={sortDir} onSort={handleSort}>Price</Th>
+                  <Th sortKey="confirmed" activeKey={sortKey} dir={sortDir} onSort={handleSort}>Confirmed</Th>
+                  <Th sortKey="staff" activeKey={sortKey} dir={sortDir} onSort={handleSort}>Staff</Th>
+                  <Th sortKey="approver" activeKey={sortKey} dir={sortDir} onSort={handleSort}>Approver</Th>
+                  <Th sortKey="started" activeKey={sortKey} dir={sortDir} onSort={handleSort}>Started</Th>
+                  <Th sortKey="engagement" activeKey={sortKey} dir={sortDir} onSort={handleSort}>Engagement</Th>
+                  <Th sortKey="last_login" activeKey={sortKey} dir={sortDir} onSort={handleSort}>Last login</Th>
                   <Th>Actions</Th>
                 </tr>
               </thead>
               <tbody>
-                {sortRows(data.rows, sortBy).map((row, i) => (
+                {visibleRows.map((row, i) => (
                   <tr key={row.id} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
                     <Td style={{ fontWeight: 600, color: '#1B365D' }}>{row.name}</Td>
                     <Td><Pill colour={STATUS_COLOUR[row.subscription_status]}>{STATUS_LABEL[row.subscription_status]}</Pill></Td>
@@ -296,8 +447,11 @@ export default function AdminView() {
                     </Td>
                   </tr>
                 ))}
-                {data.rows.length === 0 && (
+                {rows.length === 0 && (
                   <tr><td colSpan={10} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>No schools found.</td></tr>
+                )}
+                {rows.length > 0 && visibleRows.length === 0 && (
+                  <tr><td colSpan={10} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>No schools match the current filters.</td></tr>
                 )}
               </tbody>
             </table>
@@ -469,8 +623,49 @@ function Field({ label, children }) {
   )
 }
 
-function Th({ children }) {
-  return <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{children}</th>
+function Th({ children, sortKey, activeKey, dir, onSort }) {
+  const isActive = sortKey && activeKey === sortKey
+  return (
+    <th
+      onClick={sortKey ? () => onSort(sortKey) : undefined}
+      style={{
+        padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.75rem', whiteSpace: 'nowrap',
+        cursor: sortKey ? 'pointer' : 'default', userSelect: 'none',
+      }}
+    >
+      {children}
+      {sortKey && (
+        <span style={{ marginLeft: 4, opacity: isActive ? 1 : 0.4 }}>
+          {isActive ? (dir === 'asc' ? '▲' : '▼') : '↕'}
+        </span>
+      )}
+    </th>
+  )
+}
+
+function FilterGroup({ label, children }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+        {label}
+      </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function FilterChip({ active, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{ ...actionBtnStyle, ...(active ? chipActiveStyle : {}) }}
+    >
+      {children}
+    </button>
+  )
 }
 
 function Td({ children, style }) {
@@ -486,6 +681,6 @@ const actionBtnStyle = {
   fontSize: '0.75rem', fontWeight: 600, color: '#1B365D', cursor: 'pointer',
 }
 
-const sortBtnActiveStyle = {
+const chipActiveStyle = {
   background: '#1B365D', color: '#fff', borderColor: '#1B365D',
 }
