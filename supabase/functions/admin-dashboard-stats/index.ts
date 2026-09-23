@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
     // can filter demo/test rows out of both the tiles and the table in one place.
     const { data: schools, error: schoolsErr } = await admin
       .from('schools')
-      .select('id, name, mat_id, is_demo, subscription_status, price_tier, annual_price, confirmed_at')
+      .select('id, name, mat_id, is_demo, subscription_status, price_tier, annual_price, confirmed_at, created_at')
       .order('name')
     if (schoolsErr) throw schoolsErr
 
@@ -195,6 +195,7 @@ Deno.serve(async (req) => {
         price_tier: s.price_tier,
         annual_price: s.annual_price,
         confirmed_at: s.confirmed_at,
+        created_at: s.created_at,
         staff_count: schoolProfiles.length,
         last_login: lastLogin,
         last_evidence: lastEvidence,

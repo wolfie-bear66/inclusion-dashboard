@@ -22,6 +22,16 @@ function fmtMoney(n) {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(n || 0)
 }
 
+function sortRows(rows, sortBy) {
+  const sorted = [...rows]
+  if (sortBy === 'date') {
+    sorted.sort((a, b) => new Date(b.created_at ?? 0) - new Date(a.created_at ?? 0))
+  } else {
+    sorted.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+  }
+  return sorted
+}
+
 export default function AdminView() {
   const [checking, setChecking] = useState(true)
   const [allowed, setAllowed] = useState(false)
@@ -32,6 +42,7 @@ export default function AdminView() {
   const [actionMsg, setActionMsg] = useState(null)
   const [resendingId, setResendingId] = useState(null)
   const [resendMsgByRow, setResendMsgByRow] = useState({})
+  const [sortBy, setSortBy] = useState('name')
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -202,6 +213,26 @@ export default function AdminView() {
             </Tile>
           </div>
 
+          <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              Sort by
+            </span>
+            <button
+              type="button"
+              onClick={() => setSortBy('name')}
+              style={{ ...actionBtnStyle, ...(sortBy === 'name' ? sortBtnActiveStyle : {}) }}
+            >
+              Name (A–Z)
+            </button>
+            <button
+              type="button"
+              onClick={() => setSortBy('date')}
+              style={{ ...actionBtnStyle, ...(sortBy === 'date' ? sortBtnActiveStyle : {}) }}
+            >
+              Date added (newest first)
+            </button>
+          </div>
+
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem', background: '#fff', border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
               <thead>
@@ -218,7 +249,7 @@ export default function AdminView() {
                 </tr>
               </thead>
               <tbody>
-                {data.rows.map((row, i) => (
+                {sortRows(data.rows, sortBy).map((row, i) => (
                   <tr key={row.id} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
                     <Td style={{ fontWeight: 600, color: '#1B365D' }}>{row.name}</Td>
                     <Td><Pill colour={STATUS_COLOUR[row.subscription_status]}>{STATUS_LABEL[row.subscription_status]}</Pill></Td>
@@ -433,4 +464,8 @@ const inputStyle = {
 const actionBtnStyle = {
   padding: '5px 10px', borderRadius: 6, border: '1px solid #E2E8F0', background: '#fff',
   fontSize: '0.75rem', fontWeight: 600, color: '#1B365D', cursor: 'pointer',
+}
+
+const sortBtnActiveStyle = {
+  background: '#1B365D', color: '#fff', borderColor: '#1B365D',
 }
