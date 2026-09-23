@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
     // Profiles (per school, plus we need ids to join against auth.users for login data)
     const { data: profiles, error: profilesErr } = await admin
       .from('profiles')
-      .select('id, school_id, first_name, last_name, role, job_title, mat_id, password_set')
+      .select('id, school_id, first_name, last_name, role, job_title, mat_id, password_set, temp_password_issued_at')
       .in('school_id', schoolIds.length ? schoolIds : ['00000000-0000-0000-0000-000000000000'])
     if (profilesErr) throw profilesErr
 
@@ -88,6 +88,8 @@ Deno.serve(async (req) => {
     // rather than assuming everyone fits on one page.
     const lastSignInByUserId: Record<string, string | null> = {}
     const emailByUserId: Record<string, string> = {}
+    // Every kind of invite email that could have gone out, per user — see lastInviteSent below.
+    const inviteSendsByUserId: Record<string, (string | null)[]> = {}
     let page = 1
     while (true) {
       const { data: pageData, error: listErr } = await admin.auth.admin.listUsers({ page, perPage: 1000 })
@@ -95,6 +97,7 @@ Deno.serve(async (req) => {
       for (const u of pageData.users) {
         lastSignInByUserId[u.id] = u.last_sign_in_at
         if (u.email) emailByUserId[u.id] = u.email
+        inviteSendsByUserId[u.id] = [u.invited_at ?? null, u.recovery_sent_at ?? null]
       }
       if (pageData.users.length < 1000) break
       page += 1
@@ -186,6 +189,21 @@ Deno.serve(async (req) => {
       else if (schoolProfiles.some((p: any) => lastSignInByUserId[p.id])) loginStatus = 'opened_no_password'
       else loginStatus = 'never_opened'
 
+      // Most recent invite email of any kind across the school's profiles. No single column
+      // covers it: temp_password_issued_at is written by onboard-school / invite-user /
+      // resend-invite; recovery_sent_at covers resends made via the old reset-link branch
+      // (and a user's own "forgot password"); invited_at covers pre-temp-password magic-link
+      // invites. Compared as parsed times, since PostgREST and GoTrue format timestamps
+      // differently (+00:00 vs Z, differing fractional precision).
+      let lastInviteMs: number | null = null
+      for (const p of schoolProfiles) {
+        for (const ts of [p.temp_password_issued_at, ...(inviteSendsByUserId[p.id] ?? [])]) {
+          const ms = ts ? Date.parse(ts) : NaN
+          if (!Number.isNaN(ms) && (lastInviteMs === null || ms > lastInviteMs)) lastInviteMs = ms
+        }
+      }
+      const lastInviteSent = lastInviteMs === null ? null : new Date(lastInviteMs).toISOString()
+
       const staff = schoolProfiles.map((p: any) => ({
         profile_id: p.id,
         first_name: p.first_name,
@@ -210,6 +228,7 @@ Deno.serve(async (req) => {
         last_evidence: lastEvidence,
         engagement_status: engagementStatus,
         login_status: loginStatus,
+        last_invite_sent: lastInviteSent,
         pending_invites: pendingInvites,
         staff,
         started_count: startedCountBySchool[s.id] ?? 0,

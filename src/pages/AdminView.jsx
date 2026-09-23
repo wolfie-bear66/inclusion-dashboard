@@ -206,14 +206,15 @@ export default function AdminView() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Failed to resend invite')
-      // Resending always supersedes any invite already sent to this address — Supabase
-      // invite tokens are single-use, and issuing a new one invalidates the last one
-      // (confirmed against Supabase's own invite/token docs). Worth surfacing here since
-      // this is exactly what produced Jenny Carson's dead-end-link report: a resend went
-      // out while an older, now-invalid link was still sitting in the recipient's inbox.
-      const text = `Invite resent to ${json.email}. Note: any previous invite email sent to this address is now invalid — only the most recent link will work.`
+      // Resending always reissues the temporary password, so any earlier invite email in the
+      // recipient's inbox now holds a password that no longer works. Worth surfacing, since
+      // an older email still sitting there is exactly what produced Jenny Carson's
+      // dead-end report.
+      const text = `Invite resent to ${json.email}. Note: any previous invite email sent to this address is now invalid — only the password in the most recent email will work.`
       setActionMsg({ type: 'success', text })
       setResendMsgByRow(prev => ({ ...prev, [profileId]: { type: 'success', text: `Resent to ${json.email}` } }))
+      // Refetch so the row's "Invite sent" date reflects this resend straight away.
+      loadData()
     } catch (err) {
       setActionMsg({ type: 'error', text: err.message })
       setResendMsgByRow(prev => ({ ...prev, [profileId]: { type: 'error', text: err.message } }))
@@ -420,7 +421,12 @@ export default function AdminView() {
                     <Td><ApproverCell approvers={approversFor(row)} /></Td>
                     <Td>{row.started_count}/{data.active_point_total}</Td>
                     <Td><Pill colour={ENGAGEMENT_COLOUR[row.engagement_status]}>{ENGAGEMENT_LABEL[row.engagement_status]}</Pill></Td>
-                    <Td>{row.login_status ? <Pill colour={LOGIN_STATUS_COLOUR[row.login_status]}>{LOGIN_STATUS_LABEL[row.login_status]}</Pill> : '—'}</Td>
+                    <Td>
+                      {row.login_status ? <Pill colour={LOGIN_STATUS_COLOUR[row.login_status]}>{LOGIN_STATUS_LABEL[row.login_status]}</Pill> : '—'}
+                      <div style={{ marginTop: 4, fontSize: '0.6875rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                        Invite sent {row.last_invite_sent ? fmtDate(row.last_invite_sent) : '—'}
+                      </div>
+                    </Td>
                     <Td>{fmtDate(row.last_login)}</Td>
                     <Td>
                       <button onClick={() => setEditingRow(row)} style={actionBtnStyle}>Edit</button>

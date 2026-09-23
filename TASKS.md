@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 23 September 2026 (Session 94 — Founder Admin school table: Login status badge column)
+Last updated: 23 September 2026 (Session 95 — resend-invite always reissues a temp password; "Invite sent" date under Login status badge)
 
 ---
 
@@ -18,6 +18,16 @@ Last updated: 23 September 2026 (Session 94 — Founder Admin school table: Logi
 ---
 
 ## Completed
+
+- [x] **Session 95 — Fixed `resend-invite` (reset-link branch caught every resend and dead-ended stale invites) + added "Invite sent" date under the Login status badge (`/admin`)**
+
+  **Phase 0 finding (the bug)**: `resend-invite` branched on `email_confirmed_at` — confirmed accounts got `resetPasswordForEmail` (a clickable Supabase reset link), unconfirmed ones got a fresh temp password + a `temp_password_issued_at` touch. But `onboard-school`/`invite-user` create every account with `email_confirm: true`, so **every** post-Session-64 resend took the reset-link branch. Consequences: (1) it sent exactly the kind of clickable auth link Session 64 set out to eliminate (school gateways prefetch/burn them); (2) it never updated `temp_password_issued_at`, so for anyone whose original temp password was >7 days old, `App.jsx`'s expiry check (`password_set !== true` + issued >7 days ago → sign out + "ask your school admin for a new one") signed them straight back out even after following the reset link — and further resends couldn't fix it. Live at time of diagnosis: all 7 Resend-eligible profiles were already confirmed; Brigg (Trish Atkinson) and Christ Church (Joanne Haury) had reset links sent 23 Sept on top of 10 Sept temp-password timestamps, i.e. dead-ended by the expiry check (TRACED, not reproduced end-to-end); Cheetham (Rachel Bruno, null timestamp) unaffected by the expiry. Also confirmed: a Resend click targets exactly one profile (`.eq('id', profileId)`, one button per pending profile), and `temp_password_issued_at` is **never cleared** on password set (5 profiles with `password_set = true` still carry it), contrary to the migration's column comment. Kew Woods' differing per-profile timestamps all trace to separate per-profile writes (`invite-user` for Abi Tapia/Ian Raikes; the old unconfirmed resend branch for Christina Greaves; null for Chris McWilliam, confirmed via an old magic link).
+
+  **Fix**: `resend-invite` now always reissues a temp password when `password_set !== true` — `updateUserById({ password, email_confirm: true })` → touch `temp_password_issued_at` → `sendTempPasswordEmail`. The `isConfirmed` branch and `resetPasswordForEmail` call are removed. The `password_set === true` guard and founder-only auth are unchanged. Admin success message updated from "only the most recent link will work" to "only the password in the most recent email will work". `RESEND_API_KEY` confirmed present as a Supabase secret (set 8 Sept).
+
+  **"Invite sent" (Option A)**: `admin-dashboard-stats` returns `row.last_invite_sent` = most recent of `profiles.temp_password_issued_at`, `auth.users.recovery_sent_at` and `auth.users.invited_at` across all of the school's profiles (compared as parsed times — PostgREST and GoTrue format timestamps differently). `temp_password_issued_at` alone was rejected because it missed every reset-link resend and all pre-Phase-1 magic-link invites. Caveat: `recovery_sent_at` also moves if a user clicks "Forgot password" themselves. Shown as small grey "Invite sent DD Mon YYYY" / "Invite sent —" text under the Login status badge (no new column). The table refetches after a successful Resend so the date updates immediately. Expected at build time (VERIFIED by SQL): Brigg/Cheetham/Christ Church 23 Sept; Oaklands, Hunstanton and St John's CE show "—" (no invite record of any kind — those accounts predate/bypassed the invite functions).
+
+  `npx eslint` and `npx vite build` clean; edge functions (Deno) reviewed by hand. **Not verified live in browser** — no founder-login credentials available.
 
 - [x] **Session 94 — Login status badge column added to the Founder Admin school table (`/admin`)** — New sortable "Login status" column between Engagement and Last login, one pill per school: **Logged in** (green) / **Invite opened, no login set** (orange) / **Never opened invite** (grey). Confirmed and Last login columns left exactly as they were.
 
