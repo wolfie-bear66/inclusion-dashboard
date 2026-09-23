@@ -22,6 +22,10 @@ function fmtMoney(n) {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(n || 0)
 }
 
+function approversFor(row) {
+  return (row.staff ?? []).filter(p => p.role === 'approver')
+}
+
 function sortRows(rows, sortBy) {
   const sorted = [...rows]
   if (sortBy === 'date') {
@@ -242,6 +246,7 @@ export default function AdminView() {
                   <Th>Price</Th>
                   <Th>Confirmed</Th>
                   <Th>Staff</Th>
+                  <Th>Approver</Th>
                   <Th>Started</Th>
                   <Th>Engagement</Th>
                   <Th>Last login</Th>
@@ -256,6 +261,7 @@ export default function AdminView() {
                     <Td>{row.annual_price ? fmtMoney(row.annual_price) : (row.price_tier ?? '—')}</Td>
                     <Td>{fmtDate(row.confirmed_at)}</Td>
                     <Td>{row.staff_count}</Td>
+                    <Td><ApproverCell approvers={approversFor(row)} /></Td>
                     <Td>{row.started_count}/{data.active_point_total}</Td>
                     <Td><Pill colour={ENGAGEMENT_COLOUR[row.engagement_status]}>{ENGAGEMENT_LABEL[row.engagement_status]}</Pill></Td>
                     <Td>{fmtDate(row.last_login)}</Td>
@@ -291,7 +297,7 @@ export default function AdminView() {
                   </tr>
                 ))}
                 {data.rows.length === 0 && (
-                  <tr><td colSpan={9} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>No schools found.</td></tr>
+                  <tr><td colSpan={10} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>No schools found.</td></tr>
                 )}
               </tbody>
             </table>
@@ -425,6 +431,20 @@ function StatRow({ label, value, colour }) {
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0' }}>
       <span style={{ fontSize: '0.8125rem', color: '#334155' }}>{label}</span>
       <span style={{ fontSize: '1rem', fontWeight: 700, color: colour }}>{value}</span>
+    </div>
+  )
+}
+
+function ApproverCell({ approvers }) {
+  if (approvers.length === 0) return '—'
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {approvers.map(a => (
+        <div key={a.profile_id}>
+          <div>{a.first_name} {a.last_name}</div>
+          <div style={{ color: '#64748b', fontSize: '0.75rem' }}>{a.email ?? '—'}</div>
+        </div>
+      ))}
     </div>
   )
 }
