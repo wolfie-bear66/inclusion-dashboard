@@ -26,7 +26,7 @@ function splitName(fullName) {
   return { first_name: trimmed.slice(0, spaceIdx), last_name: trimmed.slice(spaceIdx + 1) }
 }
 
-export default function BootstrapWizard({ schoolId, schoolName, userId, firstName, matId, supabase, onDismiss }) {
+export default function BootstrapWizard({ schoolId, schoolName, userId, firstName, matId, supabase, onSaved, onDismiss }) {
   const [loading, setLoading] = useState(true)
   const [points, setPoints] = useState([]) // { id, label, category, principle }
   // ppId -> { assigneeUserId, displayName, pending }
@@ -185,6 +185,7 @@ export default function BootstrapWizard({ schoolId, schoolName, userId, firstNam
     // entries upsert below returns ids, then written in one follow-up evidence_entries insert.
     const linksByPp = {}
     const jobTitleUpdates = [] // { userId, jobTitle } — only for freshly-created profiles this pass
+    const namedPersonInPlacePp = [] // Named Person points given an in_place write this pass, for the confirmation note
 
     for (const row of rowsToProcess) {
       const emailKey = row.email.toLowerCase()
@@ -255,6 +256,7 @@ export default function BootstrapWizard({ schoolId, schoolName, userId, firstNam
           // evidence — there's nothing further to attach, and no self-approval concern
           // since the wizard is run by the approving admin at first login.
           entryRows.push({ school_id: schoolId, provision_point_id: row.point.id, status: 'in_place' })
+          namedPersonInPlacePp.push(row.point.id)
         }
       }
     }
@@ -305,6 +307,7 @@ export default function BootstrapWizard({ schoolId, schoolName, userId, firstNam
         return next
       })
       setRefreshToken(t => t + 1) // one refetch of the readiness bars, for everything banked in this pass
+      onSaved?.() // and one refetch of the homepage underneath, so it isn't left on its sign-in snapshot
     }
     // Persist the (possibly grown) email cache so it survives a "Finish later" dismiss —
     // otherwise the same colleague named against a point in a later session gets re-invited
@@ -318,7 +321,12 @@ export default function BootstrapWizard({ schoolId, schoolName, userId, firstNam
     if (rowErrors.length > 0) {
       setError(rowErrors.join(' '))
     } else if (Object.keys(newAssignments).length > 0) {
-      setSuccessNote(`Saved — ${Object.keys(newAssignments).length} point${Object.keys(newAssignments).length !== 1 ? 's' : ''} updated.`)
+      // Only count Named Person rows whose entries write actually came back — an approver's
+      // in_place write here is final (no approval step), so "recorded as in place" is accurate.
+      const namedInPlaceCount = namedPersonInPlacePp.filter(ppId => entryIdByPp[ppId]).length
+      setSuccessNote(namedInPlaceCount > 0
+        ? `${namedInPlaceCount} Named Person point${namedInPlaceCount !== 1 ? 's' : ''} recorded as in place.`
+        : `Saved — ${Object.keys(newAssignments).length} point${Object.keys(newAssignments).length !== 1 ? 's' : ''} updated.`)
     }
 
     if (rowErrors.length === 0) {
@@ -327,8 +335,9 @@ export default function BootstrapWizard({ schoolId, schoolName, userId, firstNam
         await patchOnboardingState({ bootstrap_wizard_dismissed: true })
         onDismiss()
       } else if (!isLastCategory) {
+        // The note is kept (not cleared) so the saved count is still visible on the next step;
+        // the next Submit clears it at the start of handleSubmit as before.
         setCategoryIndex(i => i + 1)
-        setSuccessNote(null)
       }
     }
   }

@@ -2601,6 +2601,7 @@ export default function App() {
   const [ppDomainMap, setPpDomainMap] = useState({})
   const [domainTotals, setDomainTotals] = useState({})
   const [allStatuses, setAllStatuses] = useState({})
+  const [schoolDataRefresh, setSchoolDataRefresh] = useState(0)
   const [, setAllEvidenceCounts] = useState({})
   const [allSubDomains, setAllSubDomains] = useState([])
   const [ppCategoryMap, setPpCategoryMap] = useState({})
@@ -3076,13 +3077,19 @@ export default function App() {
   // School-level load: statuses, evidence counts, full evidence detail, and friction flags
   // Fetching at school level (not per-domain) ensures evidenceEntries is populated for
   // both the Domain view and the Category view.
+  // schoolDataRefresh re-runs this same load after a write made outside the evidence modal
+  // (e.g. BootstrapWizard), which would otherwise leave the homepage on its sign-in snapshot.
+  // `cancelled` drops a superseded response, so back-to-back refreshes (save then close) or a
+  // school switch mid-fetch can't land an older result on top of a newer one.
   useEffect(() => {
     if (!selectedSchool) { setAllStatuses({}); setAllEvidenceCounts({}); setEntries({}); setEvidenceEntries({}); setFlaggedPoints(new Set()); return }
+    let cancelled = false
     supabase
       .from('entries')
       .select(ENTRY_SELECT)
       .eq('school_id', selectedSchool)
       .then(({ data, error }) => {
+        if (cancelled) return
         if (error) { console.error('Error loading school data:', error); return }
         const statusMap = {}
         const countMap = {}
@@ -3104,9 +3111,10 @@ export default function App() {
       .select('provision_point_id')
       .eq('school_id', selectedSchool)
       .then(({ data }) => {
-        if (data) setFlaggedPoints(new Set(data.map(r => r.provision_point_id)))
+        if (!cancelled && data) setFlaggedPoints(new Set(data.map(r => r.provision_point_id)))
       })
-  }, [selectedSchool])
+    return () => { cancelled = true }
+  }, [selectedSchool, schoolDataRefresh])
 
   useEffect(() => {
     if (!selectedSchool || !selectedDomain || selectedDomain === 'team' || selectedDomain === 'report-builder' || selectedDomain === 'barriers' || selectedDomain === 'inclusion-strategy') {
@@ -4392,7 +4400,11 @@ export default function App() {
             firstName={firstName}
             matId={userMatId}
             supabase={supabase}
-            onDismiss={() => setBootstrapWizardVisible(false)}
+            onSaved={() => setSchoolDataRefresh(n => n + 1)}
+            onDismiss={() => {
+              setBootstrapWizardVisible(false)
+              setSchoolDataRefresh(n => n + 1)
+            }}
           />
         )}
 

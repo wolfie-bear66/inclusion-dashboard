@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 24 September 2026 (Session 99 — Home ledger, index pages and drill-downs follow the "Viewing" control)
+Last updated: 24 September 2026 (Session 100 — Homepage refreshes after the bootstrap wizard saves or closes)
 
 ---
 
@@ -18,6 +18,18 @@ Last updated: 24 September 2026 (Session 99 — Home ledger, index pages and dri
 ---
 
 ## Completed
+
+- [x] **Session 100 — Homepage refreshes after the bootstrap wizard saves or closes** — Fixes the founder's report from the how-to video run (AJY Academy, Louise as approver): Named Person points entered in the onboarding modal didn't move the homepage readiness card or ledger. `src/App.jsx` + `src/components/BootstrapWizard.jsx` only.
+
+  **Phase 0 finding (read-only)**: the modal is `BootstrapWizard` (approver-only, first login). The save **did** happen: live SQL showed both Named Person `entries` rows at AJY as `in_place` with `submitted_for_approval_at`/`submitted_by` null (correct for an approver per the v2 role fork), plus their `point_assignments` and invited profiles, written 13:42 UTC. The homepage loads `entries` statuses once per `selectedSchool`; the wizard sits on top of the already-loaded homepage and its `onDismiss` only hid it, so the homepage kept its sign-in snapshot until a full reload. The wizard's own readiness bars did refresh (its `refreshToken`). `computeCounts()`, the school filter and the write paths were all correct. Separately, the wizard's "Saved — N points updated" note was cleared the instant it advanced to Policies, so the Named Person step gave no confirmation at all. AJY's `schools.is_demo = true` only affects `admin-dashboard-stats`; the session was not in demo mode (the writes landed).
+
+  **Built**: (1) `App.jsx`: a `schoolDataRefresh` counter added to the school-level load effect's dependencies (`[selectedSchool, schoolDataRefresh]`); initial load and school switching unchanged. The effect gained a `cancelled` cleanup so a superseded response (save-then-close back to back, or a school switch mid-fetch) can't overwrite a newer one. (2) `BootstrapWizard.jsx`: new optional `onSaved` prop, called once per save that wrote at least one row (same place as its own `refreshToken` bump). `App.jsx` wires `onSaved` and `onDismiss` (Finish later, final Submit, "Got it") to bump the counter. (3) The success note now reads **"N Named Person point(s) recorded as in place."**, counting only Named Person rows whose `entries` write came back; otherwise the old "Saved — N points updated." It is no longer cleared on advancing to Policies (the next Submit clears it as before). The evidence modal needed no change: `openModal` reads `entries[pp.id].status` from the same effect, so it gets fresh statuses too.
+
+  **Unchanged**: `computeCounts()`, every write path and the role/status fork, the approval RPCs, RLS, edge functions, migrations, Supabase data, demo-mode behaviour, `OnboardingPrompt`, the `job_title` write, `onboarding_state` handling, and the wizard's own readiness bars.
+
+  **Verified (VERIFIED — Claude, local dev server, `/demo` demo MAT admin, read-only)**: school switching still refreshes correctly: Springwell Academy 142 in place / 22 in progress / Leadership 22 of 25, then North Shore High 35 / 18 / 2 of 25, both matching read-only SQL. No refetch loop: zero `entries` requests in 10s idle after the page settled. Exited demo afterwards (no `isDemoMode`/`demoEntry` left in sessionStorage). `npx eslint` 65 problems (56 errors, 9 warnings), matching the baseline; `npx vite build` clean; CRLF kept in `App.jsx`, `BootstrapWizard.jsx` kept LF.
+
+  **Founder-observed, NOT machine-verified by Claude**: the wizard run itself (save a Named Person point, close the wizard, homepage readiness card / Named Person row / Leadership & Governance row updating without reload), normal sign-in with no wizard, and once-per-save/once-on-close refetch counts. Claude can't create auth accounts or enter passwords, so the founder ran these and reported them verified. No temp school was found in the DB afterwards (none named "temp" or created in the prior 24h), so Claude created and removed nothing. Refetch counts are TRACED: one per save, one on close (so Finish later after a save = two loads).
 
 - [x] **Session 99 — Home ledger, Domains/Categories pages and drill-downs now follow the "Viewing" control** — **Reverses Session 83 pre-check (a)**, which deliberately kept the home ledger whole-school while "Viewing" filtered only the review card. **Categories index page now scopes, where Session 88 deliberately did not.** Commit `29fca25`, `src/App.jsx` only. Invariant: for every view mode and every ledger view, a row's counts equal the header of the page it opens.
 
@@ -408,6 +420,10 @@ Last updated: 24 September 2026 (Session 99 — Home ledger, index pages and dri
 - [x] **MAT dashboard — phase filter on Schools table** — `phase TEXT CHECK (primary/secondary/all_through/special)` added to `schools` via `step8_school_phase.sql`; demo schools backfilled by name. `SchoolsView` gains pill filter row (All / Primary / Secondary / All-through / Special); null-phase schools appear under All only; client-side filter applied before sort. Schools fetch updated to include `phase`.
 
 - [ ] **Approver can set a team member's job title/role after inviting them.** Today a job title is only set by the person themselves at first login; a user invited through the approver's Team-screen pathway has `job_title` null and the approver has no way to fill it in (the Team screen skips editing). Add: (a) an optional job title field on the invite form, and (b) an inline "edit job title" on each Team-screen row, approver-only. Decide separately whether an approver may also change a member's `role` (contributor/approver) from the same place, and if so, guard it: never allow a school to end up with zero approvers.
+
+- [ ] **`OnboardingPrompt` erases the bootstrap wizard's saved state.** Found Session 100 Phase 0 (TRACED; Louise's live `onboarding_state` at AJY is consistent with it). `OnboardingPrompt` initialises `localOs` from the sign-in copy of `profiles.onboarding_state` and writes the whole merged object back on dismiss, erasing keys the wizard wrote since sign-in: `bootstrap_wizard_dismissed` and `bootstrap_wizard_email_cache`. Effect: the wizard reopens on the next sign-in, and re-naming an already-invited person fails as a duplicate email in `invite-user`. Fix direction: merge against a fresh read of `onboarding_state` (or a server-side jsonb merge) instead of the sign-in snapshot.
+
+- [ ] **Bootstrap wizard's `job_title` write onto newly invited profiles silently fails.** Found Session 100 Phase 0 (TRACED; all three profiles invited through the wizard at AJY on 24 Sep have `job_title` null). The `profiles` UPDATE policy only allows updating your own row, so the approver's `profiles.update({ job_title })` on the invitee is rejected, and the wizard doesn't check the error. Related to the item above about approvers setting job titles.
 
 - [ ] **`/admin` (founder): easier user delete + edit details, with safeguards against accidents.**
   Edit: first name, last name, job title, role, and email (email change goes through the auth admin API, not `profiles`, and may need re-verification).
