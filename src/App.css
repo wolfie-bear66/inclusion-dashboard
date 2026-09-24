@@ -1399,6 +1399,26 @@ body {
   }
 }
 
+/* Short desktop/laptop viewports (e.g. 1400x730 CSS px): tighten the homepage so the whole
+   ledger fits without scrolling. min-width keeps phones out; the nested container query keeps
+   it to the side-by-side layout (the stacked layout sets row height:auto and must not get a
+   fixed 56px). Scoped to .hp-grid so the Domains/Categories sidebar pages are untouched.
+   Tall screens are unaffected. */
+@media (max-height: 800px) and (min-width: 900px) {
+  .main:has(.hp-grid) {
+    padding-top: 12px;
+  }
+  @container hp-content (min-width: 821px) {
+    .hp-grid .hp-ledger {
+      min-height: 0;
+      padding: 8px 0 6px;
+    }
+    .hp-grid .hp-row {
+      height: 56px;
+    }
+  }
+}
+
 /* ── Review sheet ("Coming up for review" row tap) ────────────────────────
    Reuses .modal-header/.modal-title/.modal-close/.modal-body for the header and
    scrolling body (existing modal styling); the overlay/panel wrapper is its own,
