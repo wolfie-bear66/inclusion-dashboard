@@ -30,3 +30,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Stray/generated files: local archive and Supabase CLI state
+src.zip
+supabase/.temp/
