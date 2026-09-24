@@ -3874,13 +3874,20 @@ export default function App() {
 
         {view !== 'mat' && selectedSchool && !selectedDomain && (() => {
 
+          // "Viewing" scope for every ledger and drill-down in this block: in personal view
+          // (My provision, or a teammate), only points assigned to that person count, so a
+          // ledger row and the page it opens always agree. Readiness card stays whole-school.
+          const isPersonalView = viewMode !== 'whole_school'
+          const inViewScope = id => !isPersonalView || personalAssignedPpIds.has(id)
+
           // ── Category view ─────────────────────────────────────────────
           if (overviewMode === 'category') {
             if (!selectedCategory) {
-              // Categories ledger — same look and counting formula as the homepage
-              // ledger's Categories view (computeCounts). No personal-view scoping,
-              // matching the previous card grid's behaviour.
-              const categoryPoints = Object.entries(ppCategoryMap).map(([id, category]) => ({ id, category }))
+              // Categories ledger — same look, counting formula and "Viewing" scope as the
+              // homepage ledger's Categories view (computeCounts over in-scope points).
+              const categoryPoints = Object.entries(ppCategoryMap)
+                .filter(([id]) => inViewScope(id))
+                .map(([id, category]) => ({ id, category }))
               const categoryRows = PROVISION_POINT_CATEGORIES.map(cat => ({
                 key: cat,
                 name: cat,
@@ -3906,7 +3913,7 @@ export default function App() {
             }
 
             // Category detail — provision points grouped by domain
-            const catPpIds = Object.entries(ppCategoryMap).filter(([, c]) => c === selectedCategory).map(([id]) => id)
+            const catPpIds = Object.entries(ppCategoryMap).filter(([id, c]) => c === selectedCategory && inViewScope(id)).map(([id]) => id)
 
             return (
               <>
@@ -3939,7 +3946,7 @@ export default function App() {
 
           // ── Principle view ──────────────────────────────────────────────
           if (overviewMode === 'principle') {
-            const principlePpIds = Object.entries(ppPrincipleMap).filter(([, p]) => p === selectedPrinciple).map(([id]) => id)
+            const principlePpIds = Object.entries(ppPrincipleMap).filter(([id, p]) => p === selectedPrinciple && inViewScope(id)).map(([id]) => id)
 
             return (
               <DrillDownDetail
@@ -3972,16 +3979,15 @@ export default function App() {
           const hour     = new Date().getHours()
           const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
-          const isPersonalView = viewMode !== 'whole_school'
-
           // Reviews — filtered to assigned points in personal view
           const filteredReviews = isPersonalView
             ? overdueReviews.filter(r => personalAssignedPpIds.has(r.provisionPointId))
             : overdueReviews
           // Ledger rows — Principles | Domains | Categories, every count from computeCounts()
           // so a row and its drill-down (which also uses computeCounts, see DrillDownDetail)
-          // always agree. allLedgerPoints carries the fields each scope predicate needs.
-          const allLedgerPoints = allPpIds.map(id => ({
+          // always agree. ledgerPoints carries the fields each scope predicate needs, narrowed
+          // to the "Viewing" scope — rows with nothing in scope stay visible as "0 of 0".
+          const ledgerPoints = allPpIds.filter(inViewScope).map(id => ({
             id, domainId: ppDomainMap[id], category: ppCategoryMap[id], principle: ppPrincipleMap[id],
           }))
           let ledgerRows = []
@@ -3989,21 +3995,21 @@ export default function App() {
             ledgerRows = Object.keys(PRINCIPLE_LABEL_SHORT).map(principle => ({
               key: principle,
               name: PRINCIPLE_LABEL_SHORT[principle] ?? principle,
-              counts: computeCounts(allLedgerPoints, allStatuses, p => p.principle === principle),
+              counts: computeCounts(ledgerPoints, allStatuses, p => p.principle === principle),
               onClick: () => { setOverviewMode('principle'); setSelectedPrinciple(principle) },
             }))
           } else if (ledgerView === 'domains') {
             ledgerRows = domains.map(d => ({
               key: d.id,
               name: d.name,
-              counts: computeCounts(allLedgerPoints, allStatuses, p => p.domainId === d.id),
+              counts: computeCounts(ledgerPoints, allStatuses, p => p.domainId === d.id),
               onClick: () => setSelectedDomain(d.id),
             }))
           } else {
             ledgerRows = PROVISION_POINT_CATEGORIES.map(cat => ({
               key: cat,
               name: cat,
-              counts: computeCounts(allLedgerPoints, allStatuses, p => p.category === cat),
+              counts: computeCounts(ledgerPoints, allStatuses, p => p.category === cat),
               onClick: () => { setSelectedDomain(''); setOverviewMode('category'); setSelectedCategory(cat) },
             }))
           }
@@ -4504,8 +4510,11 @@ export default function App() {
           ) : (() => {
             const currentDomain = domains.find(d => d.id === selectedDomain)
             const domColour = currentDomain ? sidebarDomainColour(currentDomain.name) : '#64748b'
-            const domInPlace = allPoints.filter(p => entries[p.id]?.status === 'in_place').length
-            const domTotal = allPoints.length
+            // Same "Viewing" scope as the Domains ledgers that link here, so the header and
+            // sections agree with the row that was clicked.
+            const isPersonalView = viewMode !== 'whole_school'
+            const inDomainScope = p => !isPersonalView || personalAssignedPpIds.has(p.id)
+            const { inPlace: domInPlace, total: domTotal } = computeCounts(allPoints.filter(inDomainScope), allStatuses)
             const domPct = domTotal ? Math.round((domInPlace / domTotal) * 100) : 0
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
@@ -4542,9 +4551,10 @@ export default function App() {
                     4-11 points, unlike the Category/Principle drill-down's much wider spread,
                     so there's no outlier case to design truncation around here). */}
                 {subDomains.map(sd => {
+                  const scopedPps = sd.provision_points.filter(inDomainScope)
                   const pps = utFilter === 'all'
-                    ? sd.provision_points
-                    : sd.provision_points.filter(p => p.universal_or_targeted === utFilter)
+                    ? scopedPps
+                    : scopedPps.filter(p => p.universal_or_targeted === utFilter)
                   const ppCount = pps.length
                   if (ppCount === 0) return null
                   const sdInPlace   = pps.filter(p => entries[p.id]?.status === 'in_place').length
@@ -4597,6 +4607,9 @@ export default function App() {
                     </div>
                   )
                 })}
+                {domTotal === 0 && (
+                  <p className="state-msg">None of this domain&apos;s points are in this view.</p>
+                )}
               </div>
             )
           })()
