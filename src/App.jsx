@@ -4047,9 +4047,9 @@ export default function App() {
           // and rendered in the ledger card's header row (opposite the segmented control), and
           // again above the teammate empty state, which replaces the whole grid — without it
           // there'd be no way back out of that view. It still filters the review card too.
-          // The contributor's "My Provision" button sits on its own line under the header rather
-          // than beside the pill: pill + button + segmented control don't fit on one row below
-          // ~1420px, whereas the pill alone fits top-right down to ~1210px.
+          // The contributor's self-assign button lives in the readiness card's right-hand slot
+          // (where approvers get "awaiting approval" — the two are role-exclusive, so never both),
+          // keeping the ledger header to the segmented control + pill on one row.
           const selfAssignButton = userRole === 'contributor' && !readOnly && !isDemoMode ? (
             <button type="button" onClick={() => setSelfAssignOpen(true)} style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -4058,7 +4058,7 @@ export default function App() {
               fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
             }}>
               <i className="ti ti-adjustments" style={{ fontSize: '0.9rem' }} />
-              My Provision
+              Choose my points
             </button>
           ) : null
           const viewToggle = userRole === 'contributor' ? (
@@ -4134,7 +4134,9 @@ export default function App() {
 
               {/* Greeting row + fluid-width readiness box */}
               <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-                <div style={{ flexShrink: 0 }}>
+                {/* Shrinkable so a long greeting ("Good afternoon, …") wraps at narrow widths
+                    instead of pushing the page past the scroll area. */}
+                <div style={{ flexShrink: 1 }}>
                   <h1 className="hp-font-display" style={{ fontSize: 34, color: 'var(--hp-text-primary)', lineHeight: 1.15 }}>
                     {greeting}{firstName ? `, ${firstName}` : ''}.
                   </h1>
@@ -4150,7 +4152,6 @@ export default function App() {
                 }}>
                   <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexShrink: 0 }}>
                     <span className="hp-font-display" style={{ fontSize: 44, color: 'var(--brand-navy)', lineHeight: 1, fontVariantNumeric: 'lining-nums' }}>{readPct}%</span>
-                    <span style={{ fontSize: 13, color: 'var(--hp-text-meta)', paddingBottom: 5 }}>overall readiness</span>
                   </div>
                   <div style={{ flex: '1 1 260px', minWidth: 260, maxWidth: 260, display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div className="hp-row-bar" style={{ width: 260 }}>
@@ -4175,6 +4176,11 @@ export default function App() {
                       <i className="ti ti-clipboard-check" style={{ fontSize: '0.85rem' }} />
                       {approvalQueueCount} awaiting approval
                     </button>
+                  )}
+                  {selfAssignButton && (
+                    <div style={{ marginLeft: 'auto' }}>
+                      {selfAssignButton}
+                    </div>
                   )}
                 </div>
               </div>
@@ -4225,11 +4231,6 @@ export default function App() {
                         (and tints the page); the ledger counts below stay whole-school for now. */}
                     {viewToggle}
                   </div>
-                  {selfAssignButton && (
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 24px 10px' }}>
-                      {selfAssignButton}
-                    </div>
-                  )}
                   {viewingAsMember && (
                     <p style={{ fontSize: '0.75rem', color: '#64748b', padding: '0 24px 10px' }}>
                       Showing points assigned to {viewingAsMember.first_name}
