@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 24 September 2026 (Session 97 — Homepage header polish: "Choose my points" in readiness card, "overall readiness" label removed, 375px overflow fixed)
+Last updated: 24 September 2026 (Session 98 — Homepage fits short laptop viewports without scrolling, CSS only)
 
 ---
 
@@ -18,6 +18,25 @@ Last updated: 24 September 2026 (Session 97 — Homepage header polish: "Choose 
 ---
 
 ## Completed
+
+- [x] **Session 98 — Homepage fits a short laptop viewport without scrolling (CSS only)** — Closes the Session 97 open item (1536×730 overflowed by 29px Principles / 79px Categories). Commit `e3412a0`, `src/App.css` only, no JSX change.
+
+  **Built**: a new `@media (max-height: 800px) and (min-width: 900px)` block (after the `@container hp-content (max-width: 820px)` block). `min-width` keeps phones out. `.main:has(.hp-grid) { padding-top: 12px }` (from 28px; the founder chose to leave it at 12). Nested inside `@container hp-content (min-width: 821px)`, so only the side-by-side layout is affected: `.hp-grid .hp-ledger { min-height: 0; padding: 8px 0 6px }` (from 560px / 14px 0) and `.hp-grid .hp-row { height: 56px }` (from 64px). Why the nested container query: a short window around 900px wide is already in the stacked layout, whose rows use `height: auto`; a fixed 56px there would break them. Why `.hp-grid`: the Domains/Categories sidebar pages share `.hp-content`/`.hp-ledger`/`.hp-row` but not `.hp-grid`, so they're excluded. Not changed: the 14px `hp-content` gap, the ledger header row padding and the legend padding are **inline JSX styles**. They'd need `!important` or JSX edits and weren't needed to hit the target.
+
+  **Measurement method**: the page scrolls inside `<main class="main">`, not the document, so `document.scrollingElement.scrollHeight` always equals `innerHeight` (722/722, 730/730, 950/950) and can't detect overflow. Measured instead: `main.scrollHeight` vs `main.clientHeight` before, and the real space left (visible bottom of `main` minus the bottom of `.hp-grid`) after. Views: approver (Louise Allen, AJY Academy, read-only), driven via Claude in Chrome. **Real window**: the founder's actual tab at **1389×722 CSS px, device scale 1.375**, not resized, since it already matches the target viewport. **Iframes**: same-origin test iframes at exact sizes for the rest.
+
+  | Size | Principles (7 rows) | Domains (6 rows) | Categories (8 rows) |
+  |---|---|---|---|
+  | **Real window 1389×722** | +37 over → **63.3 spare** | +37 over → **119.3 spare** | +87 over → **7.3 spare** |
+  | iframe 1400×730 | +29 over → 71.3 spare | +29 over → 127.3 spare | +79 over → **15.3 spare** ✅ |
+  | iframe 1536×730 | +29 over → 71.3 spare | +29 over → 127.3 spare | +79 over → 15.3 spare |
+  | iframe 1920×950 | 0 → unchanged | 0 → unchanged | 0 → unchanged |
+
+  Target (Principles **and** Categories fit at 1400×730 with ≥8px spare) met. In the real window, Categories fits with 7.3px (the window is 8px shorter than 1400×730); nothing scrolls. **Component heights, before → after**: greeting/readiness block 77.5px (unchanged); `hp-content` gap 14px (unchanged); `main` padding top 28 → 12px (the 80px bottom padding doesn't count toward scroll height); ledger header row 45.3px and legend 22.5px (unchanged); row 64 → 56px; ledger card Principles 560 → 475, Domains 560 → 419, Categories 609 → 531px. **Before the change the review card was following, not driving, the ledger**: its natural content (513px Principles / 562px Categories) was below the ledger's (560 / 609).
+
+  **Checks (VERIFIED)**: review card height matches the ledger's exactly in every view/size; its list still `overflow-y: auto`; its empty state still centred. No internal scrollbar on the ledger. The empty gap below the last row is now 7px (it was 29px Principles / 93px Domains at 1920×950). 0 rows with clipped text at 56px (the two-line name + "n points" fits); click target 56px ≥ 44px. 375×700: the media query is excluded, rows stay auto (89px), padding-top stays 28px, no horizontal overflow. 900×700 (short + stacked): only the 12px top padding applies, rows stay auto. 1920×950: 28px / 64px / 560px, unchanged. `npx eslint` 65 problems (56 errors, 9 warnings), matching the baseline; `npx vite build` clean. `App.css` kept LF, as it always has been.
+
+  **NOT verified**: the contributor (Clare) view — only the approver view was measured; the header row is the same height, so the numbers should match, but that's unmeasured. The sidebar Domains/Categories pages — not opened; excluded by the `.hp-grid` scoping, TRACED. A long review list — AJY has only 2 review items, so internal scrolling with many items wasn't seen live (that code is untouched). Screenshots — none captured; evidence is layout measurement only.
 
 - [x] **Session 97 — Homepage header polish: contributor button into the readiness card, "overall readiness" label removed, ledger on-screen check** — Follow-on to Session 96 (commit `c2e9bc7`; `src/App.jsx` + one scoped rule in `src/App.css`).
 
