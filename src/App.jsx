@@ -4043,6 +4043,78 @@ export default function App() {
               ? 'My provision'
               : (viewingAsMember ? `${viewingAsMember.first_name} ${viewingAsMember.last_name}` : 'Whole school')
 
+          // View toggle — pill for contributors, dropdown for approvers/mat_admins. Built once
+          // and rendered in the ledger card's header row (opposite the segmented control), and
+          // again above the teammate empty state, which replaces the whole grid — without it
+          // there'd be no way back out of that view. It still filters the review card too.
+          // The contributor's "My Provision" button sits on its own line under the header rather
+          // than beside the pill: pill + button + segmented control don't fit on one row below
+          // ~1420px, whereas the pill alone fits top-right down to ~1210px.
+          const selfAssignButton = userRole === 'contributor' && !readOnly && !isDemoMode ? (
+            <button type="button" onClick={() => setSelfAssignOpen(true)} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '6px 14px', border: '1px solid #1B365D', borderRadius: 8,
+              background: '#fff', color: '#1B365D',
+              fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+            }}>
+              <i className="ti ti-adjustments" style={{ fontSize: '0.9rem' }} />
+              My Provision
+            </button>
+          ) : null
+          const viewToggle = userRole === 'contributor' ? (
+            <div style={{ display: 'inline-flex', background: '#E2E8F0', borderRadius: 8, padding: 3, gap: 2 }}>
+              {[{ value: 'personal', label: 'My provision' }, { value: 'whole_school', label: 'Whole school' }].map(opt => {
+                const active = viewMode === opt.value
+                return (
+                  <button key={opt.value} type="button" onClick={() => setViewMode(opt.value)}
+                    style={{
+                      padding: '6px 16px', border: 'none', borderRadius: 6,
+                      fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit',
+                      background: active ? '#fff' : 'transparent',
+                      color: active ? '#1A202C' : '#64748b',
+                      fontWeight: active ? 600 : 400,
+                      boxShadow: active ? '0 1px 3px rgba(0,0,0,0.10)' : 'none',
+                      transition: 'all 0.12s',
+                    }}>
+                    {opt.label}
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {/* Styled to match the ledger's segmented control (white, 1px navy-tinted
+                  border, radius 10) — the native <select> sits on top, invisible but
+                  interactive, so keyboard/screen-reader behaviour is unchanged. */}
+              <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  background: '#fff', border: '1px solid rgba(27,54,93,0.16)', borderRadius: 10,
+                  padding: '8px 12px', fontSize: '0.82rem', pointerEvents: 'none',
+                }}>
+                  <span style={{ color: 'var(--hp-text-meta)' }}>Viewing</span>
+                  <span style={{ color: 'var(--hp-text-primary)', fontWeight: 600 }}>{viewingLabel}</span>
+                  <i className="ti ti-chevron-down" style={{ fontSize: '0.75rem', color: 'var(--hp-text-meta)' }} />
+                </div>
+                <select
+                  aria-label="Viewing"
+                  value={viewMode}
+                  onChange={e => setViewMode(e.target.value)}
+                  style={{
+                    position: 'absolute', inset: 0, width: '100%', height: '100%',
+                    opacity: 0, cursor: 'pointer', border: 'none',
+                  }}
+                >
+                  <option value="whole_school">Whole school</option>
+                  <option value="personal">My provision</option>
+                  {teamMembers.map(m => (
+                    <option key={m.id} value={m.id}>{m.first_name} {m.last_name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )
+
           // Segmented bar for the readiness card, sourced from the same computeCounts() result
           // as "N of 166 in place" above it — zero-count buckets omitted, order fixed.
           const headerBarSegments = [
@@ -4107,85 +4179,14 @@ export default function App() {
                 </div>
               </div>
 
-              {/* View toggle — pill for contributors, dropdown for approvers/mat_admins */}
-              {userRole === 'contributor' ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                  <div style={{ display: 'inline-flex', background: '#E2E8F0', borderRadius: 8, padding: 3, gap: 2 }}>
-                    {[{ value: 'personal', label: 'My provision' }, { value: 'whole_school', label: 'Whole school' }].map(opt => {
-                      const active = viewMode === opt.value
-                      return (
-                        <button key={opt.value} type="button" onClick={() => setViewMode(opt.value)}
-                          style={{
-                            padding: '6px 16px', border: 'none', borderRadius: 6,
-                            fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit',
-                            background: active ? '#fff' : 'transparent',
-                            color: active ? '#1A202C' : '#64748b',
-                            fontWeight: active ? 600 : 400,
-                            boxShadow: active ? '0 1px 3px rgba(0,0,0,0.10)' : 'none',
-                            transition: 'all 0.12s',
-                          }}>
-                          {opt.label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                  {!readOnly && !isDemoMode && (
-                    <button type="button" onClick={() => setSelfAssignOpen(true)} style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6,
-                      padding: '6px 14px', border: '1px solid #1B365D', borderRadius: 8,
-                      background: '#fff', color: '#1B365D',
-                      fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-                    }}>
-                      <i className="ti ti-adjustments" style={{ fontSize: '0.9rem' }} />
-                      My Provision
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {/* Styled to match the ledger's segmented control (white, 1px navy-tinted
-                      border, radius 10) — the native <select> sits on top, invisible but
-                      interactive, so keyboard/screen-reader behaviour is unchanged. */}
-                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-                    <div style={{
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      background: '#fff', border: '1px solid rgba(27,54,93,0.16)', borderRadius: 10,
-                      padding: '8px 12px', fontSize: '0.82rem', pointerEvents: 'none',
-                    }}>
-                      <span style={{ color: 'var(--hp-text-meta)' }}>Viewing</span>
-                      <span style={{ color: 'var(--hp-text-primary)', fontWeight: 600 }}>{viewingLabel}</span>
-                      <i className="ti ti-chevron-down" style={{ fontSize: '0.75rem', color: 'var(--hp-text-meta)' }} />
-                    </div>
-                    <select
-                      aria-label="Viewing"
-                      value={viewMode}
-                      onChange={e => setViewMode(e.target.value)}
-                      style={{
-                        position: 'absolute', inset: 0, width: '100%', height: '100%',
-                        opacity: 0, cursor: 'pointer', border: 'none',
-                      }}
-                    >
-                      <option value="whole_school">Whole school</option>
-                      <option value="personal">My provision</option>
-                      {teamMembers.map(m => (
-                        <option key={m.id} value={m.id}>{m.first_name} {m.last_name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  {viewingAsMember && (
-                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                      Showing points assigned to {viewingAsMember.first_name}
-                    </span>
-                  )}
-                </div>
-              )}
-
               {/* Empty personal view state — approver browsing a teammate's (viewingAsMember)
                   empty assignment list via the "Viewing:" dropdown only. The contributor's
                   own empty-personal-view message used to live here too, but that moment is
                   now handled by the My Points gate instead (App.jsx's MyPointsQueue mount),
                   so it was removed rather than left to potentially show twice. */}
               {isPersonalView && totalAssigned === 0 && viewingAsMember ? (
+                <>
+                {viewToggle}
                 <div style={{
                   background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
                   padding: '32px 24px', textAlign: 'center',
@@ -4197,6 +4198,7 @@ export default function App() {
                     Use the Team screen to assign provision points to this person.
                   </p>
                 </div>
+                </>
               ) : (
                 <>
               {/* Two-column grid: ledger (Principles/Domains/Categories) + Coming up for review.
@@ -4219,9 +4221,20 @@ export default function App() {
                         </button>
                       ))}
                     </div>
-                    {/* "Viewing" lives above both cards (see the view-toggle block above), not here —
-                        it filters the review list too, not just this ledger. */}
+                    {/* "Viewing" sits opposite the segmented control. It filters the review card
+                        (and tints the page); the ledger counts below stay whole-school for now. */}
+                    {viewToggle}
                   </div>
+                  {selfAssignButton && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 24px 10px' }}>
+                      {selfAssignButton}
+                    </div>
+                  )}
+                  {viewingAsMember && (
+                    <p style={{ fontSize: '0.75rem', color: '#64748b', padding: '0 24px 10px' }}>
+                      Showing points assigned to {viewingAsMember.first_name}
+                    </p>
+                  )}
 
                   <LedgerRows rows={ledgerRows} />
                 </div>
