@@ -1848,6 +1848,13 @@ function DemoBanner({ onDismiss }) {
   )
 }
 
+// The public demo account. "Demo" means this email is signed in — not the isDemoMode
+// sessionStorage flag, which is missing when a cached demo session is opened in a new tab.
+const DEMO_EMAIL = 'demo@testschool.co.uk'
+function isDemoUser(session) {
+  return session?.user?.email === DEMO_EMAIL
+}
+
 function DemoAutoLogin() {
   const [error, setError] = useState(null)
   const attempted = useRef(false)
@@ -1863,23 +1870,22 @@ function DemoAutoLogin() {
     }
     attempted.current = true
 
-    // Set demoEntry immediately — consumed by the App routing block as a
-    // belt-and-suspenders guarantee of /mat-dashboard destination.
+    // Set demoEntry immediately — consumed by the App routing block, which only
+    // redirects if the visitor somehow isn't already on /dashboard.
     console.log('[DemoAutoLogin] setting demoEntry flag')
     sessionStorage.setItem('demoEntry', 'true')
 
     async function run() {
       // Always sign out any persisted session before signing in.
-      // Without this, a returning visitor whose demo session is still cached in
-      // localStorage would be routed via the existing session before demoEntry
-      // is consumed — potentially landing on the school view instead of /mat-dashboard.
+      // Without this, a returning visitor with a different account still cached in
+      // localStorage would be routed via that existing session instead of the demo's.
       console.log('[DemoAutoLogin] signing out existing session')
       await supabase.auth.signOut()
       console.log('[DemoAutoLogin] signOut complete')
 
       console.log('[DemoAutoLogin] attempting sign in')
       const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: 'demo@testschool.co.uk',
+        email: DEMO_EMAIL,
         password: 'DemoAccess2026!',
       })
 
@@ -1889,8 +1895,8 @@ function DemoAutoLogin() {
         setError(signInError.message)
       } else {
         sessionStorage.setItem('isDemoMode', 'true')
-        console.log('[DemoAutoLogin] redirecting to /mat-dashboard')
-        window.location.replace('/mat-dashboard')
+        console.log('[DemoAutoLogin] redirecting to /dashboard')
+        window.location.replace('/dashboard')
       }
     }
 
@@ -2894,7 +2900,17 @@ export default function App() {
         if (role === 'approver' && !os.bootstrap_wizard_dismissed) {
           setBootstrapWizardVisible(true)
         }
-        if (role === 'mat_admin') {
+        if (isDemoUser(session) && data.school_id) {
+          // Demo opens straight into the demo profile's own school, in the same read-only
+          // school view a MAT admin gets by clicking a school — the MAT overview stays one
+          // click away via the header pill. Setting the flag here covers a cached demo
+          // session opened in a new tab, where DemoAutoLogin never ran.
+          sessionStorage.setItem('isDemoMode', 'true')
+          setSelectedSchool(data.school_id)
+          setBrowsingSchoolName(data.schools?.name ?? '')
+          setSelectedDomain('')
+          setView('school_readonly')
+        } else if (role === 'mat_admin') {
           setView('mat')
         } else {
           setSelectedSchool(data.school_id)
@@ -3534,7 +3550,8 @@ export default function App() {
   // Read-only whenever a MAT admin is viewing a school that isn't their own — RLS is the real backstop,
   // this only controls whether the UI shows write controls. Not tied to `view` alone: a MAT admin's own
   // affiliated school (per their profile) stays editable even when reached via the MAT dashboard.
-  const readOnly = useIsReadOnlyView(userRole, ownSchoolId, selectedSchool)
+  // The demo user is read-only everywhere, their own school included — RLS would allow those writes.
+  const readOnly = useIsReadOnlyView(userRole, ownSchoolId, selectedSchool) || isDemoUser(session)
   const viewedSchoolName = browsingSchoolName || schoolName
   const isDemoMode = sessionStorage.getItem('isDemoMode') === 'true'
 
@@ -3623,16 +3640,17 @@ export default function App() {
     )
   }
 
-  // Demo entry flag: consume and route to MAT dashboard unconditionally.
-  // This fires when DemoAutoLogin mounts (setting the flag) and auth settles,
-  // guaranteeing /mat-dashboard as the destination regardless of execution order.
+  // Demo entry flag: consume it once auth has settled. DemoAutoLogin has normally already
+  // sent the visitor to /dashboard, so this is a no-op there (no second reload); it only
+  // redirects if the flag is still set on some other path.
   if (session && sessionStorage.getItem('demoEntry') === 'true') {
-    console.log('[App routing] demoEntry branch taken — redirecting to /mat-dashboard')
     sessionStorage.removeItem('demoEntry')
     sessionStorage.setItem('isDemoMode', 'true')
-    console.log('[App routing] calling window.location.replace(/mat-dashboard)')
-    window.location.replace('/mat-dashboard')
-    return null
+    if (pathname !== '/dashboard') {
+      console.log('[App routing] demoEntry branch taken — redirecting to /dashboard')
+      window.location.replace('/dashboard')
+      return null
+    }
   }
 
   console.log('[App routing] no demoEntry — normal routing for role:', userRole, '| view:', view)
@@ -3865,8 +3883,8 @@ export default function App() {
           />
         )}
 
-        {/* Demo mode read-only banner — shown when browsing a school from the MAT demo */}
-        {isDemoMode && readOnly && (
+        {/* Demo mode read-only banner — shown on any demo school view (not the MAT overview) */}
+        {isDemoMode && readOnly && view !== 'mat' && (
           <div style={{
             background: '#FEF3C7', borderBottom: '1px solid #FDE68A',
             padding: '8px 0', textAlign: 'center',

@@ -335,7 +335,7 @@ export default function LandingPage() {
             )}
             {tabs[activeTab].demoLink && (
               <a className="lp-how__demo-link" href={DEMO_URL}>
-                Try a live demo — start with the MAT overview →
+                Try a live demo — explore a fully populated school →
               </a>
             )}
           </div>
