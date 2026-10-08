@@ -1713,7 +1713,8 @@ export default function MATDashboard({ supabase, matId, onSchoolClick, isDemoMod
               id, school_id, domain_id, sub_domain_id,
               description, student_groups, scale, source,
               status, actions, date_identified, next_review_due
-            `),
+            `)
+            .eq('confirmation_status', 'confirmed'),
           supabase
             .from('barrier_provision_points')
             .select('id, barrier_id, provision_point_id')

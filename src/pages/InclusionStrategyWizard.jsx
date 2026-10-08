@@ -846,7 +846,7 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
       const [draftRes, barriersRes, ppRes, entriesRes, userRes] = await Promise.all([
         sb.from('inclusion_strategy_drafts').select('*').eq('school_id', school)
           .order('created_at', { ascending: false }).limit(1),
-        sb.from('barriers').select(BARRIER_SELECT).eq('school_id', school).order('created_at', { ascending: false }),
+        sb.from('barriers').select(BARRIER_SELECT).eq('school_id', school).eq('confirmation_status', 'confirmed').order('created_at', { ascending: false }),
         sb.from('provision_points')
           .select('id, label, active, display_order, principle, category, universal_or_targeted, sub_domain_id, sub_domains(id, name, display_order, domain_id, domains(id, name, display_order))')
           .eq('active', true),

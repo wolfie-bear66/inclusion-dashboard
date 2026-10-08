@@ -1,19 +1,21 @@
 import { useEffect, useState } from 'react'
 import EvidenceSummaryView from './EvidenceSummaryView'
 import ChangeRequestsSection from './ChangeRequestsSection'
+import BarrierConfirmationsSection from './BarrierConfirmationsSection'
 
 function mostRecentEvidence(evidenceList) {
   if (!evidenceList || evidenceList.length === 0) return null
   return [...evidenceList].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
 }
 
-export default function ApprovalQueueModal({ schoolId, currentUserId, supabase, onClose, onActioned, isDemoMode }) {
+export default function ApprovalQueueModal({ schoolId, currentUserId, supabase, onClose, onActioned, onQueueChanged, isDemoMode }) {
   const [items, setItems] = useState(null) // null = loading
   const [error, setError] = useState(null)
   const [actioningId, setActioningId] = useState(null)
   const [noteDrafts, setNoteDrafts] = useState({}) // entryId -> note text
   const [openNoteFor, setOpenNoteFor] = useState(null)
   const [requestCount, setRequestCount] = useState(null) // pending change requests; null = loading
+  const [barrierCount, setBarrierCount] = useState(null) // barriers awaiting confirmation; null = loading
 
   async function load() {
     setError(null)
@@ -96,7 +98,7 @@ export default function ApprovalQueueModal({ schoolId, currentUserId, supabase, 
               Approval queue
             </h2>
             <p style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-              Points submitted by contributors, and requests to change approved points.
+              Points, barriers and change requests from contributors, awaiting a decision.
             </p>
           </div>
           <button type="button" onClick={onClose} style={{
@@ -117,9 +119,17 @@ export default function ApprovalQueueModal({ schoolId, currentUserId, supabase, 
             onDecided={(ppId, patch) => onActioned?.(ppId, patch)}
           />
 
+          <BarrierConfirmationsSection
+            schoolId={schoolId}
+            supabase={supabase}
+            isDemoMode={isDemoMode}
+            onCount={setBarrierCount}
+            onChanged={() => onQueueChanged?.()}
+          />
+
           {items === null ? (
             <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Loading…</p>
-          ) : items.length === 0 && requestCount === 0 ? (
+          ) : items.length === 0 && requestCount === 0 && barrierCount === 0 ? (
             <div style={{
               padding: '40px 24px', textAlign: 'center',
               background: '#F7F8FA', borderRadius: 12, border: '1px dashed #E2E8F0',

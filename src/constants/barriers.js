@@ -45,6 +45,7 @@ export const BARRIER_STATUS_STYLE = {
 export const BARRIER_SELECT = `
   id, description, domain_id, sub_domain_id, student_groups, scale, source,
   status, actions, date_identified, next_review_due, created_at, school_id,
+  confirmation_status, submitted_by,
   domains(id, name),
   sub_domains(id, name),
   barrier_provision_points(id, provision_point_id, provision_points(id, label, active, principle, category, universal_or_targeted, sub_domains(id, name, domain_id)))

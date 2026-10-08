@@ -618,7 +618,7 @@ function ReportBuilder({ schoolName = '', supabase: sb, school, onCreateInclusio
           .eq('category', 'Named Person')
           .eq('active', true)
           .order('display_order'),
-        sb.from('barriers').select(BARRIER_SELECT).eq('school_id', school),
+        sb.from('barriers').select(BARRIER_SELECT).eq('school_id', school).eq('confirmation_status', 'confirmed'),
         userId
           ? sb.from('profiles').select('first_name, last_name, job_title').eq('id', userId).single()
           : Promise.resolve({ data: null, error: null }),
@@ -1085,7 +1085,7 @@ function ReportBuilder({ schoolName = '', supabase: sb, school, onCreateInclusio
 }
 
 
-function BarriersView({ school, supabase: sb, domains: domainList, readOnly = false }) {
+function BarriersView({ school, supabase: sb, domains: domainList, readOnly = false, userRole, currentUserId }) {
   const [barriers,       setBarriers]       = useState([])
   const [provisionPoints,setProvisionPoints]= useState([])  // all active points, for the picker
   const [allEntries,     setAllEntries]     = useState([])  // this school's entries, for status badges + activity state
@@ -1112,6 +1112,11 @@ function BarriersView({ school, supabase: sb, domains: domainList, readOnly = fa
   const [selectedLinks,   setSelectedLinks]   = useState(new Set())  // provision_point_id set
   const [noneFit,         setNoneFit]         = useState(false)
   const [noneFitDomain,   setNoneFitDomain]   = useState('')
+
+  // Contributors can add barriers, but they wait for an approver to confirm them.
+  const isApprover = userRole === 'approver' || userRole === 'mat_admin'
+  const [notice,   setNotice]   = useState(null)
+  const [actingId, setActingId] = useState(null)
 
   // ── Fetch barriers + all active provision points + this school's entries ──
   useEffect(() => {
@@ -1241,6 +1246,7 @@ function BarriersView({ school, supabase: sb, domains: domainList, readOnly = fa
     } else {
       closeModal()
       refresh()
+      if (!editBarrier && !isApprover) setNotice('Barrier saved. It is waiting for an approver to confirm it.')
     }
     setSaving(false)
   }
@@ -1257,6 +1263,24 @@ function BarriersView({ school, supabase: sb, domains: domainList, readOnly = fa
     setDeleting(true)
     await sb.from('barriers').delete().eq('id', barrier.id)
     setDeleting(false)
+    refresh()
+  }
+
+  async function confirmBarrier(barrier) {
+    setActingId(barrier.id)
+    const { error } = await sb.rpc('confirm_barrier', { p_barrier_id: barrier.id })
+    setActingId(null)
+    if (error) { setNotice(error.message); return }
+    refresh()
+  }
+
+  async function declineBarrier(barrier) {
+    const note = window.prompt('Decline this barrier? You can add a note for the contributor (optional):', '')
+    if (note === null) return
+    setActingId(barrier.id)
+    const { error } = await sb.rpc('decline_barrier', { p_barrier_id: barrier.id, p_note: note.trim() || null })
+    setActingId(null)
+    if (error) { setNotice(error.message); return }
     refresh()
   }
 
@@ -1329,6 +1353,19 @@ function BarriersView({ school, supabase: sb, domains: domainList, readOnly = fa
           </button>
         )}
       </div>
+
+      {notice && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+          padding: '10px 14px', borderRadius: 8, background: 'rgba(212,117,26,0.10)', color: '#92400E',
+          fontSize: '0.82rem',
+        }}>
+          <span>{notice}</span>
+          <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" style={{
+            background: 'none', border: 'none', cursor: 'pointer', color: '#92400E', fontSize: '0.95rem', padding: 0,
+          }}>✕</button>
+        </div>
+      )}
 
       {/* Filter bar */}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1417,6 +1454,12 @@ function BarriersView({ school, supabase: sb, domains: domainList, readOnly = fa
                         <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{b.sub_domains.name}</span>
                       </>
                     )}
+                    {b.confirmation_status === 'pending' && (
+                      <span style={{ marginLeft: 8, fontSize: '0.7rem', fontWeight: 600, padding: '2px 9px', borderRadius: 20,
+                        background: 'rgba(212,117,26,0.12)', color: '#D4751A', whiteSpace: 'nowrap' }}>
+                        Awaiting confirmation
+                      </span>
+                    )}
                     {/* Status badge — right-aligned */}
                     <span style={{ marginLeft: 'auto', fontSize: '0.72rem', fontWeight: 600,
                       padding: '2px 9px', borderRadius: 20,
@@ -1489,8 +1532,20 @@ function BarriersView({ school, supabase: sb, domains: domainList, readOnly = fa
                   </div>
 
                   {/* Actions row */}
-                  {!readOnly && (
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                  {!readOnly && (isApprover || (b.confirmation_status === 'pending' && b.submitted_by === currentUserId)) && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, flexWrap: 'wrap' }}>
+                      {isApprover && b.confirmation_status === 'pending' && (
+                        <>
+                          <button type="button" onClick={() => declineBarrier(b)} disabled={actingId === b.id} style={{
+                            padding: '5px 12px', border: '1px solid #E2E8F0', borderRadius: 6,
+                            background: '#fff', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit', color: '#D4751A',
+                          }}>Decline</button>
+                          <button type="button" onClick={() => confirmBarrier(b)} disabled={actingId === b.id} style={{
+                            padding: '5px 12px', border: 'none', borderRadius: 6,
+                            background: '#257A3B', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit', color: '#fff', fontWeight: 600,
+                          }}>{actingId === b.id ? 'Working…' : 'Confirm'}</button>
+                        </>
+                      )}
                       <button type="button" onClick={() => openEdit(b)} style={{
                         padding: '5px 12px', border: '1px solid #E2E8F0', borderRadius: 6,
                         background: '#fff', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit', color: '#374151',
@@ -3080,7 +3135,12 @@ export default function App() {
         .select('id', { count: 'exact', head: true })
         .eq('school_id', selectedSchool)
         .eq('status', 'pending'),
-    ]).then(([pointsRes, requestsRes]) => setApprovalQueueCount((pointsRes.count ?? 0) + (requestsRes.count ?? 0)))
+      supabase
+        .from('barriers')
+        .select('id', { count: 'exact', head: true })
+        .eq('school_id', selectedSchool)
+        .eq('confirmation_status', 'pending'),
+    ]).then(([pointsRes, requestsRes, barriersRes]) => setApprovalQueueCount((pointsRes.count ?? 0) + (requestsRes.count ?? 0) + (barriersRes.count ?? 0)))
   }
 
   useEffect(() => {
@@ -4518,6 +4578,7 @@ export default function App() {
             supabase={supabase}
             isDemoMode={isDemoMode}
             onClose={() => setApprovalQueueOpen(false)}
+            onQueueChanged={() => loadApprovalQueueCount()}
             onActioned={(ppId, patch) => {
               setEntries(prev => ({ ...prev, [ppId]: { ...prev[ppId], ...patch } }))
               if (patch.status) setAllStatuses(prev => ({ ...prev, [ppId]: patch.status }))
@@ -4550,6 +4611,8 @@ export default function App() {
             supabase={supabase}
             domains={domains}
             readOnly={readOnly}
+            userRole={userRole}
+            currentUserId={session.user.id}
           />
         )}
 
