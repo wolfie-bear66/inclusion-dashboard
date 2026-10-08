@@ -229,6 +229,7 @@ Deno.serve(async (req) => {
       role,
       first_name,
       last_name,
+      job_title: job_title.trim() || null,
       onboarding_state: {
         self_assign_entered:   false,
         has_team_members:      false,

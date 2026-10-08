@@ -322,13 +322,6 @@ function BulkAssignBar({ selectedIds, members, schoolId, currentUserId, matId, s
         setBusy(false)
         return
       }
-      if (newJobTitle.trim()) {
-        const { error: jobTitleError } = await supabase
-          .from('profiles')
-          .update({ job_title: newJobTitle.trim() })
-          .eq('id', json.userId)
-        if (jobTitleError) console.warn('[team-bulk-assign] job_title update failed:', jobTitleError.message)
-      }
       const { error: insErr } = await assignRows(json.userId)
       setBusy(false)
       if (insErr) { setError(insErr.message); return }

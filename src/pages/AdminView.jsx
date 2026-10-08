@@ -473,7 +473,7 @@ export default function AdminView() {
 
       {editingRow && (
         <EditSchoolModal
-          row={editingRow}
+          row={rows.find(r => r.id === editingRow.id) ?? editingRow}
           mats={data?.mats ?? []}
           onClose={() => setEditingRow(null)}
           onSave={handleSaveEdit}

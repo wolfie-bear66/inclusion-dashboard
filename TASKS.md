@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 8 October 2026 (Session 107 — barrier confirmation built and tested, NOT yet applied)
+Last updated: 8 October 2026 (Session 108 — parked bugs fixed; not yet committed)
 
 ---
 
@@ -18,6 +18,16 @@ Last updated: 8 October 2026 (Session 107 — barrier confirmation built and tes
 ---
 
 ## Completed
+
+- [x] **Session 108 — Parked bugs fixed: invitees' job titles now saved, `/admin` role box updates straight away; leaked-password protection explained (needs the Pro plan)** — 8 October 2026. No database changes. NOT yet committed or pushed (the edge function is already deployed).
+
+  **Job titles on invited people (TRACED root cause, same for three call sites)**: `invite-user` read `job_title` from the request but never stored it. The Team page, the "invite" modal in `App.jsx` and the first-login bootstrap wizard each then tried to set it with a client-side `profiles` update on the invitee's row, which RLS (own row only) turns into a silent no-op. Evidence: all three profiles the wizard invited at AJY on 24 September had a null job title. **Fix**: `invite-user` now saves `job_title` in the profile it creates (`supabase/functions/invite-user/index.ts`, deployed as v19, `verify_jwt` on); the two client follow-up updates (`App.jsx`, `TeamPage.jsx`) and the wizard's batch of follow-up updates (`BootstrapWizard.jsx`) were removed, and the wizard now sends `job_title` (the point label) in the invite itself. `remove-team-member` already wrote the new person's title with the service role and is unchanged. This also closes the earlier "Bootstrap wizard's `job_title` write onto newly invited profiles silently fails" item.
+
+  **`/admin` role box not updating (TRACED)**: the edit panel was handed a snapshot of the school row taken when Edit was clicked, so after a role change saved and the table reloaded, the panel kept the old role until it was reopened. `AdminView.jsx` now passes the panel the live row from the reloaded data (falling back to the snapshot). The role change itself always worked (`update-user-role` returned 200 and the database changed).
+
+  **Leaked password protection**: cannot be turned on from the dashboard because the organisation is on the **Free plan** (VERIFIED via the Supabase API) and Supabase's documentation says the feature is available on the **Pro Plan and above**. It is not a missing setting. Options: upgrade the plan, or accept the gap (Supabase Auth still enforces a minimum length, and the app's temporary passwords are generated server-side).
+
+  **Verified**: `invite-user` v19 starts and rejects an invalid session (403), content hash changed from v18; `npx vite build` clean; `npx eslint` 66 problems, equal to the baseline. **Not yet verified**: an actual invite end-to-end (it creates an account and sends an email) and the `/admin` panel in a browser.
 
 - [x] **Session 107 — Barrier confirmation: anyone can add a barrier, an approver confirms it (database applied live; UI written and tested, NOT yet committed or pushed)** — `supabase/migrations/20261008152858_barrier_confirmation.sql` plus app changes. 8 October 2026.
 
@@ -513,7 +523,7 @@ Last updated: 8 October 2026 (Session 107 — barrier confirmation built and tes
 
 - [ ] **`OnboardingPrompt` erases the bootstrap wizard's saved state.** Found Session 100 Phase 0 (TRACED; Louise's live `onboarding_state` at AJY is consistent with it). `OnboardingPrompt` initialises `localOs` from the sign-in copy of `profiles.onboarding_state` and writes the whole merged object back on dismiss, erasing keys the wizard wrote since sign-in: `bootstrap_wizard_dismissed` and `bootstrap_wizard_email_cache`. Effect: the wizard reopens on the next sign-in, and re-naming an already-invited person fails as a duplicate email in `invite-user`. Fix direction: merge against a fresh read of `onboarding_state` (or a server-side jsonb merge) instead of the sign-in snapshot.
 
-- [ ] **Bootstrap wizard's `job_title` write onto newly invited profiles silently fails.** Found Session 100 Phase 0 (TRACED; all three profiles invited through the wizard at AJY on 24 Sep have `job_title` null). The `profiles` UPDATE policy only allows updating your own row, so the approver's `profiles.update({ job_title })` on the invitee is rejected, and the wizard doesn't check the error. Related to the item above about approvers setting job titles.
+- [x] **RESOLVED Session 108: Bootstrap wizard's `job_title` write onto newly invited profiles silently fails.** Found Session 100 Phase 0 (TRACED; all three profiles invited through the wizard at AJY on 24 Sep have `job_title` null). The `profiles` UPDATE policy only allows updating your own row, so the approver's `profiles.update({ job_title })` on the invitee is rejected, and the wizard doesn't check the error. Related to the item above about approvers setting job titles.
 
 - [ ] **`/admin` (founder): easier user delete + edit details, with safeguards against accidents.**
   Edit: first name, last name, job title, role, and email (email change goes through the auth admin API, not `profiles`, and may need re-verification).
@@ -880,9 +890,9 @@ Two distinct models to keep separate:
 
 - [ ] **Drafted Session 104, pending apply (Fix C): approval workflow is not enforced by the database.** See the Session 104 entry; original finding: VERIFIED within one school: a contributor can set `entries.status = 'in_place'`, delete entries and forge `point_approval_log` rows via the API. Proposal: a column-guard trigger on `entries` (contributors cannot set `in_place` or change `submitted_by`/`submitted_for_approval_at` outside the RPCs) and restrict `point_approval_log` inserts to the RPCs. Medium risk to the submit / send-back / confirm flows; needs a rolled-back test of all three afterwards.
 - [ ] **Drafted Session 105, pending apply + edge-function deploy (Fix D): no role checks in RLS for writes on barriers, strategy tables, school context or assignments; also (added Session 104) contributors can still edit or delete evidence on an already-approved point without re-approval (`evidence_entries` ALL policy), and can lower an approved point's status.** Any school member (including contributors) can write them via the API. Needs a decision on who should be allowed to edit what before any policy is written.
-- [ ] **Open (Session 103): enable "Leaked password protection" in Supabase Auth** (dashboard toggle; Auth config was out of scope for this work).
-- [ ] **Parked (Session 102): `invite-user` ignores `job_title`.** It parses `job_title` from the request but never inserts it. The client then tries to set it on the invitee's row (`App.jsx` ~3326, `TeamPage.jsx` ~327), which RLS (own-row only) turns into a silent 0-row update, so invited team members never get a job title. Fix: have `invite-user` write `job_title`, then remove the client follow-up update. Unaffected by the profiles lockdown.
-- [ ] **Parked (Session 102): `/admin` role edit box doesn't show the change until reopened.** The role is saved correctly (`update-user-role` 200, DB changes); only the on-screen state is stale. UI cause not investigated.
+- [ ] **Blocked by plan (Session 103, explained Session 108): "Leaked password protection" needs the Supabase Pro plan; the project is on Free, so the toggle is not available.** Original note: (dashboard toggle; Auth config was out of scope for this work).
+- [x] **RESOLVED Session 108: `invite-user` ignored `job_title`.** It parses `job_title` from the request but never inserts it. The client then tries to set it on the invitee's row (`App.jsx` ~3326, `TeamPage.jsx` ~327), which RLS (own-row only) turns into a silent 0-row update, so invited team members never get a job title. Fix: have `invite-user` write `job_title`, then remove the client follow-up update. Unaffected by the profiles lockdown.
+- [x] **RESOLVED Session 108: `/admin` role edit box didn't show the change until reopened.** The role is saved correctly (`update-user-role` 200, DB changes); only the on-screen state is stale. UI cause not investigated.
 - [ ] **Follow-up (Session 102): same default-grant pattern on every other `public` table.** Supabase default privileges grant `anon` and `authenticated` ALL (including DELETE/TRUNCATE) on tables created in `public`, so only RLS protects them. Only `profiles` was reviewed and fixed. Recommend a read-only audit of table grants, policies with `{public}` roles, and functions executable by `anon`/PUBLIC across the schema. The grants are VERIFIED on `profiles` before the fix; the effect on other tables is TRACED from the default ACLs only.
 - [ ] **Follow-up (Session 102): `password_set` is still client-writable** (own row), so a user can mark themselves as having set a password. Low impact. Better moved into an edge function.
 - [ ] **Drift (Session 102): founder profile id.** `migrations/step14_schools_select_policy.sql` sets `is_founder` on `9c539de8-0ddf-43d7-974b-e55406966bb3`; the live founder is `08c61e64…` (the account appears to have been recreated).

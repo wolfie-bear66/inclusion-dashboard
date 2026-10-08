@@ -184,7 +184,6 @@ export default function BootstrapWizard({ schoolId, schoolName, userId, firstNam
     // Policy rows with a link, keyed by provision_point_id — resolved to entry_id once the
     // entries upsert below returns ids, then written in one follow-up evidence_entries insert.
     const linksByPp = {}
-    const jobTitleUpdates = [] // { userId, jobTitle } — only for freshly-created profiles this pass
     const namedPersonInPlacePp = [] // Named Person points given an in_place write this pass, for the confirmation note
 
     for (const row of rowsToProcess) {
@@ -205,6 +204,7 @@ export default function BootstrapWizard({ schoolId, schoolName, userId, firstNam
             body: JSON.stringify({
               first_name, last_name,
               email: row.email,
+              job_title: row.point.label,
               role: 'contributor',
               school_id: schoolId,
               mat_id: matId,
@@ -221,7 +221,6 @@ export default function BootstrapWizard({ schoolId, schoolName, userId, firstNam
           }
           cached = { userId: json.userId, first_name, last_name }
           localEmailCache[emailKey] = cached
-          jobTitleUpdates.push({ userId: json.userId, jobTitle: row.point.label })
         } catch {
           rowErrors.push(`${row.point.label}: could not reach the server for this invite.`)
           continue
@@ -292,9 +291,6 @@ export default function BootstrapWizard({ schoolId, schoolName, userId, firstNam
     if (evidenceInsertRows.length > 0) {
       const { error: evidenceErr } = await supabase.from('evidence_entries').insert(evidenceInsertRows)
       if (evidenceErr) rowErrors.push(`Some policy links could not be saved: ${evidenceErr.message}`)
-    }
-    for (const { userId: uid, jobTitle } of jobTitleUpdates) {
-      await supabase.from('profiles').update({ job_title: jobTitle }).eq('id', uid)
     }
 
     setEmailCache(localEmailCache)
