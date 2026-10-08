@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://inclusion-dashboard.vercel.app`
 
-Last updated: 8 October 2026 (Session 102 — profiles lockdown, applied live, not yet committed)
+Last updated: 8 October 2026 (Session 103 — security audit of remaining tables; fixes A/B applied live, not yet committed)
 
 ---
 
@@ -18,6 +18,22 @@ Last updated: 8 October 2026 (Session 102 — profiles lockdown, applied live, n
 ---
 
 ## Completed
+
+- [x] **Session 103 — Read-only security audit of the rest of the `public` schema (findings; fixes A and B applied live, not yet committed)** — Follow-up to Session 102. 8 October 2026. No data or schema changed by the audit.
+
+  **Scope**: all 21 `public` tables, every policy, every `public` function, storage, extensions, edge-function JWT settings and Supabase's own security advisors.
+
+  **VERIFIED (catalog)**: RLS is on for all 21 tables and every table has at least one policy; no views; no storage buckets or storage policies; the only `USING (true)` policies are the reference tables `domains`, `sub_domains`, `provision_points`; the only SECURITY DEFINER functions are `get_my_school_id` and `confirm_entry_approval` (both fixed in Session 102); all 7 edge functions have `verify_jwt = true`. The school/MAT/founder policies only trust `profiles` columns that Session 102 made server-controlled. Advisors: two expected warnings (signed-in users can execute the two SECURITY DEFINER functions, intentional) and **"Leaked password protection disabled"** in Auth (Auth config was out of scope; it is a dashboard toggle).
+
+  **VERIFIED (rolled-back test as the disposable ZZ Test B contributor, nothing persisted)**: cross-school isolation holds. 0 rows visible outside the user's own school in `entries`, `barriers`, `profiles`, `school_context`, `point_assignments`, `inclusion_strategy_drafts`, `friction_logs`; `evidence_entries` showed 7 rows (ZZ Test B's own; other schools hold 20-172 each); 1 school visible; an update on ZZ Test A's entries changed 0 rows; anonymous users cannot read `entries` or `schools` and can read the 166 `provision_points` (intended). **Within the user's own school, the database does not enforce the approval workflow**: a contributor set an in-progress entry straight to `in_place` (1 row), inserted a `confirmed` `point_approval_log` row naming an approver as actor, and deleted an entry (1 row). Cause: the `entries` UPDATE/DELETE policies, `evidence_entries` ALL and `point_approval_log` INSERT are scoped to the school only, with no role or column checks. Needs someone with a login calling the API directly; the app UI does not offer it.
+
+  **Also VERIFIED**: every table except `profiles` still carries ALL privileges (including TRUNCATE, TRIGGER, REFERENCES) for `anon` and `authenticated`; `submit_entry_for_approval`, `send_back_entry_approval` and the three `updated_at` trigger functions are executable by `anon`/PUBLIC. **TRACED only**: whether a genuinely signed-out caller can do anything with `submit_entry_for_approval` (its `p_submitting_user_id <> auth.uid()` check does not raise when `auth.uid()` is NULL, so it relies on RLS). The audit's own anonymous test of it was invalid (the test user's claims were still set in the transaction).
+
+  **Applied live (run by the founder in the Supabase SQL editor after the automated apply was blocked by a permission check)**: `supabase/migrations/20261008130000_revoke_excess_grants.sql`. It is NOT recorded in the live migration history (the SQL editor does not register it), so the repo file keeps its own version number; if `supabase db push` is ever used, the statements are idempotent REVOKE/GRANTs. Fix A: revoke TRUNCATE/TRIGGER/REFERENCES from `anon` and `authenticated` on every `public` table; revoke all `anon` access except SELECT on the three reference tables. `authenticated` SELECT/INSERT/UPDATE/DELETE deliberately untouched (a client-write grep was unreliable, so no narrowing was attempted). Fix B: revoke EXECUTE on the two approval RPCs from PUBLIC/`anon` (granted to `authenticated` and `service_role`), and on the three trigger functions from PUBLIC/`anon`/`authenticated`. Commented rollback block included.
+
+  **VERIFIED after applying (catalog + rolled-back tests as the ZZ Test B contributor)**: no `public` table has TRUNCATE/TRIGGER/REFERENCES for `anon` or `authenticated`; `anon` holds SELECT only on `domains`, `sub_domains`, `provision_points` and nothing on the other 18 tables; `authenticated` keeps SELECT/INSERT/UPDATE/DELETE (SELECT only on `profiles`). EXECUTE: `anon` can no longer run any `public` function; the approval RPCs, `get_my_school_id` and `confirm_entry_approval` stay executable by `authenticated` and `service_role`; the four trigger functions are executable by `service_role` only. Functional: contributor still reads own-school entries (10), assignments (4) and `provision_points` (166), and `submit_entry_for_approval` still works; an `evidence_entries` update still fires the `update_updated_at` trigger (updated_at moved) even though `authenticated` can no longer execute that function; `TRUNCATE entries` as `authenticated` is rejected; `anon` can read `provision_points` (166) and `domains` (6) but is rejected on `entries` and on both approval RPCs. Not machine-verified: the founder's in-app regression check (evidence save, submit/approve, `/demo`, landing page).
+
+  **Not done**: Fix C (server-side approval enforcement) and Fix D (role-based write rules); see Known issues. Default privileges for future tables left alone (changing them would make new tables silently inaccessible until granted).
 
 - [x] **Session 102 — `profiles` lockdown: clients can no longer change their own school_id / role / mat_id / is_founder (security fix, applied live, NOT yet committed or pushed)** — Migration `supabase/migrations/20261008102911_lock_down_profiles.sql`, applied to the live project on 8 October 2026. No `src/` or edge-function changes. Do not push to `main` until the founder has tested.
 
@@ -816,6 +832,9 @@ Two distinct models to keep separate:
 
 ## Known issues / technical debt
 
+- [ ] **Open (Session 103, Fix C): approval workflow is not enforced by the database.** VERIFIED within one school: a contributor can set `entries.status = 'in_place'`, delete entries and forge `point_approval_log` rows via the API. Proposal: a column-guard trigger on `entries` (contributors cannot set `in_place` or change `submitted_by`/`submitted_for_approval_at` outside the RPCs) and restrict `point_approval_log` inserts to the RPCs. Medium risk to the submit / send-back / confirm flows; needs a rolled-back test of all three afterwards.
+- [ ] **Open (Session 103, Fix D): no role checks in RLS for writes on barriers, strategy tables, school context or assignments.** Any school member (including contributors) can write them via the API. Needs a decision on who should be allowed to edit what before any policy is written.
+- [ ] **Open (Session 103): enable "Leaked password protection" in Supabase Auth** (dashboard toggle; Auth config was out of scope for this work).
 - [ ] **Parked (Session 102): `invite-user` ignores `job_title`.** It parses `job_title` from the request but never inserts it. The client then tries to set it on the invitee's row (`App.jsx` ~3326, `TeamPage.jsx` ~327), which RLS (own-row only) turns into a silent 0-row update, so invited team members never get a job title. Fix: have `invite-user` write `job_title`, then remove the client follow-up update. Unaffected by the profiles lockdown.
 - [ ] **Parked (Session 102): `/admin` role edit box doesn't show the change until reopened.** The role is saved correctly (`update-user-role` 200, DB changes); only the on-screen state is stale. UI cause not investigated.
 - [ ] **Follow-up (Session 102): same default-grant pattern on every other `public` table.** Supabase default privileges grant `anon` and `authenticated` ALL (including DELETE/TRUNCATE) on tables created in `public`, so only RLS protects them. Only `profiles` was reviewed and fixed. Recommend a read-only audit of table grants, policies with `{public}` roles, and functions executable by `anon`/PUBLIC across the schema. The grants are VERIFIED on `profiles` before the fix; the effect on other tables is TRACED from the default ACLs only.
