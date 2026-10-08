@@ -11,6 +11,7 @@ import BootstrapWizard from './components/BootstrapWizard'
 import MyPointsQueue from './components/MyPointsQueue'
 import { PRINCIPLE_LABEL_SHORT } from './constants/principles'
 import ApprovalQueueModal from './components/ApprovalQueueModal'
+import ChangeRequestControl from './components/ChangeRequestControl'
 import AssignmentModal from './components/AssignmentModal'
 import SetPasswordPage from './pages/SetPasswordPage'
 import AdminView from './pages/AdminView'
@@ -2774,21 +2775,44 @@ export default function App() {
   // point this user submitted), then immediately marks them seen so a later reload doesn't
   // show the same ones again. Declared before the profile-fetch effect below, which calls it.
   async function loadApprovalNotifications(userId) {
-    const { data, error } = await supabase
-      .from('approval_notifications')
-      .select('id, entries(provision_points(label))')
-      .eq('user_id', userId)
-      .is('seen_at', null)
-    if (error || !data || data.length === 0) return
+    const [approvals, general] = await Promise.all([
+      supabase
+        .from('approval_notifications')
+        .select('id, entries(provision_points(label))')
+        .eq('user_id', userId)
+        .is('seen_at', null),
+      // Change-request notifications (requested / accepted / declined) live in user_notifications.
+      supabase
+        .from('user_notifications')
+        .select('id, title, body')
+        .eq('user_id', userId)
+        .is('seen_at', null)
+        .order('created_at', { ascending: true }),
+    ])
+    const approvalRows = !approvals.error && approvals.data ? approvals.data : []
+    const generalRows = !general.error && general.data ? general.data : []
+    if (approvalRows.length === 0 && generalRows.length === 0) return
 
-    setApprovalToasts(data.map(n => ({ id: n.id, label: n.entries?.provision_points?.label ?? 'A point' })))
+    setApprovalToasts([
+      ...approvalRows.map(n => ({ id: n.id, label: n.entries?.provision_points?.label ?? 'A point' })),
+      ...generalRows.map(n => ({ id: n.id, title: n.title, body: n.body })),
+    ])
 
-    const ids = data.map(n => n.id)
-    const { error: seenErr } = await supabase
-      .from('approval_notifications')
-      .update({ seen_at: new Date().toISOString() })
-      .in('id', ids)
-    if (seenErr) console.error('Error marking approval notifications seen:', seenErr)
+    const seenAt = new Date().toISOString()
+    if (approvalRows.length > 0) {
+      const { error: seenErr } = await supabase
+        .from('approval_notifications')
+        .update({ seen_at: seenAt })
+        .in('id', approvalRows.map(n => n.id))
+      if (seenErr) console.error('Error marking approval notifications seen:', seenErr)
+    }
+    if (generalRows.length > 0) {
+      const { error: seenErr } = await supabase
+        .from('user_notifications')
+        .update({ seen_at: seenAt })
+        .in('id', generalRows.map(n => n.id))
+      if (seenErr) console.error('Error marking notifications seen:', seenErr)
+    }
   }
 
   function dismissApprovalToast(id) {
@@ -3045,12 +3069,18 @@ export default function App() {
       setApprovalQueueCount(0)
       return
     }
-    supabase
-      .from('entries')
-      .select('id', { count: 'exact', head: true })
-      .eq('school_id', selectedSchool)
-      .not('submitted_for_approval_at', 'is', null)
-      .then(({ count }) => setApprovalQueueCount(count ?? 0))
+    Promise.all([
+      supabase
+        .from('entries')
+        .select('id', { count: 'exact', head: true })
+        .eq('school_id', selectedSchool)
+        .not('submitted_for_approval_at', 'is', null),
+      supabase
+        .from('point_change_requests')
+        .select('id', { count: 'exact', head: true })
+        .eq('school_id', selectedSchool)
+        .eq('status', 'pending'),
+    ]).then(([pointsRes, requestsRes]) => setApprovalQueueCount((pointsRes.count ?? 0) + (requestsRes.count ?? 0)))
   }
 
   useEffect(() => {
@@ -3751,7 +3781,9 @@ export default function App() {
             }}>
               <i className="ti ti-circle-check" style={{ color: '#257A3B', fontSize: '1.1rem', flexShrink: 0, marginTop: 1 }} />
               <p style={{ fontSize: '0.82rem', color: '#1A202C', margin: 0, flex: 1 }}>
-                <strong>{t.label}</strong> was confirmed.
+                {t.body
+                  ? <><strong>{t.title}.</strong> {t.body}</>
+                  : <><strong>{t.label}</strong> was confirmed.</>}
               </p>
               <button type="button" onClick={() => dismissApprovalToast(t.id)} aria-label="Dismiss" style={{
                 background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '0.95rem', padding: 0, flexShrink: 0,
@@ -4527,7 +4559,8 @@ export default function App() {
             schoolName={viewedSchoolName}
             supabase={supabase}
             domains={domains}
-            readOnly={readOnly}
+            readOnly={readOnly || userRole === 'contributor'}
+            allowDownloadWhenReadOnly={userRole === 'contributor'}
             onUpdateDashboard={() => { setSelectedDomain(''); setOverviewMode('domain'); setSelectedCategory(null) }}
           />
         )}
@@ -4697,6 +4730,9 @@ export default function App() {
                   const isPending = !!currentEntry.submitted_for_approval_at
                   const fieldsDisabled = readOnly || isPending
                   const showExpanded = modalExpanded || isPending
+                  // An approved point's status can't be changed directly by a contributor; they send a
+                  // request that an approver decides (see ChangeRequestControl / the approval queue).
+                  const isContributorOnApproved = userRole === 'contributor' && currentEntry.status === 'in_place' && !!currentEntry.id
 
                   const cat = draft.provision_category ?? ''
                   const isStudentFacing  = cat === 'student_facing'
@@ -4737,12 +4773,16 @@ export default function App() {
 
                       <div className="df df--half">
                         <label>Status</label>
-                        <select value={draft.status ?? ''} onChange={e => handleStatusSelect(e.target.value)} disabled={fieldsDisabled}>
-                          <option value="">— Select status —</option>
-                          <option value="not_in_place">Not in Place</option>
-                          <option value="in_progress">In Progress</option>
-                          <option value="in_place">In Place</option>
-                        </select>
+                        {isContributorOnApproved ? (
+                          <ChangeRequestControl key={currentEntry.id} supabase={supabase} entryId={currentEntry.id} disabled={fieldsDisabled} />
+                        ) : (
+                          <select value={draft.status ?? ''} onChange={e => handleStatusSelect(e.target.value)} disabled={fieldsDisabled}>
+                            <option value="">— Select status —</option>
+                            <option value="not_in_place">Not in Place</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="in_place">In Place</option>
+                          </select>
+                        )}
                       </div>
 
                       <div className="df df--half">

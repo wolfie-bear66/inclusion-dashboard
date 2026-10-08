@@ -63,6 +63,8 @@ Deno.serve(async (req) => {
   const { data: userData, error: userError } = await admin.auth.getUser(token)
   if (userError || !userData?.user) return forbidden('Invalid or expired session')
   const callerId = userData.user.id
+  // The public /demo login is a real mat_admin; it must never be able to remove team members.
+  if (userData.user.email === 'demo@testschool.co.uk') return forbidden('The demo account cannot remove team members')
 
   // Step 4: look up the caller's own profile — this is what determines their real permissions
   const { data: callerProfile, error: callerProfileError } = await admin

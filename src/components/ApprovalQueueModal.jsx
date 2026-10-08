@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import EvidenceSummaryView from './EvidenceSummaryView'
+import ChangeRequestsSection from './ChangeRequestsSection'
 
 function mostRecentEvidence(evidenceList) {
   if (!evidenceList || evidenceList.length === 0) return null
@@ -12,6 +13,7 @@ export default function ApprovalQueueModal({ schoolId, currentUserId, supabase, 
   const [actioningId, setActioningId] = useState(null)
   const [noteDrafts, setNoteDrafts] = useState({}) // entryId -> note text
   const [openNoteFor, setOpenNoteFor] = useState(null)
+  const [requestCount, setRequestCount] = useState(null) // pending change requests; null = loading
 
   async function load() {
     setError(null)
@@ -94,7 +96,7 @@ export default function ApprovalQueueModal({ schoolId, currentUserId, supabase, 
               Approval queue
             </h2>
             <p style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-              Points submitted by contributors, awaiting confirmation.
+              Points submitted by contributors, and requests to change approved points.
             </p>
           </div>
           <button type="button" onClick={onClose} style={{
@@ -107,9 +109,17 @@ export default function ApprovalQueueModal({ schoolId, currentUserId, supabase, 
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
           {error && <p style={{ fontSize: '0.8rem', color: '#dc2626', marginBottom: 12 }}>{error}</p>}
 
+          <ChangeRequestsSection
+            schoolId={schoolId}
+            supabase={supabase}
+            isDemoMode={isDemoMode}
+            onCount={setRequestCount}
+            onDecided={(ppId, patch) => onActioned?.(ppId, patch)}
+          />
+
           {items === null ? (
             <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Loading…</p>
-          ) : items.length === 0 ? (
+          ) : items.length === 0 && requestCount === 0 ? (
             <div style={{
               padding: '40px 24px', textAlign: 'center',
               background: '#F7F8FA', borderRadius: 12, border: '1px dashed #E2E8F0',

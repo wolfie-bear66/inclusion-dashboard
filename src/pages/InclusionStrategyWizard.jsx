@@ -706,7 +706,7 @@ function Step3BarriersAndActivity({
 }
 
 // ── Step "Preview and Word" ──────────────────────────────────────────
-function Step7PreviewAndWord({ form, selectedBarriers, barrierToPriorities, entryStatusByPP, schoolName, readOnly, outcomes }) {
+function Step7PreviewAndWord({ form, selectedBarriers, barrierToPriorities, entryStatusByPP, schoolName, readOnly, outcomes, canDownload = !readOnly }) {
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState(null)
 
@@ -800,7 +800,7 @@ function Step7PreviewAndWord({ form, selectedBarriers, barrierToPriorities, entr
           )}
         </div>
         {genError && <p style={{ fontSize: '0.78rem', color: '#DC2626', marginBottom: 10 }}>{genError}</p>}
-        <button type="button" style={primaryBtn} disabled={generating || readOnly} onClick={handleDownloadWord}>
+        <button type="button" style={primaryBtn} disabled={generating || !canDownload} onClick={handleDownloadWord}>
           {generating ? 'Generating…' : 'Download Word'}
         </button>
       </div>
@@ -809,7 +809,7 @@ function Step7PreviewAndWord({ form, selectedBarriers, barrierToPriorities, entr
 }
 
 // ── Main wizard ───────────────────────────────────────────────────────
-export default function InclusionStrategyWizard({ school, schoolName, supabase: sb, domains, readOnly = false, onUpdateDashboard }) {
+export default function InclusionStrategyWizard({ school, schoolName, supabase: sb, domains, readOnly = false, allowDownloadWhenReadOnly = false, onUpdateDashboard }) {
   const [loading, setLoading]   = useState(true)
   const [draftId, setDraftId]   = useState(null)
   const [form, setForm]         = useState({})
@@ -1338,6 +1338,7 @@ export default function InclusionStrategyWizard({ school, schoolName, supabase: 
         <Step7PreviewAndWord
           form={form} selectedBarriers={selectedBarriersNumbered} barrierToPriorities={barrierToPriorities}
           entryStatusByPP={entryStatusByPPForExport} schoolName={schoolName} readOnly={readOnly}
+          canDownload={!readOnly || allowDownloadWhenReadOnly}
           outcomes={outcomes}
         />
       )}

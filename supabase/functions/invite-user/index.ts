@@ -100,6 +100,10 @@ Deno.serve(async (req) => {
     }
     callerId = userData.user.id
     console.log('Caller identified:', callerId)
+    // The public /demo login is a real mat_admin; it must never be able to create accounts or send email.
+    if (userData.user.email === 'demo@testschool.co.uk') {
+      return forbidden('The demo account cannot invite users')
+    }
   } catch (err: any) {
     console.error('Failed at step 4 (exception):', err.message)
     return forbidden('Invalid or expired session')
