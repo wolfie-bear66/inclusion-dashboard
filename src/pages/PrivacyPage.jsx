@@ -2,7 +2,7 @@ import './LandingPage.css'
 import './AboutPage.css'
 import './PrivacyPage.css'
 
-const DEMO_URL = 'https://inclusion-dashboard.vercel.app/demo'
+const DEMO_URL = 'https://www.inclusiondashboard.co.uk/demo'
 
 export default function PrivacyPage() {
   return (

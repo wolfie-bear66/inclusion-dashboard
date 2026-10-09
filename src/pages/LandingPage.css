@@ -652,6 +652,19 @@ a:hover .hero-image-overlay {
   resize: vertical;
   min-height: 80px;
 }
+.lp-form__select {
+  appearance: auto;
+  cursor: pointer;
+  text-align: left;
+}
+.lp-form__input--invalid { border-color: #ef4444; }
+.lp-form__success-link {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+.lp-form__success p { margin: 0; }
+.lp-form__success p + p { margin-top: 0.4rem; }
 .lp-form__error {
   font-size: 0.8rem;
   color: #ef4444;

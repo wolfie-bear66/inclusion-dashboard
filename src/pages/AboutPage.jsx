@@ -1,7 +1,7 @@
 import './LandingPage.css'
 import './AboutPage.css'
 
-const DEMO_URL = 'https://inclusion-dashboard.vercel.app/demo'
+const DEMO_URL = 'https://www.inclusiondashboard.co.uk/demo'
 
 function scrollTo(id) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })

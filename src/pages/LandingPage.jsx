@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import './LandingPage.css'
 
-const DEMO_URL = 'https://inclusion-dashboard.vercel.app/demo'
+const DEMO_URL = 'https://www.inclusiondashboard.co.uk/demo'
 const MAILTO = 'mailto:hello@inclusiondashboard.co.uk?subject=Inclusion%20Dashboard%20Demo%20Request'
 const FORMSPREE = 'https://formspree.io/f/mdavvadd'
 
@@ -9,14 +9,34 @@ function scrollTo(id) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
 }
 
-function ContactForm({ enquiryType, btnClass, btnLabel }) {
-  const [fields, setFields] = useState({ name: '', role: '', org: '', email: '', message: '' })
-  const [status, setStatus] = useState('idle') // idle | submitting | success | error
+const CALENDLY = 'https://calendly.com/hello-inclusiondashboard/meeting'
 
-  function set(key, val) { setFields(prev => ({ ...prev, [key]: val })) }
+const HELP_OPTIONS = [
+  'Book a setup call',
+  'Start a free trial',
+  'Trial for several schools in a trust',
+  'Just exploring for now',
+]
+const HEARD_OPTIONS = ['LinkedIn', 'A colleague or trust', 'Search engine', 'Event or training', 'Other']
+
+function ContactForm({ enquiryType, btnClass, btnLabel }) {
+  const [fields, setFields] = useState({ name: '', role: '', org: '', email: '', helpWith: '', heardFrom: '', message: '' })
+  const [status, setStatus] = useState('idle') // idle | submitting | success | error
+  const [invalid, setInvalid] = useState([])
+
+  function set(key, val) {
+    setFields(prev => ({ ...prev, [key]: val }))
+    setInvalid(prev => prev.filter(k => k !== key))
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
+    const missing = ['name', 'role', 'org', 'email', 'helpWith', 'heardFrom'].filter(k => !fields[k].trim())
+    if (fields.email.trim() && !/^\S+@\S+\.\S+$/.test(fields.email.trim()) && !missing.includes('email')) missing.push('email')
+    if (missing.length) {
+      setInvalid(missing)
+      return
+    }
     setStatus('submitting')
     try {
       const res = await fetch(FORMSPREE, {
@@ -27,6 +47,8 @@ function ContactForm({ enquiryType, btnClass, btnLabel }) {
           role: fields.role,
           organisation: fields.org,
           email: fields.email,
+          how_can_we_help: fields.helpWith,
+          how_did_you_hear: fields.heardFrom,
           message: fields.message,
           enquiry_type: enquiryType,
         }),
@@ -38,45 +60,91 @@ function ContactForm({ enquiryType, btnClass, btnLabel }) {
   }
 
   if (status === 'success') {
+    const offerCall = fields.helpWith !== 'Just exploring for now'
     return (
       <div className="lp-form__success">
         <span className="lp-form__success-icon">✓</span>
-        <p>Thanks — we'll be in touch shortly.</p>
+        <div>
+          <p>
+            {offerCall
+              ? "Thanks, I'll be in touch soon. If you'd like to pick a time now, you can book a short setup call here:"
+              : "Thanks, I'll be in touch soon."}
+          </p>
+          {offerCall && (
+            <p>
+              <a className="lp-form__success-link" href={CALENDLY} target="_blank" rel="noopener noreferrer">
+                Book a setup call
+              </a>
+            </p>
+          )}
+        </div>
       </div>
     )
   }
 
   const isNavy = enquiryType === 'mat'
+  const cls = (key, extra = '') =>
+    `lp-form__input${extra}${isNavy ? ' lp-form__input--navy' : ''}${invalid.includes(key) ? ' lp-form__input--invalid' : ''}`
 
   return (
     <form className="lp-form" onSubmit={handleSubmit} noValidate>
       <div className="lp-form__row">
         <input
-          className={`lp-form__input${isNavy ? ' lp-form__input--navy' : ''}`}
-          type="text" placeholder="Your name" required
+          className={cls('name')}
+          type="text" placeholder="Your name" aria-label="Your name" required
+          aria-invalid={invalid.includes('name')}
           value={fields.name} onChange={e => set('name', e.target.value)}
         />
         <input
-          className={`lp-form__input${isNavy ? ' lp-form__input--navy' : ''}`}
-          type="text" placeholder="Your role" required
+          className={cls('role')}
+          type="text" placeholder="Your role" aria-label="Your role" required
+          aria-invalid={invalid.includes('role')}
           value={fields.role} onChange={e => set('role', e.target.value)}
         />
       </div>
       <input
-        className={`lp-form__input${isNavy ? ' lp-form__input--navy' : ''}`}
-        type="text" placeholder="School or trust name" required
+        className={cls('org')}
+        type="text" placeholder="School or trust name" aria-label="School or trust name" required
+        aria-invalid={invalid.includes('org')}
         value={fields.org} onChange={e => set('org', e.target.value)}
       />
       <input
-        className={`lp-form__input${isNavy ? ' lp-form__input--navy' : ''}`}
-        type="email" placeholder="Email address" required
+        className={cls('email')}
+        type="email" placeholder="Email address" aria-label="Email address" required
+        aria-invalid={invalid.includes('email')}
         value={fields.email} onChange={e => set('email', e.target.value)}
       />
+      <select
+        className={cls('helpWith', ' lp-form__select')}
+        aria-label="How can we help?" required
+        aria-invalid={invalid.includes('helpWith')}
+        value={fields.helpWith} onChange={e => set('helpWith', e.target.value)}
+      >
+        <option value="" disabled>How can we help?</option>
+        {HELP_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+      <select
+        className={cls('heardFrom', ' lp-form__select')}
+        aria-label="How did you hear about us?" required
+        aria-invalid={invalid.includes('heardFrom')}
+        value={fields.heardFrom} onChange={e => set('heardFrom', e.target.value)}
+      >
+        <option value="" disabled>How did you hear about us?</option>
+        {HEARD_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
       <textarea
         className={`lp-form__input lp-form__textarea${isNavy ? ' lp-form__input--navy' : ''}`}
-        placeholder="Anything you'd like us to know? (optional)"
+        placeholder="Anything else you'd like me to know? (optional)"
+        aria-label="Anything else you'd like me to know? (optional)"
         value={fields.message} onChange={e => set('message', e.target.value)}
       />
+      {invalid.length > 0 && (
+        <p className="lp-form__error" role="alert">
+          {invalid.length === 1 && invalid[0] === 'email' && fields.email.trim()
+            ? 'Please enter a valid email address.'
+            : 'Please complete the highlighted fields.'}
+        </p>
+      )}
       {status === 'error' && (
         <p className="lp-form__error">Something went wrong — please try again or email us directly.</p>
       )}
