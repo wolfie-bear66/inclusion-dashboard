@@ -2,9 +2,9 @@
 
 Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
-Live URL: `https://inclusion-dashboard.vercel.app`
+Live URL: `https://www.inclusiondashboard.co.uk` (the bare `inclusiondashboard.co.uk` redirects to `www`; `inclusion-dashboard.vercel.app` now redirects to `www` too)
 
-Last updated: 8 October 2026 (Session 108 — parked bugs fixed; not yet committed)
+Last updated: 9 October 2026 (Session 109 — contact form questions, demo links and vercel.app redirect)
 
 ---
 
@@ -19,7 +19,17 @@ Last updated: 8 October 2026 (Session 108 — parked bugs fixed; not yet committ
 
 ## Completed
 
-- [x] **Session 108 — Parked bugs fixed: invitees' job titles now saved, `/admin` role box updates straight away; leaked-password protection explained (needs the Pro plan)** — 8 October 2026. No database changes. NOT yet committed or pushed (the edge function is already deployed).
+- [x] **Session 109 — Contact form: two required questions + Calendly follow-up; demo links on the real domain; `inclusion-dashboard.vercel.app` redirects to `www.inclusiondashboard.co.uk`** — 9 October 2026. No database, auth or dashboard-app changes.
+
+  **Phase 0 (VERIFIED)**: the landing-page form (`src/pages/LandingPage.jsx`, `ContactForm`) posts JSON to Formspree (`https://formspree.io/f/mdavvadd`) only; nothing is stored in Supabase, so no migration was needed. The old form had `required` attributes but also `noValidate` and no checks, so nothing was actually enforced. Production host is `www.inclusiondashboard.co.uk` (the bare domain 308-redirects to `www`); `inclusion-dashboard.vercel.app` and its `-git-main-` and team-slug aliases point at the same production deployment; preview deployments have their own hostnames.
+
+  **Push 1 (commit `c9f98f5`, tested on a Vercel preview and on a phone by the founder)**: added required dropdowns "How can we help?" (Book a setup call / Start a free trial / Trial for several schools in a trust / Just exploring for now) and "How did you hear about us?" (LinkedIn / A colleague or trust / Search engine / Event or training / Other) after Email address; name, role, school or trust and email are now genuinely required with an email-shape check (red outlines and "Please complete the highlighted fields."); the message box is optional, last, and relabelled "Anything else you'd like me to know? (optional)". Both answers go to Formspree as `how_can_we_help` and `how_did_you_hear`. After a successful send, the first three answers show "Thanks, I'll be in touch soon. If you'd like to pick a time now, you can book a short setup call here:" with a new-tab link to `https://calendly.com/hello-inclusiondashboard/meeting`; "Just exploring for now" shows the thank-you only. The submission is sent before the thank-you appears, so it is saved even if the link is never clicked. The `DEMO_URL` constant in `LandingPage.jsx`, `AboutPage.jsx` and `PrivacyPage.jsx` is now `https://www.inclusiondashboard.co.uk/demo`.
+
+  **Push 2**: `vercel.json` gains a permanent (308) redirect, matched on the exact host `inclusion-dashboard.vercel.app`, to the same path on `https://www.inclusiondashboard.co.uk` (query string kept by Vercel). Preview deployments and the other production aliases are deliberately not redirected. It can only be proven on production, not on a preview.
+
+  **Parked / for the founder**: (1) Supabase **Authentication > URL Configuration**: the app calls `resetPasswordForEmail` with no `redirectTo`, so password-reset links use the Site URL setting, which Claude could not read. If Site URL or Redirect URLs still contain `inclusion-dashboard.vercel.app`, change them to `https://www.inclusiondashboard.co.uk`. (2) Formspree's notification recipient and template were not seen; the founder confirmed the emails arrive in testing. (3) `.env`-style references to vercel.app: none found. (4) Claude ran the Vercel CLI for read-only listings; the CLI is signed in as `yatesstuart66-8646` on this machine (`vercel logout` to remove). (5) Older entries for Sessions 106 and 107 still say "not yet committed"; they were committed as `d4d0219` and `ad7d9dc`.
+
+- [x] **Session 108 — Parked bugs fixed: invitees' job titles now saved, `/admin` role box updates straight away; leaked-password protection explained (needs the Pro plan)** — 8 October 2026. No database changes. Committed as `12846a1` (the edge function was deployed earlier).
 
   **Job titles on invited people (TRACED root cause, same for three call sites)**: `invite-user` read `job_title` from the request but never stored it. The Team page, the "invite" modal in `App.jsx` and the first-login bootstrap wizard each then tried to set it with a client-side `profiles` update on the invitee's row, which RLS (own row only) turns into a silent no-op. Evidence: all three profiles the wizard invited at AJY on 24 September had a null job title. **Fix**: `invite-user` now saves `job_title` in the profile it creates (`supabase/functions/invite-user/index.ts`, deployed as v19, `verify_jwt` on); the two client follow-up updates (`App.jsx`, `TeamPage.jsx`) and the wizard's batch of follow-up updates (`BootstrapWizard.jsx`) were removed, and the wizard now sends `job_title` (the point label) in the invite itself. `remove-team-member` already wrote the new person's title with the service role and is unchanged. This also closes the earlier "Bootstrap wizard's `job_title` write onto newly invited profiles silently fails" item.
 
