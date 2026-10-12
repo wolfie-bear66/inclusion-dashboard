@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://www.inclusiondashboard.co.uk` (the bare `inclusiondashboard.co.uk` redirects to `www`; `inclusion-dashboard.vercel.app` now redirects to `www` too)
 
-Last updated: 9 October 2026 (Session 109 — contact form questions, demo links and vercel.app redirect)
+Last updated: 12 October 2026 (Session 110 — password reset now requires a new password)
 
 ---
 
@@ -18,6 +18,16 @@ Last updated: 9 October 2026 (Session 109 — contact form questions, demo links
 ---
 
 ## Completed
+
+- [x] **Session 110 — Password reset: clicking the emailed link now requires a new password before the dashboard** — 12 October 2026. Commits `8343880` and `edb8fd4`, pushed to `main`. No database, Supabase-setting or edge-function changes. Tested locally and on production with the founder's disposable account; founder confirmed it works.
+
+  **Root cause (VERIFIED in code and in `auth-js` 2.104.0)**: the app calls `resetPasswordForEmail(loginEmail)` with no `redirectTo`, so the link lands on the Supabase Site URL with `#access_token=…&type=recovery` and Supabase signs the user in (event `PASSWORD_RECOVERY`). Nothing in the app handled that: the hash detector only knew `type=invite` and `type=signup`, there was no `PASSWORD_RECOVERY` listener, and the profile `password_set` flag was already true, so the existing "must set a password" gate stayed shut. Reset had behaved like this since it was added (`eac35da`, 26 June 2026). The `vercel.app` redirect added on 9 October played no part.
+
+  **Fix**: `detectInviteHash` (App.jsx) recognises `type=recovery` and sets a `passwordRecovery` flag, held in `localStorage` via the new `src/utils/passwordRecovery.js`. While the flag is set and a session exists, App.jsx routing renders `SetPasswordPage` ahead of every other route and redirect, the profile load skips its normal setup and redirects (including the founder `/admin` redirect), and the flag is cleared when a new password is saved or on `SIGNED_OUT`. `SetPasswordPage` shows "Set a new password / Choose a new password for your account." for resets and keeps the original welcome wording for invites; reset users also get a "Cancel and sign out" link (signs out, returns to the landing page, old password still works). The password is saved with the existing `updateUser` call, after which the user lands on `/my-points` as invited users do. In dev only (`import.meta.env.DEV`), the forgot-password call passes `redirectTo: window.location.origin` so a local run can receive its own reset link; production passes no `redirectTo`.
+
+  **Two things learned on the way**: (1) The first version relied on the one-shot `pendingSetPassword` redirect, which raced with the normal "signed in at `/` goes to `/dashboard`" redirect (invites hid this because their `password_set` is false); it was replaced by the routing gate. (2) The second version kept the flag in `sessionStorage`, so closing the tab left the user signed in with the old password and the next visit opened the dashboard; the flag now persists in `localStorage`. The reset session itself is persisted by Supabase, so a user who abandons a reset stays on the new-password screen until they set a password or choose Cancel and sign out.
+
+  **Verified**: `npx vite build` clean; `npx eslint` 66 problems, equal to the baseline. Founder tested locally (reset, abandon-and-reopen, cancel, complete, normal sign-in, invite wording) and then on production. **Founder tidy-up**: remove `http://localhost:5173/**` from Supabase Redirect URLs (added only for local testing). **Resolves** the Session 109 parked item about the Supabase Site URL: reset links use the Site URL, which the founder confirmed is `https://inclusiondashboard.co.uk`.
 
 - [x] **Session 109 — Contact form: two required questions + Calendly follow-up; demo links on the real domain; `inclusion-dashboard.vercel.app` redirects to `www.inclusiondashboard.co.uk`** — 9 October 2026. No database, auth or dashboard-app changes.
 
