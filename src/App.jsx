@@ -40,6 +40,14 @@ import { generateEvidenceReportWord } from './generateReportWord'
   if (hash.includes('type=invite') || hash.includes('type=signup')) {
     console.log('[Invite] invite hash detected — setting pendingSetPassword flag')
     sessionStorage.setItem('pendingSetPassword', 'true')
+    sessionStorage.removeItem('passwordRecovery')
+  } else if (hash.includes('type=recovery')) {
+    // Password-reset link. Unlike an invite, the profile already has password_set = true,
+    // so nothing else would stop the user reaching the dashboard. The flag makes the
+    // routing below show SetPasswordPage (with reset wording) until a new password is
+    // saved; SetPasswordPage clears it.
+    console.log('[Recovery] reset hash detected — setting passwordRecovery flag')
+    sessionStorage.setItem('passwordRecovery', 'true')
   }
 })()
 
@@ -2821,6 +2829,7 @@ export default function App() {
         console.log('[Invite] already on /set-password — flag cleared, no redirect needed')
         return
       }
+      if (_event === 'SIGNED_OUT') sessionStorage.removeItem('passwordRecovery')
       setSession(session)
     })
     return () => subscription.unsubscribe()
@@ -2932,6 +2941,12 @@ export default function App() {
         if (error || !data) {
           console.error('[Profile] fetch error:', error)
           setMissingProfile(true)
+          setAuthLoading(false)
+          return
+        }
+        // Arrived from a password-reset link: the routing gate shows SetPasswordPage, so
+        // skip the normal profile setup and redirects (they happen after the reload).
+        if (sessionStorage.getItem('passwordRecovery') === 'true') {
           setAuthLoading(false)
           return
         }
@@ -3325,7 +3340,12 @@ export default function App() {
       return
     }
     setForgotStatus(null)
-    const { error } = await supabase.auth.resetPasswordForEmail(loginEmail)
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      loginEmail,
+      // Dev only: lets a local run receive its own reset link. Production passes no
+      // redirectTo, so links keep using the Supabase Site URL exactly as before.
+      import.meta.env.DEV ? { redirectTo: window.location.origin } : undefined,
+    )
     setForgotStatus(error ? 'error' : 'success')
   }
 
@@ -3671,7 +3691,7 @@ export default function App() {
     return <LoadingScreen />
   }
 
-  if (needsPasswordSet && session) return <SetPasswordPage />
+  if ((needsPasswordSet || sessionStorage.getItem('passwordRecovery') === 'true') && session) return <SetPasswordPage />
 
   if (passwordExpired) {
     return (

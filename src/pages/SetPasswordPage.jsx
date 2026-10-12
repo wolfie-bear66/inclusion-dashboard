@@ -8,6 +8,10 @@ export default function SetPasswordPage() {
   const [serverError, setServerError]   = useState(null)
   const [saving, setSaving]             = useState(false)
   const [success, setSuccess]           = useState(false)
+  // Set by App.jsx when the user arrived from a password-reset email link.
+  const [isReset] = useState(() => {
+    try { return sessionStorage.getItem('passwordRecovery') === 'true' } catch { return false }
+  })
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -38,6 +42,7 @@ export default function SetPasswordPage() {
       await supabase.from('profiles').update({ password_set: true }).eq('id', session.user.id)
     }
 
+    try { sessionStorage.removeItem('passwordRecovery') } catch { /* ignore */ }
     setSuccess(true)
     setTimeout(() => window.location.replace('/my-points'), 1000)
   }
@@ -57,10 +62,10 @@ export default function SetPasswordPage() {
         </p>
 
         <h1 className="login-title" style={{ marginBottom: 8 }}>
-          Welcome to Inclusion Dashboard
+          {isReset ? 'Set a new password' : 'Welcome to Inclusion Dashboard'}
         </h1>
         <p style={{ fontSize: '0.88rem', color: '#64748b', lineHeight: 1.55, marginBottom: 32 }}>
-          Set a password to secure your account.
+          {isReset ? 'Choose a new password for your account.' : 'Set a password to secure your account.'}
         </p>
 
         {success ? (
