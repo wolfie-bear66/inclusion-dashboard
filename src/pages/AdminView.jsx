@@ -215,9 +215,11 @@ export default function AdminView() {
       setResendMsgByRow(prev => ({ ...prev, [profileId]: { type: 'success', text: `Resent to ${json.email}` } }))
       // Refetch so the row's "Invite sent" date reflects this resend straight away.
       loadData()
+      return true
     } catch (err) {
       setActionMsg({ type: 'error', text: err.message })
       setResendMsgByRow(prev => ({ ...prev, [profileId]: { type: 'error', text: err.message } }))
+      return false
     } finally {
       setResendingId(null)
     }
@@ -429,33 +431,13 @@ export default function AdminView() {
                     </Td>
                     <Td>{fmtDate(row.last_login)}</Td>
                     <Td>
-                      <button onClick={() => setEditingRow(row)} style={actionBtnStyle}>Edit</button>
-                      {row.pending_invites.map(p => (
-                        <span key={p.profile_id} style={{ display: 'inline-block' }}>
-                          <button
-                            onClick={() => handleResendInvite(p.profile_id)}
-                            title={p.email ?? ''}
-                            disabled={resendingId === p.profile_id}
-                            style={{
-                              ...actionBtnStyle, marginLeft: 6,
-                              opacity: resendingId === p.profile_id ? 0.6 : 1,
-                              cursor: resendingId === p.profile_id ? 'default' : 'pointer',
-                            }}
-                          >
-                            {resendingId === p.profile_id
-                              ? 'Resending…'
-                              : `Resend${row.pending_invites.length > 1 ? ` (${p.email?.split('@')[0] ?? '?'})` : ' invite'}`}
-                          </button>
-                          {resendMsgByRow[p.profile_id] && (
-                            <div style={{
-                              marginTop: 4, fontSize: '0.6875rem', maxWidth: 220,
-                              color: resendMsgByRow[p.profile_id].type === 'error' ? '#B91C1C' : '#166534',
-                            }}>
-                              {resendMsgByRow[p.profile_id].text}
-                            </div>
-                          )}
-                        </span>
-                      ))}
+                      <div><button onClick={() => setEditingRow(row)} style={actionBtnStyle}>Edit</button></div>
+                      <ResendControl
+                        row={row}
+                        onResend={handleResendInvite}
+                        resendingId={resendingId}
+                        msgByProfile={resendMsgByRow}
+                      />
                     </Td>
                   </tr>
                 ))}
@@ -677,6 +659,86 @@ function FilterChip({ active, onClick, children }) {
     >
       {children}
     </button>
+  )
+}
+
+// Resend control for the Actions column. One pending person: a single "Resend (name)" button.
+// Two or more: a "Choose person…" dropdown plus a Resend button that stays disabled until
+// someone is chosen. Sending goes through the page's handleResendInvite, one profile_id per
+// click; the dropdown resets after a successful send and the result message (naming the
+// person) stays visible until the next click.
+function ResendControl({ row, onResend, resendingId, msgByProfile }) {
+  const [chosenId, setChosenId] = useState('')
+  const [lastId, setLastId] = useState(null)
+
+  const pending = row.pending_invites ?? []
+  if (pending.length === 0) return null
+
+  const staffById = Object.fromEntries((row.staff ?? []).map(s => [s.profile_id, s]))
+  const nameOf = p => {
+    const st = staffById[p.profile_id]
+    return `${st?.first_name ?? ''} ${st?.last_name ?? ''}`.trim()
+  }
+  // "First Last (email)", falling back to the email alone, then a placeholder.
+  const labelOf = p => {
+    const name = nameOf(p)
+    if (name && p.email) return `${name} (${p.email})`
+    return name || p.email || 'Unnamed person'
+  }
+  const shortOf = p => nameOf(p) || p.email?.split('@')[0] || 'unnamed'
+
+  const single = pending.length === 1
+  const targetId = single ? pending[0].profile_id : chosenId
+  const target = pending.find(p => p.profile_id === targetId)
+  const busy = pending.some(p => p.profile_id === resendingId)
+
+  async function send() {
+    if (!target) return
+    setLastId(target.profile_id)
+    const ok = await onResend(target.profile_id)
+    if (ok) setChosenId('')
+  }
+
+  const last = pending.find(p => p.profile_id === lastId)
+  const msg = last ? msgByProfile[last.profile_id] : null
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      {!single && (
+        <select
+          value={chosenId}
+          onChange={e => setChosenId(e.target.value)}
+          disabled={busy}
+          aria-label="Choose who to resend the invite to"
+          style={{ ...inputStyle, display: 'block', width: 200, maxWidth: '100%', boxSizing: 'border-box', padding: '5px 8px', marginBottom: 6, fontSize: '0.75rem' }}
+        >
+          <option value="">Choose person…</option>
+          {pending.map(p => (
+            <option key={p.profile_id} value={p.profile_id}>{labelOf(p)}</option>
+          ))}
+        </select>
+      )}
+      <button
+        onClick={send}
+        title={target?.email ?? ''}
+        disabled={!target || busy}
+        style={{
+          ...actionBtnStyle,
+          opacity: !target || busy ? 0.6 : 1,
+          cursor: !target || busy ? 'default' : 'pointer',
+        }}
+      >
+        {busy ? 'Resending…' : single ? `Resend (${shortOf(pending[0])})` : 'Resend'}
+      </button>
+      {msg && (
+        <div style={{
+          marginTop: 4, fontSize: '0.6875rem', maxWidth: 220, overflowWrap: 'anywhere',
+          color: msg.type === 'error' ? '#B91C1C' : '#166534',
+        }}>
+          {msg.type === 'error' ? `${shortOf(last)}: ${msg.text}` : `Resent to ${labelOf(last)}`}
+        </div>
+      )}
+    </div>
   )
 }
 
