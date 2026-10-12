@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://www.inclusiondashboard.co.uk` (the bare `inclusiondashboard.co.uk` redirects to `www`; `inclusion-dashboard.vercel.app` now redirects to `www` too)
 
-Last updated: 12 October 2026 (Session 110 — password reset now requires a new password)
+Last updated: 12 October 2026 (Session 111 — /admin resend dropdown)
 
 ---
 
@@ -18,6 +18,14 @@ Last updated: 12 October 2026 (Session 110 — password reset now requires a new
 ---
 
 ## Completed
+
+- [x] **Session 111 — `/admin`: the row of "Resend (name)" buttons is now a dropdown when a school has 2+ pending people** — 12 October 2026. Frontend only (`src/pages/AdminView.jsx`); no edge function, migration or RLS changes. Founder tested on a disposable school with 2+ pending people and confirmed it works.
+
+  **Phase 0 findings**: (1) `pending_invites` from `admin-dashboard-stats` holds only `{ profile_id, email }`, no names; names come from the separate `row.staff` array (`first_name`, `last_name`), so the labels are built by joining on `profile_id` (TRACED from code). (2) Pending rule is `password_set !== true` in `admin-dashboard-stats/index.ts:180`, matching `resend-invite`'s guard, which rejects only `password_set === true` (TRACED from code; deployed functions were not re-compared with the repo). (3) Each click sends exactly one `profile_id` through the existing `handleResendInvite` (TRACED from code, then confirmed in the founder's test: only the chosen person was emailed). (4) `resendingId` and `resendMsgByRow` are both keyed by `profile_id` (not by school row, despite the name) (TRACED). (5) `first_name` and `last_name` are nullable text and invite functions default them to `''`, so names can be missing (TRACED). Nothing else read `pending_invites` (VERIFIED by grep).
+
+  **Built**: new `ResendControl` component in `AdminView.jsx`. 0 pending: nothing. 1 pending: single `Resend (First Last)` button (falls back to the email prefix, then "unnamed"). 2+ pending: a "Choose person…" dropdown (no pre-selection; options "First Last (email)", falling back to the email, then "Unnamed person") and a Resend button disabled until someone is chosen, and while a send runs. The dropdown resets after a successful send and keeps its choice after a failure. The result message names the person (`Resent to Trish Atkinson (email)`; errors read `Name: …`) and stays visible until the next click. The Edit button now sits on its own line with the resend controls underneath (this also moves the single-person button, which used to sit beside Edit). The dropdown is 200px wide and shrinks to the column. The only change to the existing handler is that it returns `true`/`false` so the dropdown knows when to reset.
+
+  **Verified**: `npx vite build` clean; `npx eslint` 66 problems, equal to the baseline, none in `AdminView.jsx`. The founder's browser test (dropdown, disabled button, sending to one person, message naming them, narrow widths) is the only run against a real school; Claude did not open `/admin`.
 
 - [x] **Session 110 — Password reset: clicking the emailed link now requires a new password before the dashboard** — 12 October 2026. Commits `8343880` and `edb8fd4`, pushed to `main`. No database, Supabase-setting or edge-function changes. Tested locally and on production with the founder's disposable account; founder confirmed it works.
 
