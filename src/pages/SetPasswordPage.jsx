@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
+import { isPasswordRecovery, clearPasswordRecovery } from '../utils/passwordRecovery'
 
 export default function SetPasswordPage() {
   const [password, setPassword]         = useState('')
@@ -9,9 +10,14 @@ export default function SetPasswordPage() {
   const [saving, setSaving]             = useState(false)
   const [success, setSuccess]           = useState(false)
   // Set by App.jsx when the user arrived from a password-reset email link.
-  const [isReset] = useState(() => {
-    try { return sessionStorage.getItem('passwordRecovery') === 'true' } catch { return false }
-  })
+  const [isReset] = useState(isPasswordRecovery)
+
+  // Reset users who change their mind: end the reset session so the old password still works.
+  async function handleCancelReset() {
+    clearPasswordRecovery()
+    await supabase.auth.signOut()
+    window.location.replace('/')
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -42,7 +48,7 @@ export default function SetPasswordPage() {
       await supabase.from('profiles').update({ password_set: true }).eq('id', session.user.id)
     }
 
-    try { sessionStorage.removeItem('passwordRecovery') } catch { /* ignore */ }
+    clearPasswordRecovery()
     setSuccess(true)
     setTimeout(() => window.location.replace('/my-points'), 1000)
   }
@@ -111,6 +117,16 @@ export default function SetPasswordPage() {
               <p className="login-error" style={{ marginTop: 4 }}>{serverError}</p>
             )}
           </form>
+        )}
+
+        {isReset && !success && (
+          <button
+            type="button"
+            onClick={handleCancelReset}
+            style={{ marginTop: 20, background: 'none', border: 'none', color: '#64748b', fontSize: '0.85rem', textDecoration: 'underline', cursor: 'pointer', alignSelf: 'center' }}
+          >
+            Cancel and sign out
+          </button>
         )}
       </div>
     </div>

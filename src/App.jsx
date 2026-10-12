@@ -14,6 +14,7 @@ import ApprovalQueueModal from './components/ApprovalQueueModal'
 import ChangeRequestControl from './components/ChangeRequestControl'
 import AssignmentModal from './components/AssignmentModal'
 import SetPasswordPage from './pages/SetPasswordPage'
+import { isPasswordRecovery, setPasswordRecovery, clearPasswordRecovery } from './utils/passwordRecovery'
 import AdminView from './pages/AdminView'
 import SchoolOnboardingView from './pages/SchoolOnboardingView'
 import { useIsReadOnlyView } from './hooks/useIsReadOnlyView'
@@ -40,14 +41,14 @@ import { generateEvidenceReportWord } from './generateReportWord'
   if (hash.includes('type=invite') || hash.includes('type=signup')) {
     console.log('[Invite] invite hash detected — setting pendingSetPassword flag')
     sessionStorage.setItem('pendingSetPassword', 'true')
-    sessionStorage.removeItem('passwordRecovery')
+    clearPasswordRecovery()
   } else if (hash.includes('type=recovery')) {
     // Password-reset link. Unlike an invite, the profile already has password_set = true,
     // so nothing else would stop the user reaching the dashboard. The flag makes the
     // routing below show SetPasswordPage (with reset wording) until a new password is
     // saved; SetPasswordPage clears it.
     console.log('[Recovery] reset hash detected — setting passwordRecovery flag')
-    sessionStorage.setItem('passwordRecovery', 'true')
+    setPasswordRecovery()
   }
 })()
 
@@ -2829,7 +2830,7 @@ export default function App() {
         console.log('[Invite] already on /set-password — flag cleared, no redirect needed')
         return
       }
-      if (_event === 'SIGNED_OUT') sessionStorage.removeItem('passwordRecovery')
+      if (_event === 'SIGNED_OUT') clearPasswordRecovery()
       setSession(session)
     })
     return () => subscription.unsubscribe()
@@ -2946,7 +2947,7 @@ export default function App() {
         }
         // Arrived from a password-reset link: the routing gate shows SetPasswordPage, so
         // skip the normal profile setup and redirects (they happen after the reload).
-        if (sessionStorage.getItem('passwordRecovery') === 'true') {
+        if (isPasswordRecovery()) {
           setAuthLoading(false)
           return
         }
@@ -3691,7 +3692,7 @@ export default function App() {
     return <LoadingScreen />
   }
 
-  if ((needsPasswordSet || sessionStorage.getItem('passwordRecovery') === 'true') && session) return <SetPasswordPage />
+  if ((needsPasswordSet || isPasswordRecovery()) && session) return <SetPasswordPage />
 
   if (passwordExpired) {
     return (
