@@ -19,7 +19,7 @@ Last updated: 15 October 2026 (welcome email wording fix)
 
 ## Completed
 
-- [x] **Welcome email wording fix (wording only)** — 15 October 2026. One line changed in `supabase/functions/_shared/temp-password.ts`, on branch `fix/welcome-email-wording` (not main). No logic, permission, expiry, database, RLS, migration or `App.jsx` change.
+- [x] **Welcome email wording fix (wording only)** — 15 October 2026. One line changed in `supabase/functions/_shared/temp-password.ts`, made on branch `fix/welcome-email-wording`, then **fast-forward merged into `main` and pushed (`main` at `1591127`) and the branch deleted locally and on GitHub, all 15 October 2026**. No logic, permission, expiry, database, RLS, migration or `App.jsx` change.
 
   **Why**: the welcome email said "after that, ask your school admin to send you a new one", which is untrue (only the founder can resend; see the Phase 0 entry below). **Now reads**: "Your temporary password works for 7 days. If it has expired, just email hello@inclusiondashboard.co.uk and we'll send you a new one." This agrees with the expiry screen in `App.jsx` (~3744), which already says to email hello@ (confirmed, not edited). Repo search for "school admin" / "ask your": no other user-facing text tells anyone a school admin can resend (the other hits were two code comments and the `App.jsx` message above).
 
