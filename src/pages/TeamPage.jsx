@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import AssignmentModal, { CATEGORY_ORDER } from '../components/AssignmentModal'
 import RemoveReplaceModal from '../components/RemoveReplaceModal'
+import SameNameNotice from '../components/SameNameNotice'
+import { findSameName, findMaybeSame, nameKey } from '../utils/duplicateNames'
 
 const INVITE_FUNCTION_URL = 'https://zgolrthcrupvrrvfokvz.supabase.co/functions/v1/invite-user'
 const PUBLISHABLE_KEY = 'sb_publishable_zjiIMtJYOTWCOpx5s1ABVw_yt6VKiEb'
@@ -252,8 +254,13 @@ function BulkAssignBar({ selectedIds, members, schoolId, currentUserId, matId, s
   const [newEmail, setNewEmail] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [notDupKey, setNotDupKey] = useState(null)   // nameKey the user said is a different person
+  const [serverMatch, setServerMatch] = useState(null) // match returned by invite-user
 
   const count = selectedIds.size
+  const newKey = nameKey(newFirstName, newLastName)
+  const sameNameMatch = notDupKey === newKey ? null : (serverMatch ?? findSameName(members, newFirstName, newLastName))
+  const maybeMatch = sameNameMatch ? null : findMaybeSame(members, newFirstName, newLastName)
 
   function handleSelectChange(e) {
     const val = e.target.value
@@ -309,9 +316,17 @@ function BulkAssignBar({ selectedIds, members, schoolId, currentUserId, matId, s
           role:       'contributor',
           school_id:  schoolId,
           mat_id:     matId,
+          check_duplicates: true,
+          ...(notDupKey === newKey ? { confirm_not_duplicate: true } : {}),
         }),
       })
       const json = await res.json()
+      if (res.status === 409 && json.possible_duplicate) {
+        // invite-user found someone with this name; nothing was created.
+        setServerMatch(json.matches?.[0] ?? null)
+        setBusy(false)
+        return
+      }
       if (!res.ok || json.error) {
         setError(json.error ?? 'Something went wrong. Please try again.')
         setBusy(false)
@@ -358,7 +373,7 @@ function BulkAssignBar({ selectedIds, members, schoolId, currentUserId, matId, s
           <option value="" disabled>Assign to…</option>
           {members.map(m => (
             <option key={m.id} value={m.id}>
-              {m.first_name} {m.last_name}{m.job_title ? ` — ${m.job_title}` : ''}
+              {m.first_name} {m.last_name}{m.id === currentUserId ? ' (you)' : ''}{m.job_title ? ` — ${m.job_title}` : ''}
             </option>
           ))}
           <option value="__new__">+ Add new team member</option>
@@ -390,12 +405,12 @@ function BulkAssignBar({ selectedIds, members, schoolId, currentUserId, matId, s
           <div>
             <label style={labelStyle}>First name</label>
             <input required autoComplete="off" placeholder="Sarah" style={inputStyle}
-              value={newFirstName} onChange={e => setNewFirstName(e.target.value)} />
+              value={newFirstName} onChange={e => { setNewFirstName(e.target.value); setServerMatch(null) }} />
           </div>
           <div>
             <label style={labelStyle}>Last name</label>
             <input required autoComplete="off" placeholder="Jones" style={inputStyle}
-              value={newLastName} onChange={e => setNewLastName(e.target.value)} />
+              value={newLastName} onChange={e => { setNewLastName(e.target.value); setServerMatch(null) }} />
           </div>
           <div>
             <label style={labelStyle}>Role / position</label>
@@ -406,6 +421,18 @@ function BulkAssignBar({ selectedIds, members, schoolId, currentUserId, matId, s
             <label style={labelStyle}>Email address</label>
             <input required type="email" autoComplete="off" placeholder="colleague@school.org" style={inputStyle}
               value={newEmail} onChange={e => setNewEmail(e.target.value)} />
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <SameNameNotice
+              match={sameNameMatch}
+              maybe={maybeMatch}
+              disabled={busy}
+              onAssign={() => {
+                const who = sameNameMatch ?? maybeMatch
+                setTarget(who.id); setShowNewForm(false); setServerMatch(null); setError(null)
+              }}
+              onDifferent={() => { setNotDupKey(newKey); setServerMatch(null) }}
+            />
           </div>
           <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button type="button" onClick={() => { setShowNewForm(false); setError(null) }} disabled={busy} style={{
@@ -455,8 +482,7 @@ function ByPointView({ schoolId, currentUserId, matId, supabase, readOnly }) {
       supabase
         .from('profiles')
         .select('id, first_name, last_name, job_title')
-        .eq('school_id', schoolId)
-        .neq('id', currentUserId),
+        .eq('school_id', schoolId),
     ])
 
     const byId = {}

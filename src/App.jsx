@@ -26,6 +26,8 @@ import { fetchDueForReviewRows } from './utils/dueForReview'
 import { saveBarrier } from './utils/barrierSave'
 import { BARRIER_GROUPS, BARRIER_SCALES, BARRIER_SOURCES, BARRIER_STATUSES, BARRIER_STATUS_STYLE, BARRIER_SELECT } from './constants/barriers'
 import BarrierForm from './components/BarrierForm'
+import SameNameNotice from './components/SameNameNotice'
+import { fetchSchoolPeople, findSameName, findMaybeSame, nameKey } from './utils/duplicateNames'
 import './App.css'
 import { generateEvidenceReport, DFE_PRINCIPLES, statusLabel, fmt } from './generateReport'
 import { generateEvidenceReportWord } from './generateReportWord'
@@ -2794,6 +2796,10 @@ export default function App() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteSending, setInviteSending] = useState(false)
   const [inviteMsg, setInviteMsg] = useState(null)  // { type: 'success'|'error', text: string }
+  // Same-name warning (warning only; there is no point to assign from this modal)
+  const [invitePeople, setInvitePeople] = useState([])
+  const [inviteNotDupKey, setInviteNotDupKey] = useState(null) // nameKey the user said is a different person
+  const [inviteServerMatch, setInviteServerMatch] = useState(null) // match returned by invite-user
   const inviteModalRef = useRef(null)
 
   // Initialise auth: restore session and subscribe to changes.
@@ -3389,7 +3395,11 @@ export default function App() {
     setInviteJobTitle('')
     setInviteEmail('')
     setInviteMsg(null)
+    setInviteNotDupKey(null)
+    setInviteServerMatch(null)
+    setInvitePeople([])
     setInviteOpen(true)
+    if (selectedSchool) fetchSchoolPeople(supabase, selectedSchool).then(setInvitePeople)
   }
 
   function closeInviteModal() {
@@ -3410,6 +3420,8 @@ export default function App() {
         role:       'contributor',
         school_id:  selectedSchool,
         mat_id:     userMatId,
+        check_duplicates: true,
+        ...(inviteNotDupKey === nameKey(inviteFirstName, inviteLastName) ? { confirm_not_duplicate: true } : {}),
       }
       const { data: { session } } = await supabase.auth.getSession()
       console.log('[invite] Sending request to:', 'https://zgolrthcrupvrrvfokvz.supabase.co/functions/v1/invite-user')
@@ -3426,7 +3438,10 @@ export default function App() {
       const json = await res.json()
       console.log('[invite] Response status:', res.status)
       console.log('[invite] Response body:', json)
-      if (!res.ok || json.error) {
+      if (res.status === 409 && json.possible_duplicate) {
+        // invite-user found someone with this name; nothing was created. Show the warning.
+        setInviteServerMatch(json.matches?.[0] ?? null)
+      } else if (!res.ok || json.error) {
         setInviteMsg({ type: 'error', text: json.error ?? 'Something went wrong. Please try again.' })
       } else if (json.profileError) {
         setInviteMsg({ type: 'error', text: `Invite sent but profile could not be created automatically — please contact hello@inclusiondashboard.co.uk.` })
@@ -3709,7 +3724,11 @@ export default function App() {
           </p>
           <h1 className="login-title" style={{ marginBottom: 12 }}>Your temporary password has expired.</h1>
           <p style={{ fontSize: '0.88rem', color: '#64748b', lineHeight: 1.6, marginBottom: 20 }}>
-            It's been more than 7 days since it was issued. Ask your school admin to send you a new one.
+            It's been more than 7 days since it was issued, so it can no longer be used. No problem: please email{' '}
+            <a href="mailto:hello@inclusiondashboard.co.uk" style={{ color: '#1B365D' }}>
+              hello@inclusiondashboard.co.uk
+            </a>{' '}
+            and we'll send you a new one.
           </p>
           <a href="/" className="login-btn" style={{ display: 'inline-block', textAlign: 'center', textDecoration: 'none' }}>
             Return to sign in
@@ -5159,7 +5178,7 @@ export default function App() {
                     autoComplete="off"
                     placeholder="Sarah"
                     value={inviteFirstName}
-                    onChange={e => { setInviteFirstName(e.target.value); setInviteMsg(null) }}
+                    onChange={e => { setInviteFirstName(e.target.value); setInviteMsg(null); setInviteServerMatch(null) }}
                   />
                 </div>
                 <div className="df df--half">
@@ -5171,7 +5190,7 @@ export default function App() {
                     autoComplete="off"
                     placeholder="Jones"
                     value={inviteLastName}
-                    onChange={e => { setInviteLastName(e.target.value); setInviteMsg(null) }}
+                    onChange={e => { setInviteLastName(e.target.value); setInviteMsg(null); setInviteServerMatch(null) }}
                   />
                 </div>
                 <div className="df df--full">
@@ -5199,6 +5218,23 @@ export default function App() {
                   />
                 </div>
               </div>
+
+              {(() => {
+                const key = nameKey(inviteFirstName, inviteLastName)
+                const acknowledged = inviteNotDupKey === key
+                const match = acknowledged ? null : (inviteServerMatch ?? findSameName(invitePeople, inviteFirstName, inviteLastName))
+                const maybe = match ? null : findMaybeSame(invitePeople, inviteFirstName, inviteLastName)
+                return (
+                  <div style={{ marginTop: 12 }}>
+                    <SameNameNotice
+                      match={match}
+                      maybe={maybe}
+                      onDifferent={() => { setInviteNotDupKey(key); setInviteServerMatch(null) }}
+                      disabled={inviteSending}
+                    />
+                  </div>
+                )
+              })()}
 
               {inviteMsg && (
                 <p style={{

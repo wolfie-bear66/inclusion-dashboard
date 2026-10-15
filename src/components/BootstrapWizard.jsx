@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { usePrincipleCoverage } from '../hooks/usePrincipleCoverage'
 import { PRINCIPLE_LABEL_SHORT, STATIC_REVIEW_CATEGORIES } from '../constants/principles'
+import SameNameNotice from './SameNameNotice'
+import { fetchSchoolPeople, findSameName, findMaybeSame, nameKey, splitFullName, displayPersonName } from '../utils/duplicateNames'
 
 const INVITE_FUNCTION_URL = 'https://zgolrthcrupvrrvfokvz.supabase.co/functions/v1/invite-user'
 const PUBLISHABLE_KEY = 'sb_publishable_zjiIMtJYOTWCOpx5s1ABVw_yt6VKiEb'
@@ -19,12 +21,7 @@ const CATEGORY_COPY = {
   },
 }
 
-function splitName(fullName) {
-  const trimmed = fullName.trim().replace(/\s+/g, ' ')
-  const spaceIdx = trimmed.indexOf(' ')
-  if (spaceIdx === -1) return { first_name: trimmed, last_name: '' }
-  return { first_name: trimmed.slice(0, spaceIdx), last_name: trimmed.slice(spaceIdx + 1) }
-}
+const splitName = splitFullName
 
 export default function BootstrapWizard({ schoolId, schoolName, userId, firstName, matId, supabase, onSaved, onDismiss }) {
   const [loading, setLoading] = useState(true)
@@ -33,7 +30,10 @@ export default function BootstrapWizard({ schoolId, schoolName, userId, firstNam
   const [assignments, setAssignments] = useState({})
   const [entryStatusByPp, setEntryStatusByPp] = useState({}) // ppId -> status | undefined
   const [categoryIndex, setCategoryIndex] = useState(0)
-  const [fields, setFields] = useState({}) // ppId -> { name, email }
+  // ppId -> { name, email, link, existsNoLink, existingId (a colleague picked from the list),
+  //           notDupKey (nameKey the user said is a different person), serverMatch }
+  const [fields, setFields] = useState({})
+  const [people, setPeople] = useState([]) // everyone at this school: { id, first_name, last_name, job_title, role, password_set }
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
   const [successNote, setSuccessNote] = useState(null)
@@ -68,12 +68,14 @@ export default function BootstrapWizard({ schoolId, schoolName, userId, firstNam
       if (ppErr || cancelled) { setLoading(false); return }
       const ppIds = (ppData ?? []).map(p => p.id)
 
-      const [assignRes, entryRes, obRes] = await Promise.all([
+      const [assignRes, entryRes, obRes, peopleRows] = await Promise.all([
         supabase.from('point_assignments').select('provision_point_id, assignee_user_id').eq('school_id', schoolId).in('provision_point_id', ppIds),
         supabase.from('entries').select('provision_point_id, status').eq('school_id', schoolId).in('provision_point_id', ppIds),
         supabase.from('profiles').select('onboarding_state').eq('id', userId).single(),
+        fetchSchoolPeople(supabase, schoolId),
       ])
       if (cancelled) return
+      setPeople(peopleRows)
 
       const loadedObState = obRes.data?.onboarding_state ?? {}
       setObState(loadedObState)
@@ -131,7 +133,18 @@ export default function BootstrapWizard({ schoolId, schoolName, userId, firstNam
   const isLastCategory = categoryIndex === STATIC_REVIEW_CATEGORIES.length - 1
 
   function updateField(ppId, key, value) {
-    setFields(prev => ({ ...prev, [ppId]: { ...prev[ppId], [key]: value } }))
+    setFields(prev => ({
+      ...prev,
+      [ppId]: { ...prev[ppId], [key]: value, ...(key === 'name' ? { serverMatch: undefined } : {}) },
+    }))
+  }
+
+  // Picking an existing colleague replaces the typed name/email: no new account, no invite email.
+  function pickPerson(ppId, personId) {
+    setFields(prev => ({
+      ...prev,
+      [ppId]: { ...prev[ppId], existingId: personId || '', name: '', email: '', serverMatch: undefined },
+    }))
   }
 
   // Policy-row link input and "exists, no link yet" toggle are mutually exclusive —
@@ -169,12 +182,14 @@ export default function BootstrapWizard({ schoolId, schoolName, userId, firstNam
       .filter(p => !assignments[p.id])
       .map(p => ({
         point: p,
+        existingId: fields[p.id]?.existingId ?? '',
+        notDupKey: fields[p.id]?.notDupKey ?? null,
         name: (fields[p.id]?.name ?? '').trim(),
         email: (fields[p.id]?.email ?? '').trim(),
         link: (fields[p.id]?.link ?? '').trim(),
         existsNoLink: !!fields[p.id]?.existsNoLink,
       }))
-      .filter(r => r.name && r.email)
+      .filter(r => r.existingId || (r.name && r.email))
 
     const localEmailCache = { ...emailCache }
     const rowErrors = []
@@ -185,52 +200,74 @@ export default function BootstrapWizard({ schoolId, schoolName, userId, firstNam
     // entries upsert below returns ids, then written in one follow-up evidence_entries insert.
     const linksByPp = {}
     const namedPersonInPlacePp = [] // Named Person points given an in_place write this pass, for the confirmation note
+    const flaggedByPp = {} // ppId -> match returned by invite-user (same name already on the team)
 
     for (const row of rowsToProcess) {
-      const emailKey = row.email.toLowerCase()
-      let cached = localEmailCache[emailKey]
+      let cached
+      let picked = null // set when the user chose an existing colleague: no invite, no email
 
-      if (!cached) {
-        const { first_name, last_name } = splitName(row.name)
-        try {
-          const { data: { session } } = await supabase.auth.getSession()
-          const res = await fetch(INVITE_FUNCTION_URL, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.access_token}`,
-              'apikey': PUBLISHABLE_KEY,
-            },
-            body: JSON.stringify({
-              first_name, last_name,
-              email: row.email,
-              job_title: row.point.label,
-              role: 'contributor',
-              school_id: schoolId,
-              mat_id: matId,
-            }),
-          })
-          const json = await res.json()
-          if (!res.ok || json.error) {
-            rowErrors.push(`${row.point.label}: ${json.error ?? 'Could not send the invite.'}`)
-            continue
-          }
-          if (json.profileError || !json.userId) {
-            rowErrors.push(`${row.point.label}: invite sent, but the profile couldn't be created — contact hello@inclusiondashboard.co.uk.`)
-            continue
-          }
-          cached = { userId: json.userId, first_name, last_name }
-          localEmailCache[emailKey] = cached
-        } catch {
-          rowErrors.push(`${row.point.label}: could not reach the server for this invite.`)
+      if (row.existingId) {
+        picked = people.find(pp => pp.id === row.existingId) ?? null
+        if (!picked) {
+          rowErrors.push(`${row.point.label}: that colleague could not be found. Please choose again.`)
           continue
+        }
+        cached = { userId: picked.id, first_name: picked.first_name ?? '', last_name: picked.last_name ?? '' }
+      } else {
+        const emailKey = row.email.toLowerCase()
+        cached = localEmailCache[emailKey]
+
+        if (!cached) {
+          const { first_name, last_name } = splitName(row.name)
+          try {
+            const { data: { session } } = await supabase.auth.getSession()
+            const res = await fetch(INVITE_FUNCTION_URL, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`,
+                'apikey': PUBLISHABLE_KEY,
+              },
+              body: JSON.stringify({
+                first_name, last_name,
+                email: row.email,
+                job_title: row.point.label,
+                role: 'contributor',
+                school_id: schoolId,
+                mat_id: matId,
+                check_duplicates: true,
+                ...(row.notDupKey === nameKey(first_name, last_name) ? { confirm_not_duplicate: true } : {}),
+              }),
+            })
+            const json = await res.json()
+            if (res.status === 409 && json.possible_duplicate) {
+              // Same name already on the team: nothing was created. Skip this row and let the user choose.
+              flaggedByPp[row.point.id] = json.matches?.[0] ?? null
+              const who = json.matches?.[0] ? displayPersonName(json.matches[0]) : 'someone'
+              rowErrors.push(`${row.point.label}: this looks like ${who}, who is already on your team. Choose below.`)
+              continue
+            }
+            if (!res.ok || json.error) {
+              rowErrors.push(`${row.point.label}: ${json.error ?? 'Could not send the invite.'}`)
+              continue
+            }
+            if (json.profileError || !json.userId) {
+              rowErrors.push(`${row.point.label}: invite sent, but the profile couldn't be created — contact hello@inclusiondashboard.co.uk.`)
+              continue
+            }
+            cached = { userId: json.userId, first_name, last_name }
+            localEmailCache[emailKey] = cached
+          } catch {
+            rowErrors.push(`${row.point.label}: could not reach the server for this invite.`)
+            continue
+          }
         }
       }
 
       newAssignments[row.point.id] = {
         assigneeUserId: cached.userId,
         displayName: `${cached.first_name} ${cached.last_name}`.trim(),
-        pending: true,
+        pending: picked ? picked.password_set !== true : true,
       }
       pointAssignmentRows.push({
         provision_point_id: row.point.id,
@@ -291,6 +328,17 @@ export default function BootstrapWizard({ schoolId, schoolName, userId, firstNam
     if (evidenceInsertRows.length > 0) {
       const { error: evidenceErr } = await supabase.from('evidence_entries').insert(evidenceInsertRows)
       if (evidenceErr) rowErrors.push(`Some policy links could not be saved: ${evidenceErr.message}`)
+    }
+
+    // Reload the colleague list so anyone just invited can be picked on the next row, and so a
+    // flagged row's "Assign to them" can find the person it points at.
+    setPeople(await fetchSchoolPeople(supabase, schoolId))
+    if (Object.keys(flaggedByPp).length > 0) {
+      setFields(prev => {
+        const next = { ...prev }
+        for (const [ppId, match] of Object.entries(flaggedByPp)) next[ppId] = { ...next[ppId], serverMatch: match }
+        return next
+      })
     }
 
     setEmailCache(localEmailCache)
@@ -451,21 +499,62 @@ export default function BootstrapWizard({ schoolId, schoolName, userId, firstNam
                         </div>
                       ) : (
                         <>
-                          <div style={{ display: 'flex', gap: 10, flex: 1, minWidth: 260, flexWrap: 'wrap' }}>
-                            <input
-                              type="text" placeholder="Name"
-                              value={fields[p.id]?.name ?? ''}
-                              onChange={e => updateField(p.id, 'name', e.target.value)}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minWidth: 260 }}>
+                            <select
+                              value={fields[p.id]?.existingId ?? ''}
+                              onChange={e => pickPerson(p.id, e.target.value)}
                               disabled={submitting}
-                              style={{ flex: '1 1 140px', padding: '7px 10px', borderRadius: 7, border: '1px solid #CBD5E1', fontSize: '0.82rem', fontFamily: 'inherit' }}
-                            />
-                            <input
-                              type="email" placeholder="Email"
-                              value={fields[p.id]?.email ?? ''}
-                              onChange={e => updateField(p.id, 'email', e.target.value)}
-                              disabled={submitting}
-                              style={{ flex: '1 1 180px', padding: '7px 10px', borderRadius: 7, border: '1px solid #CBD5E1', fontSize: '0.82rem', fontFamily: 'inherit' }}
-                            />
+                              aria-label={`Choose someone already on your team for ${p.label}`}
+                              style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid #CBD5E1', fontSize: '0.82rem', fontFamily: 'inherit', background: '#fff', color: '#1A202C' }}
+                            >
+                              <option value="">Choose someone already on your team, or add a new person below…</option>
+                              {people.map(pp => (
+                                <option key={pp.id} value={pp.id}>
+                                  {displayPersonName(pp)}{pp.id === userId ? ' (you)' : ''}{pp.job_title ? ` — ${pp.job_title}` : ''}{pp.password_set !== true ? ' — invite pending' : ''}
+                                </option>
+                              ))}
+                            </select>
+                            {fields[p.id]?.existingId ? (
+                              <div style={{ fontSize: '0.78rem', color: '#475569' }}>
+                                Assigning to {displayPersonName(people.find(pp => pp.id === fields[p.id].existingId))}. No new account or invite email.
+                              </div>
+                            ) : (
+                              <>
+                                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                                  <input
+                                    type="text" placeholder="Name"
+                                    value={fields[p.id]?.name ?? ''}
+                                    onChange={e => updateField(p.id, 'name', e.target.value)}
+                                    disabled={submitting}
+                                    style={{ flex: '1 1 140px', padding: '7px 10px', borderRadius: 7, border: '1px solid #CBD5E1', fontSize: '0.82rem', fontFamily: 'inherit' }}
+                                  />
+                                  <input
+                                    type="email" placeholder="Email"
+                                    value={fields[p.id]?.email ?? ''}
+                                    onChange={e => updateField(p.id, 'email', e.target.value)}
+                                    disabled={submitting}
+                                    style={{ flex: '1 1 180px', padding: '7px 10px', borderRadius: 7, border: '1px solid #CBD5E1', fontSize: '0.82rem', fontFamily: 'inherit' }}
+                                  />
+                                </div>
+                                {(() => {
+                                  const { first_name, last_name } = splitName(fields[p.id]?.name ?? '')
+                                  const key = nameKey(first_name, last_name)
+                                  const acknowledged = fields[p.id]?.notDupKey === key
+                                  const match = acknowledged ? null : (fields[p.id]?.serverMatch ?? findSameName(people, first_name, last_name))
+                                  const maybe = match ? null : findMaybeSame(people, first_name, last_name)
+                                  const who = match ?? maybe
+                                  return (
+                                    <SameNameNotice
+                                      match={match}
+                                      maybe={maybe}
+                                      disabled={submitting}
+                                      onAssign={who ? () => pickPerson(p.id, who.id) : undefined}
+                                      onDifferent={() => setFields(prev => ({ ...prev, [p.id]: { ...prev[p.id], notDupKey: key, serverMatch: undefined } }))}
+                                    />
+                                  )
+                                })()}
+                              </>
+                            )}
                           </div>
                           {/* Policy rows only — Named Person rows above are untouched. */}
                           {p.category === POLICY_CATEGORY && (

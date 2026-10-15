@@ -60,6 +60,9 @@ Deno.serve(async (req) => {
   // Step 3: parse request body
   let email: string, role: string, school_id: string, mat_id: string | null
   let first_name: string, last_name: string, job_title: string
+  // Opt-in same-name check: only runs when the caller sends check_duplicates: true, so
+  // existing callers (which never send it) behave exactly as before.
+  let checkDuplicates = false, confirmNotDuplicate = false
   try {
     const body = await req.json()
     email      = body.email
@@ -69,6 +72,8 @@ Deno.serve(async (req) => {
     first_name = body.first_name ?? ''
     last_name  = body.last_name ?? ''
     job_title  = body.job_title ?? ''
+    checkDuplicates     = body.check_duplicates === true
+    confirmNotDuplicate = body.confirm_not_duplicate === true
     console.log('Body parsed:', email, role, first_name, last_name, job_title)
 
     if (!email || !school_id) {
@@ -189,6 +194,42 @@ Deno.serve(async (req) => {
     schoolName = schoolRow?.name ?? ''
   } catch (err: any) {
     console.error('Failed at step 6b (school name lookup):', err.message)
+  }
+
+  // Step 6c: optional possible-duplicate check. Runs after the permission checks, so only an
+  // authorised caller can learn who is on the school's team. If the school already has a
+  // profile with the same first and last name (trimmed, case-insensitive), return the match
+  // instead of creating a second account. The caller can confirm it is a different person by
+  // sending confirm_not_duplicate: true. Never a permanent refusal. Names only, no emails.
+  if (checkDuplicates && !confirmNotDuplicate) {
+    const norm = (s: string | null | undefined) => (s ?? '').trim().replace(/\s+/g, ' ').toLowerCase()
+    const wantFirst = norm(first_name)
+    const wantLast  = norm(last_name)
+    if (wantFirst && wantLast) {
+      const { data: schoolProfiles, error: dupError } = await admin
+        .from('profiles')
+        .select('id, first_name, last_name, job_title')
+        .eq('school_id', school_id)
+      if (dupError) {
+        console.error('Failed at step 6c:', dupError.message)
+        return new Response(JSON.stringify({ error: 'Could not check for existing team members. Please try again.' }), {
+          status: 500,
+          headers: { ...CORS, 'Content-Type': 'application/json' },
+        })
+      }
+      const matches = (schoolProfiles ?? []).filter((p: any) =>
+        norm(p.first_name) === wantFirst && norm(p.last_name) === wantLast)
+      if (matches.length > 0) {
+        return new Response(JSON.stringify({
+          possible_duplicate: true,
+          matches,
+          message: 'Someone with this name is already on the team. Assign to them, or confirm this is a different person.',
+        }), {
+          status: 409,
+          headers: { ...CORS, 'Content-Type': 'application/json' },
+        })
+      }
+    }
   }
 
   // Step 7: create the account with a server-generated temporary password instead of
