@@ -68,7 +68,7 @@ function buildEmail({ firstName, schoolName, tempPassword }: SendTempPasswordEma
     '',
     "You'll be asked to set your own permanent password the first time you log in.",
     '',
-    'This temporary password expires in 7 days if unused — after that, ask your school admin to send you a new one.',
+    "Your temporary password works for 7 days. If it has expired, just email hello@inclusiondashboard.co.uk and we'll send you a new one.",
   ].join('\n')
 
   return { subject, text }
