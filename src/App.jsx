@@ -2787,6 +2787,10 @@ export default function App() {
   // and stomp in-session navigation (e.g. a MAT admin drilled into a school)
   // back to the role's default view.
   const initializedUserIdRef = useRef(null)
+  // True once the user has typed their credentials in this tab. Tells a deliberate sign-in
+  // (show them a message if their profile is missing) apart from a saved login restored from
+  // browser storage (if its profile no longer exists, just sign it out). Reset on sign-out.
+  const freshLoginRef = useRef(false)
 
   // Invite user modal state
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -2914,6 +2918,7 @@ export default function App() {
       setPersonalAssignedPpIds(new Set())
       setTeamMembers([])
       setMissingProfile(false)
+      freshLoginRef.current = false
       setNeedsPasswordSet(false)
       setOnboardingState(null)
       setFirstLoginPromptVisible(false)
@@ -2947,6 +2952,17 @@ export default function App() {
         console.log('[profile fetch] data:', JSON.stringify(data), 'error:', JSON.stringify(error))
         if (error || !data) {
           console.error('[Profile] fetch error:', error)
+          // No profile row (PGRST116 = zero rows for .single()). If this is a login restored
+          // from browser storage for an account that has since been removed, don't show a
+          // dead-end "being set up" screen: sign it out and let the visitor see the landing
+          // page. A deliberate sign-in (or password-reset arrival) still gets the message.
+          // Any other error (network, server, policy) keeps the message and does not sign out.
+          const noProfileRow = !error || error.code === 'PGRST116'
+          if (noProfileRow && !freshLoginRef.current && !isPasswordRecovery()) {
+            supabase.auth.signOut()
+            setAuthLoading(false)
+            return
+          }
           setMissingProfile(true)
           setAuthLoading(false)
           return
@@ -3360,6 +3376,7 @@ export default function App() {
     e.preventDefault()
     setLoginLoading(true)
     setLoginError(null)
+    freshLoginRef.current = true
     const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPassword })
     setLoginLoading(false)
     if (error) setLoginError(error.message)
@@ -3758,6 +3775,9 @@ export default function App() {
               hello@inclusiondashboard.co.uk
             </a>
           </p>
+          <button type="button" className="login-btn" onClick={() => supabase.auth.signOut()} style={{ marginTop: 20 }}>
+            Sign out
+          </button>
         </div>
       </div>
     )
