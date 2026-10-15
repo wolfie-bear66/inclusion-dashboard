@@ -4,7 +4,7 @@ Project: `wolfie-bear66/inclusion-dashboard`
 Working directory: `C:\Users\USER\Inclusion Dashboard`
 Live URL: `https://www.inclusiondashboard.co.uk` (the bare `inclusiondashboard.co.uk` redirects to `www`; `inclusion-dashboard.vercel.app` now redirects to `www` too)
 
-Last updated: 15 October 2026 (Phase 1 — duplicate team accounts)
+Last updated: 15 October 2026 (stale-login "being set up" fix)
 
 ---
 
@@ -18,6 +18,16 @@ Last updated: 15 October 2026 (Phase 1 — duplicate team accounts)
 ---
 
 ## Completed
+
+- [x] **Fix: "Your account is being set up" dead end for stale saved logins** — 15 October 2026. Front end only (`src/App.jsx`, +20 lines); no database, migration, edge-function or RLS changes. Committed and pushed to `main`.
+
+  **Report and diagnosis**: every visitor appeared to be sent to "Your account is being set up". TRACED: the screen renders only when `missingProfile && session` (`App.jsx`), so someone with no session can never see it. `missingProfile` is set only when the profile lookup for the signed-in user returns an error or no row. Supabase restores a saved login from browser storage, so a login whose account/profile has since been removed shows this screen on every page, including `/` (which redirects signed-in users to `/dashboard`); to the person it looks like the landing page is "logged out". A deleted user's saved login lingers until the app next renews it (up to about an hour). No middleware or route guard exists (`vercel.json` only redirects the old vercel.app host and rewrites to `index.html`). VERIFIED: the last 10 commits touch nothing in auth, RLS, schools or the profile lookup; the newest migration is 8 October and the `profiles`/`schools` policies match the earlier audit; the live landing page renders normally for a clean visitor; `/demo` on production loads (profile lookup works); the demo profile is intact. Probable trigger that day: test accounts deleted during Phase 1 testing (including the one signed in on localhost) and four AJY Academy profiles removed, leaving saved logins behind. Not reproduced for a genuinely new visitor, which the code says is impossible. Also found, pre-existing: two real logins have no profile at all (`floatingideasmedia@gmail.com`, `louise_allen06@hotmail.com`) and would see this screen if they signed in.
+
+  **Fix**: when the lookup finds no profile row (`PGRST116` or no data) and the person did not just type their credentials (new `freshLoginRef`, set in `handleLogin`, reset on sign-out) and is not arriving from a password-reset link, the app signs them out and shows the landing page. A deliberate sign-in with no profile still shows the message, which now has a **Sign out** button so nobody is stuck. Any other error (network, server, policy) keeps the old behaviour and does not sign anyone out.
+
+  **Verified** (local app against the live project, disposable school `ZZ-P1-TEST` fully deleted afterwards): removing a signed-in user's profile and reloading lands on the landing page with the saved login cleared and no message; a deliberate sign-in with a profile-less login shows the message and the Sign out button, and Sign out returns to the sign-in form; a returning user with a valid profile stays signed in after a reload. One earlier attempt at the last check showed "not signed in" after a reload; I had not confirmed the login had completed first, and a careful repeat passed. Not exercised: the non-"no profile" error branch (code-reasoned only). `npx vite build` clean; `npx eslint` 66 problems, equal to the baseline.
+
+  **Open / for the founder**: (a) the two profile-less real logins above still need a decision (give them profiles, or remove them). (b) Brigg Primary now has 7 profiles (was 8) and AJY Academy 3 (was 7); both changes were made outside Claude's work.
 
 - [x] **Phase 1 — Stop duplicate team accounts (existing-person picker, same-name warning, opt-in server check) and fix the expired-password message** — 15 October 2026. Front end committed and pushed to `main` (commits `eeb0a0e`, `6c73f9a`). **`invite-user` deployed live as v20 on 15 October 2026** (see Deploy status). No schema, migration, approval, entries, report, My Points, homepage or Provision Depth changes.
 
