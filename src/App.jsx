@@ -9,6 +9,7 @@ import InclusionStrategyWizard from './pages/InclusionStrategyWizard'
 import OnboardingPrompt from './components/OnboardingPrompt'
 import BootstrapWizard from './components/BootstrapWizard'
 import MyPointsQueue from './components/MyPointsQueue'
+import RecentActivity from './components/RecentActivity'
 import { PRINCIPLE_LABEL_SHORT } from './constants/principles'
 import ApprovalQueueModal from './components/ApprovalQueueModal'
 import ChangeRequestControl from './components/ChangeRequestControl'
@@ -2675,6 +2676,8 @@ export default function App() {
   const [domainTotals, setDomainTotals] = useState({})
   const [allStatuses, setAllStatuses] = useState({})
   const [schoolDataRefresh, setSchoolDataRefresh] = useState(0)
+  // Bumped after a write that fires the activity_log triggers, so the Recent activity card reloads.
+  const [activityRefresh, setActivityRefresh] = useState(0)
   const [, setAllEvidenceCounts] = useState({})
   const [allSubDomains, setAllSubDomains] = useState([])
   const [ppCategoryMap, setPpCategoryMap] = useState({})
@@ -3657,6 +3660,21 @@ export default function App() {
     setModalSaving(false)
     setModalSaveError(false)
     setModalSaveMsg(isContributorInPlace ? 'Submitted for approval.' : 'Saved.')
+    setActivityRefresh(n => n + 1)
+  }
+
+  // Recent activity: an evidence line opens the existing evidence modal, but only while that
+  // evidence is still loaded for this school (removed or stale lines render without a link).
+  function findActivityEvidence(item) {
+    const ppId = Object.keys(entries).find(id => entries[id]?.id === item.entry_id)
+    const row = ppId && (evidenceEntries[ppId] ?? []).find(e => e.id === item.evidence_id)
+    return row ? { ppId, row } : null
+  }
+  function openActivityEvidence(item) {
+    const hit = findActivityEvidence(item)
+    if (!hit) return
+    const info = ppInfoMap[hit.ppId]
+    openModal({ id: hit.ppId, label: info?.label, category: info?.category }, hit.row)
   }
 
   async function handleModalDelete() {
@@ -3675,6 +3693,7 @@ export default function App() {
         [modalPoint.id]: (prev[modalPoint.id] ?? []).filter(e => e.id !== draftId),
       }))
       setAllEvidenceCounts(prev => ({ ...prev, [modalPoint.id]: Math.max(0, (prev[modalPoint.id] ?? 0) - 1) }))
+      setActivityRefresh(n => n + 1)
       closeModal()
     }
   }
@@ -4232,10 +4251,10 @@ export default function App() {
               display: 'inline-flex', alignItems: 'center', gap: 6,
               padding: '6px 14px', border: '1px solid #1B365D', borderRadius: 8,
               background: '#fff', color: '#1B365D',
-              fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+              fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
             }}>
               <i className="ti ti-adjustments" style={{ fontSize: '0.9rem' }} />
-              Choose my points
+              My points
             </button>
           ) : null
           const viewToggle = userRole === 'contributor' ? (
@@ -4301,6 +4320,80 @@ export default function App() {
             { key: 'notStarted', count: headerCounts.notStarted, colour: 'var(--hp-status-not-started)' },
           ].filter(s => s.count > 0)
 
+          // Recent activity — whole school for every role (ignores "Viewing"); top of the right column
+          // of the grid, above "Coming up for review".
+          const activityCard = (
+            <RecentActivity
+              key={selectedSchool}
+              supabase={supabase}
+              schoolId={selectedSchool}
+              refreshKey={`${schoolDataRefresh}-${activityRefresh}`}
+              canOpen={item => !!findActivityEvidence(item)}
+              onOpen={openActivityEvidence}
+            />
+          )
+
+          // Greeting row (stacked greeting + readiness box). Built once: it sits inside .hp-grid
+          // normally, and above the empty-state message in the "viewing a teammate" branch.
+          const greetingRow = (
+          <div className="hp-greeting-row">
+            {/* Stacked greeting: "Good afternoon," then the name. Shrinkable and wrapping, so a
+                long name wraps inside max-width and never pushes the readiness box. A blank name
+                keeps the old single-line "Good afternoon." */}
+            <div className="hp-greeting">
+              <h1 className="hp-font-display hp-greeting-h1" style={{ fontSize: 34, color: 'var(--hp-text-primary)', lineHeight: 1.15 }}>
+                {firstName ? <>{greeting},<br />{firstName}.</> : <>{greeting}.</>}
+              </h1>
+              {schoolName && (
+                <p style={{ fontSize: 14, color: 'var(--hp-text-secondary)', marginTop: 4 }}>{schoolName}</p>
+              )}
+            </div>
+
+            {/* Overall readiness — always whole-school; takes the remaining row width so its right edge meets the ledger's */}
+            <div className="hp-readiness" style={{
+              background: '#fff', border: '1px solid var(--hp-card-border)', borderRadius: 16,
+              display: 'flex', alignItems: 'center',
+            }}>
+              <div className="hp-readiness-row">
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexShrink: 0 }}>
+                <span className="hp-font-display" style={{ fontSize: 44, color: 'var(--brand-navy)', lineHeight: 1, fontVariantNumeric: 'lining-nums' }}>{readPct}%</span>
+              </div>
+              <div style={{ flex: '1 1 180px', minWidth: 180, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div className="hp-row-bar" style={{ width: '100%' }}>
+                  {headerBarSegments.map(s => (
+                    <span key={s.key} style={{ background: s.colour, flexGrow: s.count, flexBasis: 0 }} />
+                  ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--hp-text-secondary)' }}>{totInPlace} of {totTotal} in place</span>
+                  {totInProgress > 0 && (
+                    <span style={{ fontSize: '0.78rem', color: 'var(--hp-text-meta)' }}>{totInProgress} in progress</span>
+                  )}
+                </div>
+              </div>
+              {(userRole === 'approver' || userRole === 'mat_admin') && approvalQueueCount > 0 && (
+                <div className="hp-readiness-action">
+                <button type="button" onClick={() => setApprovalQueueOpen(true)} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, whiteSpace: 'nowrap',
+                  padding: '5px 12px', borderRadius: 999, border: '1px solid var(--hp-amber-tint-border)',
+                  background: 'var(--hp-amber-tint-bg)', color: 'var(--hp-amber-tint-text)', fontSize: '0.75rem', fontWeight: 600,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                  <i className="ti ti-clipboard-check" style={{ fontSize: '0.85rem' }} />
+                  {approvalQueueCount} awaiting approval
+                </button>
+                </div>
+              )}
+              {selfAssignButton && (
+                <div className="hp-readiness-action">
+                  {selfAssignButton}
+                </div>
+              )}
+              </div>
+            </div>
+          </div>
+          )
+
           return (
             <div className="hp-content" style={{
               display: 'flex', flexDirection: 'column', gap: 14,
@@ -4309,58 +4402,7 @@ export default function App() {
               transition: 'background 0.25s',
             }}>
 
-              {/* Greeting row + fluid-width readiness box */}
-              <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-                {/* Shrinkable so a long greeting ("Good afternoon, …") wraps at narrow widths
-                    instead of pushing the page past the scroll area. */}
-                <div style={{ flexShrink: 1 }}>
-                  <h1 className="hp-font-display" style={{ fontSize: 34, color: 'var(--hp-text-primary)', lineHeight: 1.15 }}>
-                    {greeting}{firstName ? `, ${firstName}` : ''}.
-                  </h1>
-                  {schoolName && (
-                    <p style={{ fontSize: 14, color: 'var(--hp-text-secondary)', marginTop: 4 }}>{schoolName}</p>
-                  )}
-                </div>
-
-                {/* Overall readiness — always whole-school, fills remaining row width */}
-                <div style={{
-                  flex: '1 1 320px', background: '#fff', border: '1px solid var(--hp-card-border)', borderRadius: 16,
-                  padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexShrink: 0 }}>
-                    <span className="hp-font-display" style={{ fontSize: 44, color: 'var(--brand-navy)', lineHeight: 1, fontVariantNumeric: 'lining-nums' }}>{readPct}%</span>
-                  </div>
-                  <div style={{ flex: '1 1 260px', minWidth: 260, maxWidth: 260, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div className="hp-row-bar" style={{ width: 260 }}>
-                      {headerBarSegments.map(s => (
-                        <span key={s.key} style={{ background: s.colour, flexGrow: s.count, flexBasis: 0 }} />
-                      ))}
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.78rem', color: 'var(--hp-text-secondary)' }}>{totInPlace} of {totTotal} in place</span>
-                      {totInProgress > 0 && (
-                        <span style={{ fontSize: '0.78rem', color: 'var(--hp-text-meta)' }}>{totInProgress} in progress</span>
-                      )}
-                    </div>
-                  </div>
-                  {(userRole === 'approver' || userRole === 'mat_admin') && approvalQueueCount > 0 && (
-                    <button type="button" onClick={() => setApprovalQueueOpen(true)} style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0,
-                      padding: '5px 12px', borderRadius: 999, border: '1px solid var(--hp-amber-tint-border)',
-                      background: 'var(--hp-amber-tint-bg)', color: 'var(--hp-amber-tint-text)', fontSize: '0.75rem', fontWeight: 600,
-                      cursor: 'pointer', fontFamily: 'inherit',
-                    }}>
-                      <i className="ti ti-clipboard-check" style={{ fontSize: '0.85rem' }} />
-                      {approvalQueueCount} awaiting approval
-                    </button>
-                  )}
-                  {selfAssignButton && (
-                    <div style={{ marginLeft: 'auto' }}>
-                      {selfAssignButton}
-                    </div>
-                  )}
-                </div>
-              </div>
+              {isPersonalView && totalAssigned === 0 && viewingAsMember && greetingRow}
 
               {/* Empty personal view state — approver browsing a teammate's (viewingAsMember)
                   empty assignment list via the "Viewing:" dropdown only. The contributor's
@@ -4381,12 +4423,15 @@ export default function App() {
                     Use the Team screen to assign provision points to this person.
                   </p>
                 </div>
+                {activityCard}
                 </>
               ) : (
                 <>
               {/* Two-column grid: ledger (Principles/Domains/Categories) + Coming up for review.
                   Replaces the old principle cards, Domain|Category links, and Evaluate & Sustain. */}
               <div className="hp-grid">
+
+                {greetingRow}
 
                 {/* ── Ledger card ──────────────────────────────────────────── */}
                 <div className="hp-card hp-ledger">
@@ -4416,6 +4461,10 @@ export default function App() {
 
                   <LedgerRows rows={ledgerRows} />
                 </div>
+
+                {/* ── Right column: Recent activity on top, Coming up for review beneath ── */}
+                <div className="hp-side">
+                {activityCard}
 
                 {/* ── Coming up for review card ────────────────────────────── */}
                 <div className="hp-card hp-review">
@@ -4489,6 +4538,8 @@ export default function App() {
                       </button>
                     )}
                   </div>
+                </div>
+
                 </div>
               </div>
               </>
@@ -4636,6 +4687,7 @@ export default function App() {
               setEntries(prev => ({ ...prev, [ppId]: { ...prev[ppId], ...patch } }))
               if (patch.status) setAllStatuses(prev => ({ ...prev, [ppId]: patch.status }))
               loadApprovalQueueCount()
+              setActivityRefresh(n => n + 1)
             }}
           />
         )}
@@ -4877,6 +4929,11 @@ export default function App() {
                       <div className="df df--half">
                         <label>Title</label>
                         <input type="text" value={draft.provision_name ?? ''} onChange={e => handleDraftChange('provision_name', e.target.value)} disabled={fieldsDisabled} />
+                        {!fieldsDisabled && (
+                          <p style={{ fontSize: '0.74rem', color: '#64748b', margin: '4px 0 0' }}>
+                            Please don't include pupil names or personal details in the title.
+                          </p>
+                        )}
                       </div>
 
                       <div className="df df--half">
