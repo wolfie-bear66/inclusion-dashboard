@@ -357,6 +357,7 @@ Last updated: 19 October 2026 (recent activity feed pushed)
 
 - [x] **Landing page contact form** — Formspree wired up (see Session 10 above). ✓
 
+
 ---
 
 ## Future features
@@ -590,6 +591,13 @@ Never rewrite existing query logic in same session as any migration.
 - Email digest requires either a Supabase Edge Function cron job or
   external service (e.g. Resend, Loops) — infrastructure decision needed
   before building
+
+---
+
+### Recent activity: `source` column on `activity_log` (wizard writes versus normal edits)
+**Priority: Low (not essential; parked by the founder 19 Oct 2026)**
+
+Parked by the founder on 19 Oct 2026 as not essential. Today wizard writes cannot be told apart from normal ones (same user, same tables); the only signal is a NULL-title heuristic on wizard evidence (no signal for status lines). **Preferred approach (option A)**: a second Supabase client used only for the wizard's `entries` upsert and policy-link `evidence_entries` insert, adding header `x-activity-source: wizard`; the `activity_log` triggers read it from PostgREST's `request.headers`; new migration adds `activity_log.source text not null default 'app'` with a check for `'app'` or `'wizard'` (existing rows stay `app`, no backfill; SQL-editor and service-role writes stay `app`). The browser accepting the custom header was VERIFIED (CORS preflight to the REST endpoint returned 200 and allowed `x-activity-source`); that PostgREST sets `request.headers` on a real request is TRACED until seen with a real signed-in write on a disposable school. The header is client-supplied, so a user could label their own writes "wizard" (label only, own school). Rejected options: a timing guess (an assignment by the same person in the last ~30 seconds; heuristic) and a new wizard RPC (duplicates the guard and RLS checks; riskiest). **Open decisions**: (1) store only, or also change the feed (for example collapse a wizard run into one "set up N named people" line, a separate design step); (2) make the "first evidence" check ignore wizard lines, so a wizard policy link no longer blocks an approver's later "first" label; (3) confirm option A. Needs a disposable school and login again (ZZ was deleted).
 
 ---
 
