@@ -30,8 +30,9 @@ export default function ApprovalQueueModal({ schoolId, currentUserId, supabase, 
       .not('submitted_for_approval_at', 'is', null)
       .order('submitted_for_approval_at', { ascending: true })
 
-    if (err) { setError('Failed to load the approval queue.'); setItems([]); return }
+    if (err) { setError('Failed to load the approval queue.'); setItems(prev => prev ?? []); return null }
     setItems(data ?? [])
+    return data ?? []
   }
 
   useEffect(() => { load() }, [schoolId, supabase])
@@ -50,8 +51,18 @@ export default function ApprovalQueueModal({ schoolId, currentUserId, supabase, 
     })
     if (rpcErr) { setError(rpcErr.message); setActioningId(null); return }
 
+    // The function returns normally even when it changed nothing, so don't trust it: reload the
+    // waiting list from the database and only report success if this point has really left it.
+    const fresh = await load()
+    if (fresh === null) { setActioningId(null); return }
+    if (fresh.some(i => i.id === entry.id)) {
+      setError('This point could not be approved: it is still waiting for approval. Please try again, and contact support if it keeps happening.')
+      onQueueChanged?.()
+      setActioningId(null)
+      return
+    }
+
     onActioned?.(entry.provision_point_id, { status: 'in_place', submitted_for_approval_at: null })
-    setItems(prev => prev.filter(i => i.id !== entry.id))
     setActioningId(null)
   }
 
