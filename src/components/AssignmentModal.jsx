@@ -11,6 +11,11 @@ export const CATEGORY_ORDER = [
   'Internal Process / System',
 ]
 
+const selectLinkStyle = {
+  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+  fontSize: '0.75rem', fontWeight: 600, color: '#1B365D', fontFamily: 'inherit', whiteSpace: 'nowrap',
+}
+
 function RoleChip({ role }) {
   const label = role === 'approver' ? 'Approver' : role === 'mat_admin' ? 'MAT Admin' : 'Contributor'
   return (
@@ -28,6 +33,7 @@ export default function AssignmentModal({ person, schoolId, currentUserId, supab
   const [originalAssigned, setOriginalAssigned] = useState(new Set())
   const [allAssignments, setAllAssignments] = useState([])
   const [profilesById, setProfilesById] = useState({})
+  const [selectAllTicked, setSelectAllTicked] = useState(new Set()) // ids ticked by "Select all" this session
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -79,6 +85,44 @@ export default function AssignmentModal({ person, schoolId, currentUserId, supab
       const next = new Set(prev)
       if (next.has(ppId)) next.delete(ppId)
       else next.add(ppId)
+      return next
+    })
+    // A manual change takes the point out of "Select none"'s reach.
+    setSelectAllTicked(prev => {
+      if (!prev.has(ppId)) return prev
+      const next = new Set(prev)
+      next.delete(ppId)
+      return next
+    })
+  }
+
+  // Points anyone already holds (including this person). Select all only ever offers the rest.
+  const heldIds = new Set(allAssignments.map(a => a.provision_point_id))
+
+  function freeIdsIn(points) {
+    return points.filter(pp => !heldIds.has(pp.id) && !checked.has(pp.id)).map(pp => pp.id)
+  }
+
+  function selectAllIn(points) {
+    const ids = freeIdsIn(points)
+    if (ids.length === 0) return
+    setChecked(prev => new Set([...prev, ...ids]))
+    setSelectAllTicked(prev => new Set([...prev, ...ids]))
+  }
+
+  // Undoes only what Select all ticked in this category; points that were already yours, or that
+  // you ticked by hand, are left alone.
+  function selectNoneIn(points) {
+    const ids = points.filter(pp => selectAllTicked.has(pp.id) && checked.has(pp.id)).map(pp => pp.id)
+    if (ids.length === 0) return
+    setChecked(prev => {
+      const next = new Set(prev)
+      for (const id of ids) next.delete(id)
+      return next
+    })
+    setSelectAllTicked(prev => {
+      const next = new Set(prev)
+      for (const id of ids) next.delete(id)
       return next
     })
   }
@@ -179,12 +223,42 @@ export default function AssignmentModal({ person, schoolId, currentUserId, supab
             <>
               {grouped.map(({ cat, points }, catIdx) => (
                 <div key={cat} ref={el => { catRefs.current[catIdx] = el }} style={{ paddingTop: 20 }}>
-                  <p style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1A202C', marginBottom: 10 }}>
-                    {cat}
-                    <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: 8 }}>
-                      {points.length} point{points.length !== 1 ? 's' : ''}
-                    </span>
-                  </p>
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+                    <p style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1A202C' }}>
+                      {cat}
+                      <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: 8 }}>
+                        {points.length} point{points.length !== 1 ? 's' : ''}
+                      </span>
+                    </p>
+                    {(() => {
+                      const freeCount = freeIdsIn(points).length
+                      const undoable = points.some(pp => selectAllTicked.has(pp.id) && checked.has(pp.id))
+                      if (freeCount === 0 && !undoable) return null
+                      // Tick box: empty (or part-filled once some are ticked) while free points
+                      // remain; filled once every free point has been ticked by Select all.
+                      const allTicked = freeCount === 0
+                      return (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, color: '#1B365D', whiteSpace: 'nowrap' }}>
+                            <input
+                              type="checkbox"
+                              ref={el => { if (el) el.indeterminate = !allTicked && undoable }}
+                              checked={allTicked}
+                              onChange={() => (allTicked ? selectNoneIn(points) : selectAllIn(points))}
+                              aria-label={allTicked ? 'Untick the points Select all ticked in this category' : `Select all ${freeCount} free points in this category`}
+                              style={{ accentColor: '#1B365D', cursor: 'pointer' }}
+                            />
+                            {allTicked ? 'All free selected' : `Select all (${freeCount} free)`}
+                          </label>
+                          {undoable && (
+                            <button type="button" onClick={() => selectNoneIn(points)} style={selectLinkStyle}>
+                              Select none
+                            </button>
+                          )}
+                        </span>
+                      )
+                    })()}
+                  </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {points.map(pp => {
                       const isChecked = checked.has(pp.id)
