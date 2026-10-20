@@ -4243,10 +4243,12 @@ export default function App() {
           // and rendered in the ledger card's header row (opposite the segmented control), and
           // again above the teammate empty state, which replaces the whole grid — without it
           // there'd be no way back out of that view. It still filters the review card too.
-          // The contributor's self-assign button lives in the readiness card's right-hand slot
-          // (where approvers get "awaiting approval" — the two are role-exclusive, so never both),
-          // keeping the ledger header to the segmented control + pill on one row.
-          const selfAssignButton = userRole === 'contributor' && !readOnly && !isDemoMode ? (
+          // The self-assign button (contributors and approvers) lives in the readiness card's
+          // right-hand slot, beside the approver/mat_admin "awaiting approval" pill. An approver
+          // can see both, so they share one slot and sit side by side. mat_admin has no
+          // self-assign button, only the pill. This keeps the ledger header to the segmented
+          // control + pill on one row.
+          const selfAssignButton = (userRole === 'contributor' || userRole === 'approver') && !readOnly && !isDemoMode ? (
             <button type="button" onClick={() => setSelfAssignOpen(true)} style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
               padding: '6px 14px', border: '1px solid #1B365D', borderRadius: 8,
@@ -4371,8 +4373,9 @@ export default function App() {
                   )}
                 </div>
               </div>
+              {(selfAssignButton || ((userRole === 'approver' || userRole === 'mat_admin') && approvalQueueCount > 0)) && (
+              <div className="hp-readiness-action" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 10 }}>
               {(userRole === 'approver' || userRole === 'mat_admin') && approvalQueueCount > 0 && (
-                <div className="hp-readiness-action">
                 <button type="button" onClick={() => setApprovalQueueOpen(true)} style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, whiteSpace: 'nowrap',
                   padding: '5px 12px', borderRadius: 999, border: '1px solid var(--hp-amber-tint-border)',
@@ -4382,12 +4385,9 @@ export default function App() {
                   <i className="ti ti-clipboard-check" style={{ fontSize: '0.85rem' }} />
                   {approvalQueueCount} awaiting approval
                 </button>
-                </div>
               )}
-              {selfAssignButton && (
-                <div className="hp-readiness-action">
-                  {selfAssignButton}
-                </div>
+              {selfAssignButton}
+              </div>
               )}
               </div>
             </div>
